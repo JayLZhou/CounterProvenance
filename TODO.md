@@ -5,14 +5,17 @@
 - [x] Validate linear additive-noise counterfactual replay against a semiring provenance trie.
 - [x] Compare the trie-derived evaluator against real `dowhy.gcm.counterfactual_samples`.
 - [x] Separate raw trie traversal from the compiled fast linear query plan.
-- [ ] Add a layered random-DAG generator to stress-test trie compression at larger path counts.
+- [x] Add a reusable generic linear-cDAG provenance engine.
+- [x] Add arbitrary cDAG topological expansion and cycle validation.
+- [x] Add support for non-intervened root variables and multiple intervention variables.
+- [x] Add a layered random-DAG generator to stress-test trie compression at larger path counts.
+- [x] Add unit tests for monomial expansion, trie insertion, and compiled evaluation.
 - [ ] Add CSV/JSON benchmark output for reproducible plots.
-- [ ] Add unit tests for monomial expansion, trie insertion, and compiled evaluation.
 
 ## System Design
 
-- [ ] Replace the demo-only trie with a reusable provenance-store API.
-- [ ] Add support for multiple intervention variables and multiple targets.
+- [x] Replace the demo-only trie with a reusable provenance-store API for linear cDAGs.
+- [ ] Add batched support for many targets in one workload.
 - [ ] Add incremental update hooks for changed coefficients / retrained mechanisms.
 - [ ] Add a vectorized execution backend that evaluates trie/circuit fragments without Python recursion.
 

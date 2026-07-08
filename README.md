@@ -3,7 +3,7 @@
 Repository: <https://github.com/JayLZhou/CounterProvenance>
 
 TESSERA Linear Trie is a small prototype for **fast repeated counterfactual
-queries over learned linear SCMs**.
+queries over learned linear SCMs on arbitrary causal DAGs**.
 
 The core idea is simple:
 
@@ -31,7 +31,22 @@ work again and again. TESSERA asks:
 > Can we materialize the reusable counterfactual derivation once, then answer
 > repeated queries by evaluating stored provenance?
 
-This demo answers that question for linear SCMs.
+This demo answers that question for linear SCMs over arbitrary cDAGs.
+
+## Generic Linear cDAG Support
+
+The reusable engine in `counterprovenance/linear.py` supports:
+
+- arbitrary directed acyclic causal graphs;
+- additive linear mechanisms;
+- non-intervened root variables preserved from the observed unit;
+- one or more structural interventions;
+- any single target node per compiled query;
+- expanded semiring monomials as logical provenance;
+- reverse trie storage as physical provenance compression;
+- compiled closed-form evaluation for fast repeated queries.
+
+The toy SCM below is just the smallest readable example.
 
 ## Toy SCM
 
@@ -154,6 +169,17 @@ compiled TESSERA evaluation:  0.1062s
 speedup:                      3.19x
 ```
 
+On a random layered cDAG:
+
+```text
+layers = (3, 8, 8, 8, 1), nodes = 28, mechanisms = 25
+expanded monomials      = 164
+expanded token slots    = 572
+reverse trie tokens     = 279
+storage compression     = 2.05x
+compiled speedup        = 7.96x vs NumPy replay
+```
+
 These are early sanity numbers, not final system benchmarks. The main point is
 that compiled provenance agrees with DoWhy-style counterfactual semantics and
 already avoids repeated mechanism replay in the linear case.
@@ -183,6 +209,20 @@ python experiments/tessera_linear_trie/linear_trie_demo.py \
   --skip-raw-trie-timing
 ```
 
+Run a random layered cDAG stress check:
+
+```bash
+python experiments/tessera_linear_trie/linear_trie_demo.py \
+  --mode layered \
+  --layer-sizes 3,8,8,8,1 \
+  --edge-prob 0.45 \
+  --n 10000 \
+  --repeats 10 \
+  --skip-dowhy \
+  --quiet \
+  --skip-raw-trie-timing
+```
+
 If DoWhy is installed, compare against real `dowhy.gcm.counterfactual_samples`:
 
 ```bash
@@ -200,6 +240,9 @@ Useful flags:
 
 ```text
 --n                    number of observed units
+--mode                 toy or layered
+--layer-sizes          comma-separated layer sizes for random layered cDAGs
+--edge-prob            edge probability for random layered cDAGs
 --t-prime              intervention value for do(T=t')
 --repeats              repeated query count for timing
 --skip-dowhy           skip optional DoWhy comparison
@@ -216,7 +259,9 @@ REPO_INTRO.md                                       copy-ready repository introd
 TODO.md                                             next steps
 requirements.txt                                    minimal Python dependencies
 requirements-dowhy.txt                              optional DoWhy comparison dependencies
+counterprovenance/linear.py                          generic linear cDAG provenance engine
 experiments/tessera_linear_trie/linear_trie_demo.py main prototype and benchmark
+tests/test_linear_general.py                         correctness tests for arbitrary linear cDAGs
 ```
 
 ## What This Prototype Does Not Claim
@@ -229,7 +274,7 @@ It does not yet handle:
 - ReLU/tree guarded provenance;
 - interval certificates for general neural networks;
 - optimized trie execution;
-- multi-target workload optimization.
+- batched multi-target workload optimization.
 
 Those are the next steps in the broader TESSERA agenda. This prototype only
 establishes the linear foundation:
