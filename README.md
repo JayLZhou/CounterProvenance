@@ -1,5 +1,7 @@
 # TESSERA Linear Trie
 
+Repository: <https://github.com/JayLZhou/CounterProvenance>
+
 TESSERA Linear Trie is a small prototype for **fast repeated counterfactual
 queries over learned linear SCMs**.
 
@@ -158,6 +160,12 @@ already avoids repeated mechanism replay in the linear case.
 
 ## Quick Start
 
+Install the minimal dependency:
+
+```bash
+pip install -r requirements.txt
+```
+
 Run with only NumPy installed:
 
 ```bash
@@ -178,6 +186,8 @@ python experiments/tessera_linear_trie/linear_trie_demo.py \
 If DoWhy is installed, compare against real `dowhy.gcm.counterfactual_samples`:
 
 ```bash
+pip install -r requirements-dowhy.txt
+
 python experiments/tessera_linear_trie/linear_trie_demo.py \
   --n 10000 \
   --repeats 5 \
@@ -201,9 +211,12 @@ Useful flags:
 ## Files
 
 ```text
-linear_trie_demo.py  main prototype and benchmark
-README.md            this document
-REPO_INTRO.md        copy-ready repository introduction
+README.md                                           this document
+REPO_INTRO.md                                       copy-ready repository introduction
+TODO.md                                             next steps
+requirements.txt                                    minimal Python dependencies
+requirements-dowhy.txt                              optional DoWhy comparison dependencies
+experiments/tessera_linear_trie/linear_trie_demo.py main prototype and benchmark
 ```
 
 ## What This Prototype Does Not Claim
