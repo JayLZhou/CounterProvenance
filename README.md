@@ -33,6 +33,36 @@ work again and again. TESSERA asks:
 
 This demo answers that question for linear SCMs over arbitrary cDAGs.
 
+## Exact f(.) Coverage
+
+The broader TESSERA paper classifies structural mechanisms by their exact
+region structure, rather than by model family names. A mechanism is in scope
+when it can be written as a finite guarded expression:
+
+```text
+f(x) = sum_r 1[x in Omega_r] * h_r(x)
+```
+
+where each region guard `Omega_r` is exact, and each local expression `h_r` is
+either constant or affine.
+
+This makes linear models, trees, tree ensembles, and ReLU-style networks part
+of one exact finite-region family:
+
+| Mechanism class | Region structure | Local expression `h_r(x)` | Typical models | Provenance representation | Compression opportunity | Prototype status |
+|---|---|---|---|---|---|---|
+| Global affine | One global region, `Omega = R^d` | `a^T x + b` | LinearRegression, Ridge, Lasso, OLS additive-noise mechanisms | affine semiring path provenance | shared causal path suffixes; compiled linear form | implemented |
+| Global basis-affine | One global region after explicit feature lifting | `a^T phi(x) + b` | polynomial regression, fixed basis expansion | symbolic expression DAG over basis tokens | shared basis subexpressions and causal paths | planned |
+| Guarded constant, or piecewise constant | Finite guarded regions, usually one per leaf | `c_r` | decision tree, rule list, lookup table over finite categories | guard provenance plus leaf-value token | shared guard prefixes; collapse subtrees with identical leaf provenance | planned |
+| Additive guarded constant ensemble | Sum of many guarded-constant components | `sum_m c_{m,r_m}` without materializing global leaf combinations | random forest, GBDT, XGBoost/LightGBM-style tree ensembles | factorized sum of tree-level guarded provenance | avoids Cartesian-product region explosion across trees | high-priority planned |
+| Guarded affine, or piecewise affine | Finite guarded regions, one per activation/sign/segment pattern | `a_r^T x + b_r` | ReLU MLP, leaky-ReLU MLP, maxout, segmented linear models, linear splines | guard provenance plus affine template | shared activation prefixes; shared affine templates; dead-path pruning | planned |
+| Additive guarded affine | Additive sum of smaller guarded affine components | `sum_m (a_{m,r}^T x_m + b_{m,r})` | GAM-style splines, additive piecewise-linear models | factorized component-level provenance | avoids full cross-product of component regions | planned |
+
+Smooth mechanisms such as sigmoid/tanh MLPs and arbitrary black-box regressors
+can still be evaluated by a causal library, but they are not exact provenance
+targets for this paper unless they are replaced by an explicit finite-region
+surrogate.
+
 ## Generic Linear cDAG Support
 
 The reusable engine in `counterprovenance/linear.py` supports:
@@ -272,7 +302,6 @@ It does not yet handle:
 
 - nonlinear mechanisms;
 - ReLU/tree guarded provenance;
-- interval certificates for general neural networks;
 - optimized trie execution;
 - batched multi-target workload optimization.
 
@@ -291,7 +320,10 @@ over Learned SCMs**
 
 Planned extension path:
 
-1. linear SCMs as the one-certificate baseline;
-2. ReLU and tree mechanisms as guarded exact provenance;
-3. smooth/general neural mechanisms as certified interval provenance;
-4. prefix-aware compression and indexing for repeated counterfactual workloads.
+1. linear SCMs as the single-region affine baseline;
+2. decision trees as guarded constant mechanisms;
+3. tree ensembles as additive guarded-constant mechanisms that avoid global
+   leaf-combination materialization;
+4. ReLU MLPs and piecewise-linear models as guarded affine mechanisms;
+5. provenance-equivalence compression and indexing for repeated counterfactual
+   workloads.
