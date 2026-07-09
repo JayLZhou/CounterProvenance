@@ -44,7 +44,9 @@ f(x) = sum_r 1[x in Omega_r] * h_r(x)
 ```
 
 where each region guard `Omega_r` is exact, and each local expression `h_r` is
-either constant or affine.
+either a numeric constant or a numeric affine expression. The table below is
+restricted to exact numerical structural mechanisms; categorical classifier
+mechanisms are outside this prototype's coverage.
 
 This makes linear models, trees, tree ensembles, and ReLU-style networks part
 of one exact finite-region family:
@@ -53,15 +55,10 @@ of one exact finite-region family:
 |---|---|---|---|---|---|---|
 | Global affine | One global region, `Omega = R^d` | `a^T x + b` | LinearRegression, Ridge, Lasso, OLS additive-noise mechanisms | affine semiring path provenance | shared causal path suffixes; compiled linear form | implemented |
 | Global basis-affine | One global region after explicit feature lifting | `a^T phi(x) + b` | polynomial regression, fixed basis expansion | symbolic expression DAG over basis tokens | shared basis subexpressions and causal paths | planned |
-| Guarded constant, or piecewise constant | Finite guarded regions, usually one per leaf | `c_r` | decision tree, rule list, lookup table over finite categories | guard provenance plus leaf-value token | shared guard prefixes; collapse subtrees with identical leaf provenance | planned |
+| Guarded constant, or piecewise constant | Finite guarded regions, usually one per leaf | `c_r` | regression tree, numeric rule list | guard provenance plus leaf-value token | shared guard prefixes; collapse subtrees with identical leaf provenance | planned |
 | Additive guarded constant ensemble | Sum of many guarded-constant components | `sum_m c_{m,r_m}` without materializing global leaf combinations | random forest, GBDT, XGBoost/LightGBM-style tree ensembles | factorized sum of tree-level guarded provenance | avoids Cartesian-product region explosion across trees | high-priority planned |
 | Guarded affine, or piecewise affine | Finite guarded regions, one per activation/sign/segment pattern | `a_r^T x + b_r` | ReLU MLP, leaky-ReLU MLP, maxout, segmented linear models, linear splines | guard provenance plus affine template | shared activation prefixes; shared affine templates; dead-path pruning | planned |
 | Additive guarded affine | Additive sum of smaller guarded affine components | `sum_m (a_{m,r}^T x_m + b_{m,r})` | GAM-style splines, additive piecewise-linear models | factorized component-level provenance | avoids full cross-product of component regions | planned |
-
-Smooth mechanisms such as sigmoid/tanh MLPs and arbitrary black-box regressors
-can still be evaluated by a causal library, but they are not exact provenance
-targets for this paper unless they are replaced by an explicit finite-region
-surrogate.
 
 ## Generic Linear cDAG Support
 
