@@ -5,21 +5,21 @@ Repository: <https://github.com/JayLZhou/CounterProvenance>
 TESSERA is a research prototype for **exact indexed counterfactual queries over
 learned structural causal models**. The current code implements the linear
 foundation on arbitrary causal DAGs and a model-independent **Versioned
-Semiring Circuit (VSC)** core. Tree and ReLU compilers remain future work, but
-their arbitrary region-to-region ON/OFF patterns no longer require a
+Provenance Closure** core. Tree and ReLU compilers remain future work, but
+their arbitrary region-to-region `ON/OFF/ON` patterns no longer require a
 staircase assumption in the storage layer.
 
 The core idea is:
 
-> Compile the exact intervention line into an ordered sequence of semiring
-> circuit versions. Store every distinct `ADD`/`MUL` subcircuit once in a
-> global immutable arena, store per-unit bindings separately, and let each
-> unit-region keep only a persistent root pointer.
+> Compile the exact intervention line into a shared semiring template plus an
+> ordered sequence of slot environments. Store this one logical closure in
+> either a storage-optimal compact layout or a latency-oriented materialized
+> circuit layout, while keeping per-unit numeric bindings separate.
 
 The full mechanism class, index design, baselines, and theorem targets are in
 [`POSITIONING.md`](POSITIONING.md). The current linear trie is the one-region
-special case; `counterprovenance/versioned.py` implements the general
-arbitrary-version storage substrate.
+special case; `counterprovenance/versioned.py` implements both exact physical
+layouts for arbitrary region versions.
 
 ## Why This Exists
 
@@ -71,22 +71,27 @@ KNN, rule lists, splines/GAMs, AdaBoost, sigmoid/tanh/GELU networks, RBF
 models, Gaussian processes, polynomial regression, arbitrary black boxes, and
 categorical classifiers are outside the submitted three-class claim.
 
-## Unified Index: VSC-Backed GPSI
+## Unified Index: Closure-Backed GPSI
 
 For unit `u`, region `j`, let `P[u,j]` be its exact parameterized provenance and
 let `h_u` bind arbitrary unit-specific parameters, roots, and abducted noises.
-VSC stores the ordered family
+The unified logical object is
 
 ```text
-root[u,1], root[u,2], ..., root[u,B_u]
+C[u,j] = (shared template T[u], slot environment sigma[u,j])
+P[u,j] = Eval(T[u], sigma[u,j])
 ```
 
-inside one global hash-consed arena containing `ZERO`, `ONE`, `ATOM`, `ADD`,
-`MUL`, and optional `SWITCH` nodes. At a region boundary, only changed slots
-and their affected ancestors are rebuilt. A fragment may follow
-`ON -> OFF -> ON` repeatedly; non-adjacent regions and different units still
-reuse an identical root whenever canonical structure matches. Numeric values
-remain outside the shared topology in each unit's binding `h_u`.
+It has two exact physical layouts:
+
+- **Closure-Compact** stores each slot's initial root and only its effective
+  changes. Its storage is independent of downstream circuit fan-out.
+- **VSC-Materialized** resolves every region to a canonical immutable
+  `ADD`/`MUL` root. It path-copies affected ancestors and globally hash-conses
+  recurring subcircuits across regions and units.
+
+A fragment may follow `ON -> OFF -> ON` repeatedly in either layout. Numeric
+values remain outside shared topology in each unit's binding `h_u`.
 
 The Guarded Provenance Segment Index has one logical and physical design for
 every supported mechanism:
@@ -95,11 +100,11 @@ every supported mechanism:
 GPSI
 |-- local mechanism DAG
 |-- response segment directory
-|      sorted boundaries -> persistent root IDs
-|-- Versioned Semiring Circuit
-|      immutable ZERO/ONE/ATOM/ADD/MUL/SWITCH nodes
-|      batch slot updates + affected-ancestor path copying
-|      global hash-consing across regions and units
+|      sorted boundaries -> environment versions or materialized root IDs
+|-- Versioned Provenance Closure
+|      shared ZERO/ONE/ATOM/ADD/MUL template
+|      Closure-Compact: initial slots + effective change histories
+|      VSC-Materialized: affected-ancestor path copying + hash-consing
 |-- optional additive frontier optimizer
 |      maximal runs -> LCF when supports are structured
 |      linear-space stabbing-semigroup directory in compact mode
@@ -112,8 +117,9 @@ GPSI
 L adds no boundary, T emits leaf changes, and N emits activation changes after
 ExactLine partitioning. All become updates to one circuit-template interface.
 The support-matrix/LCF representation remains useful at an additive circuit
-frontier, but it is no longer the universal logical model: VSC preserves
-products directly and therefore does not require expansion into neural paths.
+frontier, but it is no longer the universal logical model: the closure
+preserves products directly and therefore does not require expansion into
+neural paths.
 
 ## Baselines and Theory Targets
 
@@ -128,24 +134,34 @@ The evaluation compares GPSI against:
 6. tree-ensemble ADD/decision-diagram compilation;
 7. unmodified numeric ExactLine for Class N.
 
-The revised theory targets are:
+The revised theory spine is:
 
 - exact closure of L/T/N under causal composition for scalar interventions;
-- general persistent storage
-  `O(B_tot + D_0 + sum_(u,j) gamma_(u,j) + sum_u|h_u|)`, where `gamma_(u,j)`
-  is the number of new canonical nodes created by a region transition;
-- construction
-  `O(B_tot + D_0 + sum_(u,j) alpha_(u,j) + sum_u|h_u|)`, where `alpha_(u,j)`
-  includes changed slots and the affected template ancestors at that transition and
-  `gamma_(u,j) <= alpha_(u,j)`;
+- Compact Closure matching build/storage
+  `Theta(D_T + C_tot + B_tot + K_delta + H)`, where `K_delta` is the number
+  of effective slot changes; the matching word-RAM lower bound allows each
+  changed slot root to carry an independent word;
+- Materialized VSC construction
+  `O(D_T + C_tot + B_tot + A + H)` and storage
+  `O(D_T + C_tot + B_tot + G + H)`, where `A` counts affected template nodes
+  and `G` counts newly interned canonical nodes;
+- canonical VSC is node-instance-optimal within the explicitly defined
+  immutable resolved-circuit model, not among all algebraically equivalent
+  circuits;
 - for a balanced associative block with `C` mutable slots and `k_j` changed
-  slots at one boundary, batch path copying touches
-  `O(k_j log(1 + C/k_j))` template nodes;
-- independent interval provenance stores
-  `Theta(sum_(u,j)|P[u,j]|)` nodes, while VSC keeps the same logarithmic region
-  lookup and returns a compressed root in constant time after lookup;
+  slots at one boundary, batch path copying has tight worst-case cost
+  `Theta(k_j log(1 + C/k_j))`;
+- for `B=C=n` and `k_j=O(1)` arbitrary toggles, Independent Interval
+  Provenance, Materialized VSC, and Compact Closure use respectively
+  `Theta(n^2)`, `O(n log n)`, and `Theta(n)` storage;
+- for one slot with fan-out `F` and `B` pairwise distinct versions, Compact
+  Closure uses `Theta(B+F)` records while any canonical materialized layout
+  needs `Theta(BF)`; resolving an unmaterialized structural circuit requires
+  `Omega(F)` output work;
 - staircase is only the insert-only `k_j=1` corollary, not a required input
   class; arbitrary deep-ReLU toggles use the same change-sensitive bound;
+- for tree ensembles, `k_j=q_j` when `q_j` trees change leaves at a boundary;
+  for ExactLine/ReLU, `k_j=q_j` when `q_j` activation signs change;
 - a Class-T non-Cartesian bound: tree partitions of sizes `b_m` require
   at most `1 + sum_m(b_m - 1)` line intervals, rather than their product;
 - algebraic factorization beyond canonical subcircuit sharing remains a
@@ -161,8 +177,8 @@ avoid the worst-case exponential number of realized piecewise-affine segments.
 It matches, rather than asymptotically beats, numeric polyline point lookup;
 the advantage is exact shared provenance plus indexed derived queries.
 The active definitions are in
-[`TECHNICAL_DESIGN.md`](TECHNICAL_DESIGN.md); VSC and scoped MGPF/LCF proof
-drafts are in [`THEORY_PROOFS.md`](THEORY_PROOFS.md).
+[`TECHNICAL_DESIGN.md`](TECHNICAL_DESIGN.md); Closure/VSC and scoped MGPF/LCF
+proof drafts are in [`THEORY_PROOFS.md`](THEORY_PROOFS.md).
 [`tests/test_lcf_theory.py`](tests/test_lcf_theory.py) exhaustively checks all
 laminar families through four regions and all nonempty three-region support
 matrices against the theorem bounds and an exact rectangle-partition oracle.
@@ -270,30 +286,66 @@ Y_cf(u, t') = constant + alpha * t' + sum_i beta_i * N_i(u)
 
 ## Current Results
 
-### Arbitrary-Toggle VSC
+### Arbitrary-Toggle Closure and VSC
 
 `experiments/tessera_vsc/versioned_circuit_demo.py` starts with a random active
 set and toggles fragments at every boundary. Individual fragments repeatedly
 turn off and back on, so these workloads are deliberately not staircase.
 
-One local three-trial median run with 1,000 root queries produced:
+One local five-trial median run with 1,000 handle/root queries produced:
 
-| Components | Regions | Changes/boundary | IIP node occurrences | VSC nodes + roots | Compression | Build speedup |
-|---:|---:|---:|---:|---:|---:|---:|
-| 64 | 500 | 2 | 30,852 | 3,414 | 9.04x | 12.41x |
-| 128 | 1,000 | 3 | 128,580 | 10,646 | 12.08x | 16.49x |
-| 256 | 2,000 | 4 | 506,016 | 31,422 | 16.10x | 20.05x |
+| Components | Regions | Changes/boundary | IIP records | VSC records | Closure records | VSC compression | Closure compression | VSC build speedup | Closure build speedup |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 64 | 500 | 2 | 31,352 | 3,541 | 1,755 | 8.85x | 17.86x | 13.99x | 149.81x |
+| 128 | 1,000 | 3 | 129,580 | 10,901 | 4,510 | 11.89x | 28.73x | 16.45x | 263.76x |
+| 256 | 2,000 | 4 | 508,016 | 31,933 | 11,021 | 15.91x | 46.10x | 23.22x | 429.14x |
 
-VSC root lookup was `146.89x`, `399.73x`, and `872.39x` faster than rebuilding
-the requested state from its event log. This is not presented as a speedup over
-IIP: both IIP and VSC already keep one indexed root per region and therefore
-have the same lookup complexity. VSC's advantage over IIP is construction and
-storage sharing while retaining that lookup time.
+Against rebuilding the requested state from its event log, VSC root lookup was
+`160.06x`, `424.05x`, and `897.31x` faster; Compact Closure handle lookup was
+`66.81x`, `188.44x`, and `464.09x` faster. These are not speedups over IIP:
+IIP, VSC, and Closure all have indexed region lookup. Closure returns an exact
+`(template,environment version)` handle; VSC returns a directly traversable
+resolved root. The primary comparison with IIP is construction and storage.
 
-The checked-in tests also cover mixed `ADD`/`MUL` circuits, non-idempotent
+The 25 checked-in tests also cover mixed `ADD`/`MUL` circuits, non-idempotent
 multiplicity, cross-unit structural sharing with different numeric bindings,
 and a two-layer ReLU-style expression whose gates follow arbitrary
-`ON/OFF/ON` patterns.
+`ON/OFF/ON` patterns. Compact Closure is checked against Materialized VSC under
+both numeric and free-semiring valuations, and its environment record count is
+verified to be independent of template fan-out.
+
+### Theorem-Aligned Scaling
+
+The strict-separation workload fixes `B=C=n` and changes exactly one slot per
+boundary. The normalized record counts remain stable in the predicted classes:
+
+| n | IIP records | IIP / n^2 | VSC records | VSC / (n log2 n) | Closure records | Closure / n |
+|---:|---:|---:|---:|---:|---:|---:|
+| 64 | 3,744 | 0.914 | 538 | 1.401 | 384 | 6.000 |
+| 128 | 15,568 | 0.950 | 1,247 | 1.392 | 768 | 6.000 |
+| 256 | 67,092 | 1.024 | 2,752 | 1.344 | 1,536 | 6.000 |
+| 512 | 261,920 | 0.999 | 6,011 | 1.304 | 3,072 | 6.000 |
+
+This is the experiment corresponding to the `Theta(n^2)`, `O(n log n)`, and
+`Theta(n)` theorem. It is separate from the larger arbitrary-toggle table,
+whose number of changes per boundary varies by configuration.
+
+The fan-out separation family fixes `B=F=n` and changes one high-fan-out slot
+to a fresh atom at every boundary:
+
+| n | Materialized records | Materialized / n^2 | Closure records | Closure / n |
+|---:|---:|---:|---:|---:|
+| 64 | 8,514 | 2.079 | 450 | 7.031 |
+| 128 | 33,410 | 2.039 | 898 | 7.016 |
+| 256 | 132,354 | 2.020 | 1,794 | 7.008 |
+| 512 | 526,850 | 2.010 | 3,586 | 7.004 |
+
+This second family validates the `Theta(BF)` versus `Theta(B+F)` Pareto
+separation. Compact Closure removes fan-out from stored version deltas; an
+on-demand canonical structural expansion still pays `Omega(F)` work. This
+claim is scoped to the frozen structural-EXPLAIN model: distributive algebraic
+factorization may compress this particular polynomial and is a separately
+costed layout, not part of the lower bound.
 
 ### Linear Foundation
 
@@ -361,7 +413,7 @@ Run with only NumPy installed:
 python experiments/tessera_linear_trie/linear_trie_demo.py
 ```
 
-Run the general non-staircase VSC benchmark:
+Run the general non-staircase Closure/VSC benchmark:
 
 ```bash
 python experiments/tessera_vsc/versioned_circuit_demo.py
@@ -371,7 +423,13 @@ python experiments/tessera_vsc/versioned_circuit_demo.py \
   --regions 2000 \
   --changes 4 \
   --queries 1000 \
-  --trials 3
+  --trials 5
+```
+
+Run the theorem-aligned storage scaling check:
+
+```bash
+python experiments/tessera_vsc/theory_scaling_demo.py
 ```
 
 Run all correctness and exhaustive theory tests:
@@ -444,12 +502,13 @@ TODO.md                                             next steps
 requirements.txt                                    minimal Python dependencies
 requirements-dowhy.txt                              optional DoWhy comparison dependencies
 counterprovenance/linear.py                          generic linear cDAG provenance engine
-counterprovenance/versioned.py                       persistent semiring circuit and region index
+counterprovenance/versioned.py                       compact closures, materialized VSC, and region indexes
 experiments/tessera_linear_trie/linear_trie_demo.py main prototype and benchmark
-experiments/tessera_vsc/versioned_circuit_demo.py    arbitrary-toggle VSC benchmark
+experiments/tessera_vsc/versioned_circuit_demo.py    arbitrary-toggle IIP/Closure/VSC benchmark
+experiments/tessera_vsc/theory_scaling_demo.py       theorem-aligned n^2/n-log-n/n storage check
 tests/test_linear_general.py                         correctness tests for arbitrary linear cDAGs
 tests/test_lcf_theory.py                              exhaustive small-instance factorization verifier
-tests/test_versioned_circuit.py                       VSC, products, toggles, sharing, and space tests
+tests/test_versioned_circuit.py                       Closure/VSC exactness, toggles, sharing, and space tests
 ```
 
 ## What This Prototype Does Not Claim
@@ -461,15 +520,17 @@ It does not yet handle:
 - fitted tree, ensemble, or ExactLine/ReLU local compilers;
 - semiring-matrix compilation for a complete fitted MLP;
 - FLIP or aggregate event indexes;
-- the weighted algebraic-factorization optimizer over VSC frontiers;
+- the weighted algebraic-factorization optimizer over closure frontiers;
 - batched multi-target workload optimization.
 
-The prototype currently establishes two foundations:
+The prototype currently establishes three foundations:
 
 1. linear counterfactual replay can be represented as semiring provenance and
    compiled into a fast query plan;
-2. arbitrary ordered provenance-circuit versions can share exact `ADD` and
-   `MUL` subcircuits without a staircase assumption.
+2. Compact Closure stores arbitrary ordered provenance versions as one shared
+   template plus exactly one record per effective slot change;
+3. Materialized VSC shares exact `ADD` and `MUL` subcircuits without a
+   staircase assumption and returns a directly traversable root per region.
 
 ## Research Direction
 
@@ -478,11 +539,11 @@ The repositioned paper is:
 **TESSERA: An Exact Provenance Index for Parametric Counterfactual Queries over
 Piecewise-Affine Structural Causal Models**
 
-The implementation path now follows one versioned circuit substrate:
+The implementation path now follows one closure semantics with two layouts:
 
-1. connect Linear compilation to VSC as its one-version case;
-2. emit tree leaf-selector updates into persistent semiring sum trees;
-3. lift ExactLine activation masks to semiring selectors without path expansion;
-4. formalize change complexity `gamma` and prove the batch path-copy bound;
+1. route Linear compilation through Closure as its one-version case;
+2. emit tree leaf changes as exact slot-environment deltas;
+3. lift ExactLine activation changes to exact slot deltas without path expansion;
+4. add compact columnar histories and byte-accurate layout accounting;
 5. add algebraic LCF/min-cut optimization only at suitable additive frontiers;
 6. implement FLIP/AGG and evaluate mixed SCM workloads.

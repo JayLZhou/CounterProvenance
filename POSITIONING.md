@@ -1,9 +1,9 @@
 # TESSERA Paper Positioning
 
-The complete problem definition and earlier GPSI/LCF design are recorded in
-[`TECHNICAL_DESIGN.md`](TECHNICAL_DESIGN.md). The active revision makes
-Versioned Semiring Circuits the general storage layer and retains MGPF/LCF as
-an additive-frontier optimizer. This file follows that revision.
+The active design is recorded in [`TECHNICAL_DESIGN.md`](TECHNICAL_DESIGN.md).
+Its general logical object is a Versioned Provenance Closure with two exact
+physical layouts: storage-optimal Compact Closure and latency-oriented
+Materialized VSC. MGPF/LCF remains an additive-frontier optimizer.
 
 ## One-Sentence Positioning
 
@@ -21,24 +21,30 @@ Pi[u,Y](t) = Y_{u; do(T=t)}.
 ```
 
 Each unit response is piecewise affine in `t`. Its exact regions form an
-ordered sequence of complete semiring-circuit versions. A global immutable
-arena hash-conses `ADD` and `MUL` subcircuits; per-unit homomorphisms `h_u` bind
-arbitrary weights, roots, and noises; each unit-region stores one persistent
-root. Sharing is discovered, not assumed, and selectors may follow arbitrary
-`ON/OFF/ON` patterns.
+ordered sequence of semiring templates paired with mutable slot environments:
+
+\[
+\mathcal C_{u,j}=(T_u,\sigma_{u,j}).
+\]
+
+Compact Closure stores each effective slot change once. Materialized VSC
+resolves every closure into a canonical immutable root and hash-conses repeated
+`ADD/MUL` subcircuits. Per-unit homomorphisms `h_u` bind arbitrary weights,
+roots, and noises. Selectors may follow arbitrary `ON/OFF/ON` patterns.
 
 The general physical semantics is:
 
 \[
-\Pi_u(t)=h_{u,t}(R_{u,j(t)}),
+\Pi_u(t)=h_{u,t}(\operatorname{Eval}(\mathcal C_{u,j(t)})),
 \qquad
 j(t)=\operatorname{pred}_{\mathcal B_u}(t),
 \]
 
-where `R[u,j]` is a root in the global Versioned Semiring Circuit, `B_u` is the
-sorted region-boundary directory, and `h_{u,t}=ev_t o h_u`. At a selected
-additive frontier, an optional guarded factorization may still represent roots
-as interval-valid payload bundles; it is not required by the general semantics.
+where `B_u` is the sorted region-boundary directory and
+`h_{u,t}=ev_t o h_u`. In latency mode,
+`R[u,j]=Materialize(C[u,j])` is the global VSC root. At a selected additive
+frontier, an optional guarded factorization may still represent roots as
+interval-valid payload bundles; it is not required by the general semantics.
 
 ## Core Workload
 
@@ -221,16 +227,18 @@ GPSI
 |-- Local Mechanism DAG
 |     exact guarded-affine representation of each fitted f_v
 |
-|-- Versioned Semiring Circuit Arena
-|     immutable ZERO/ONE/ATOM/ADD/MUL/SWITCH nodes
-|     global hash-consing across regions and units
+|-- Versioned Provenance Closure
+|     shared semiring templates + per-unit region slot environments
 |
-|-- Persistent Version Builder
-|     batch slot changes -> affected ancestors -> canonical region roots
+|-- Closure-Compact Layout
+|     initial slot roots + one record per effective change
+|
+|-- VSC-Materialized Layout
+|     affected-ancestor path copying + global resolved-root hash-consing
 |
 |-- Response Segment Directory
 |     (model_version, unit, treatment, target)
-|       -> sorted numeric regions + VSC root IDs
+|       -> sorted numeric regions + closure handles or VSC root IDs
 |
 |-- Optional Additive-Frontier Optimizer
 |     MGPF/LCF + maximal runs + stabbing-semigroup directory
@@ -286,14 +294,15 @@ The compiler never enumerates all global model regions. It visits only regions
 reached by the one-dimensional intervention trajectory and retains only
 maximal intervals with distinct provenance.
 
-After each unit is compiled, GPSI orders its exact regions and diffs the mutable
-mechanism/activation slots at every boundary. VSC instantiates the first
-circuit, then path-copies only the affected ancestor closure for each later
-version. Every version stores one root ID in the region directory. All units
-use the same immutable arena, so identical subcircuits and recurring complete
-roots share automatically.
+After each unit is compiled, GPSI orders its exact regions and emits the
+effective mutable-slot delta at every boundary. Compact mode appends each delta
+to the corresponding slot history and lets the region directory identify the
+environment version. Materialized mode additionally instantiates the first
+circuit and path-copies only the affected ancestor closure for each later
+version. All units use the same immutable arena, so identical subcircuits and
+recurring complete roots share automatically.
 
-### Persistent Circuit Sharing and Optional Factorization
+### Closure Persistence, Circuit Sharing, and Optional Factorization
 
 Numeric parameters are represented by slots and bound by `h_u`. Canonical
 operator nodes preserve both semiring addition and multiplication, including
@@ -311,8 +320,10 @@ semiring sum template. ReLU networks retain activation selectors inside mixed
 `ADD/MUL` templates, avoiding mandatory expansion into exponentially many
 neural paths.
 
-This gives three forms of exact sharing without requiring support nesting:
+Together the layouts give four forms of exact sharing without support nesting:
 
+- Compact Closure stores every effective region-state delta once, regardless
+  of its downstream circuit fan-out;
 - unchanged template subcircuits persist between adjacent regions;
 - recurring non-adjacent activation/leaf patterns reuse old roots;
 - structurally identical nodes are hash-consed across units while bindings stay
@@ -335,13 +346,15 @@ B_c           number of certificate regions
 H             total per-unit binding records, sum_u |h_u|
 L[u,j]        size of region (u,j)'s independently materialized circuit
 D_ind         independent-circuit occurrences, sum_(u,j) L[u,j]
-D_0           atoms, templates, and first-version canonical arena nodes
+D_T           distinct templates and immutable atom roots
+C_tot         total initial mutable-slot records, sum_u C_u
+K_delta       total effective slot changes, sum_(u,j) k[u,j]
 alpha[u,j]    changed slots plus recomputed ancestors at transition (u,j)
 gamma[u,j]    newly interned arena nodes; gamma[u,j] <= alpha[u,j]
 A             total affected work, sum_(u,j) alpha[u,j]
 G             total newly interned nodes, sum_(u,j) gamma[u,j]
 D_c           nodes in the optional certificate DAG
-F,K,D_f       optional additive-factor roots, guard runs, and factor-DAG nodes
+F,K_f,D_f     optional additive-factor roots, guard runs, and factor-DAG nodes
 E_q           events for one registered threshold q
 k             output size of a reporting query
 ```
@@ -355,18 +368,19 @@ k             output size of a reporting query
 | B4: global-region materialization | one record per global leaf/activation combination | lookup after potentially exponential construction | proportional to materialized global regions | enumerates unreachable combinations |
 | B5: tree-ensemble ADD/decision diagram | tree predicates and numeric terminals | diagram traversal | diagram-dependent | no abducted-noise, causal-path, or unit segment semantics |
 | B6: ExactLine | exact numeric affine pieces for one PWL neural input line | `O(log B_u)` after construction | `Theta(B_tot)` numeric pieces | no SCM abduction, typed provenance, cross-unit sharing, or derived indexes |
-| **TESSERA VSC-Core** | region boundaries, one persistent root per region, global canonical arena, and unit bindings | **POINT/root `O(log B_u)`; expanded EXPLAIN adds output** | **`O(B_tot+D_0+G+H)`** | deliberately supports only L/T/N |
-| TESSERA VSC+AF | VSC-Core plus optional additive-frontier factors and maximal guard runs | VSC lookup plus factor reporting | Core plus `O(F+K+D_f)` | optimizer applies only at declared additive frontiers |
-| TESSERA VSC-Audit | Core plus exact guard witnesses | Core plus audit lookup | Core plus `O(B_c+D_c)` | optional extra audit storage |
+| **TESSERA Closure-Compact** | shared templates, region directory, initial slot roots, effective change histories, and unit bindings | **closure handle `O(log B_u)`; expansion resolves historical slots** | **`Theta(D_T+C_tot+B_tot+K_delta+H)`** | storage endpoint; deliberately supports only L/T/N |
+| **TESSERA VSC-Materialized** | Closure semantics resolved to one canonical root per region in a global arena | **root `O(log B_u)`; expansion adds output** | **`O(D_T+C_tot+B_tot+G+H)`** | latency endpoint; may use more space than Closure |
+| TESSERA + AF | either layout plus optional additive-frontier factors and maximal guard runs | primary lookup plus factor reporting | primary layout plus `O(F+K_f+D_f)` | applies only at declared additive frontiers |
+| TESSERA Audit | primary layout plus exact guard witnesses | primary lookup plus audit lookup | primary layout plus `O(B_c+D_c)` | optional extra audit storage |
 
 B1 and B2 are the strongest replay and numeric-lookup baselines. B3 is the
-primary provenance-storage baseline: both B3 and VSC store an indexed root per
-region, so VSC does **not** claim a faster asymptotic root lookup than B3. Its
-advantage over B3 is change-sensitive construction and storage when
-`A << D_ind` or `G << D_ind`. In the worst case `A,G=Theta(D_ind)`, and no
-compression is guaranteed. Against an event-log baseline that reconstructs a
-version at query time, VSC additionally replaces event replay with one indexed
-root lookup; that is a different comparison and must be reported separately.
+primary provenance-storage baseline. Closure has a matching worst-case storage
+bound in the arbitrary word-valued delta model, independent of circuit fan-out.
+Both B3 and materialized VSC store an indexed resolved root per region, so VSC
+does **not** claim a faster asymptotic root lookup than B3. Its advantage over
+B3 is change-sensitive construction/storage when `A << D_ind` or
+`G << D_ind`. Against prefix event replay, Closure gives direct historical-slot
+access and VSC gives a direct resolved root; that is a separate query comparison.
 
 B4 exposes the benefit of trajectory-sensitive compilation. B5 is the required
 Class-T compilation baseline. B6 is the required Class-N line-partition
@@ -412,14 +426,20 @@ isolation:
    merely a predictor decision diagram;
 3. exact L/T/N compilers turn the scalar intervention line into a canonical
    ordered sequence of response regions and circuit-slot deltas;
-4. VSC applies those deltas to mixed `ADD/MUL` templates, preserves unchanged
-   subcircuits, and hash-conses recurring roots across non-adjacent regions and
-   units without any staircase or laminarity precondition;
-5. the change-sensitive analysis separates recomputation work `A` from newly
-   stored canonical nodes `G`, including a balanced batch-update bound;
-6. optional MGPF/LCF and stabbing-semigroup layouts optimize only selected
+4. Compact Closure stores each effective delta once and reaches the matching
+   `Theta(D_T+C_tot+B_tot+K_delta+H)` worst-case storage bound independently of
+   downstream circuit fan-out;
+5. Materialized VSC applies those deltas to mixed `ADD/MUL` templates,
+   preserves unchanged subcircuits, and hash-conses recurring roots across
+   non-adjacent regions and units;
+6. the two-layout analysis proves a strict `Theta(n^2)` versus `O(n log n)`
+   versus `Theta(n)` separation from IIP under sparse arbitrary toggles;
+7. a high-fan-out family proves `Theta(BF)` canonical materialization versus
+   `Theta(B+F)` Compact Closure, together with the corresponding expansion
+   lower bound;
+8. optional MGPF/LCF and stabbing-semigroup layouts optimize only selected
    additive frontiers and never define the general logical semantics;
-7. registered threshold-state changes, including tree jumps, and declared
+9. registered threshold-state changes, including tree jumps, and declared
    aggregates become indexed database queries.
 
 ## Theoretical Advantages
@@ -445,32 +465,74 @@ line intervals rather than a Cartesian product. Formal provenance equality is
 proved first in a free semiring and is then preserved by every per-unit binding
 `h_u` and value/lineage homomorphism.
 
-### Layer 2: Versioned Semiring Circuits
+### Layer 2: Two-Layout Optimality and Separation
 
-Let `alpha[u,j]` include the changed slots and their affected template ancestor
-closure at a region transition, and let `gamma[u,j]` be the canonical nodes
-that are actually new after global interning. Batched path copying is exact for
-arbitrary slot changes and `gamma[u,j] <= alpha[u,j]`. The general bounds are:
+Compact Closure stores one initial root per mutable slot and one record per
+effective slot change:
 
 \[
-T_{build}=O(B_{tot}+D_0+A+H),
+\boxed{
+S_{closure}=T_{closure-build}
+=\Theta(D_T+C_{tot}+B_{tot}+K_{delta}+H).
+}
+\]
+
+This matches a word-RAM worst-case lower bound when every boundary, initial
+root, binding, and changed slot root may carry an independent word. It is
+independent of a changed guard's downstream fan-out. Region lookup returns an
+exact `(template,environment version)` closure in `O(log B_u)`.
+
+Materialized VSC instead resolves each closure. Let `alpha[u,j]` include the
+changed slots and affected ancestors, and `gamma[u,j]` be the newly interned
+canonical nodes. Then:
+
+\[
+T_{VSC}=O(D_T+C_{tot}+B_{tot}+A+H),
 \qquad
-S_{VSC}=O(B_{tot}+D_0+G+H).
+S_{VSC}=O(D_T+C_{tot}+B_{tot}+G+H).
 \]
 
-For a height-balanced associative block with `C` mutable leaves and `k[u,j]`
-changed leaves at one boundary:
+Within the canonical immutable resolved-circuit model, global hash-consing
+stores exactly one record per distinct normalized `(operator,child IDs)` tuple
+and is therefore node-instance-optimal. For a balanced `C`-leaf block, the
+worst-case batch path union is tight:
 
 \[
-\alpha[u,j]
-=O\!\left(k[u,j]\log\left(1+\frac{C}{k[u,j]}\right)\right).
+\Theta\!\left(k\log\left(1+\frac{C}{k}\right)\right).
 \]
 
-This is a change-sensitive upper bound, not universal compression: an arbitrary
-mixed circuit can have `alpha[u,j]=Theta(D_0)`, and every recomputed node may be
-new. The remaining theory obligation is a matching lower bound under an
-explicit representation or machine model; canonical hash-consing alone is not
-claimed as globally optimal algebraic minimization.
+Consequently, for `B=C=n` and `O(1)` arbitrary slot changes per boundary:
+
+\[
+\boxed{
+S_{IIP}=\Theta(n^2),\qquad
+S_{VSC}=O(n\log n),\qquad
+S_{closure}=\Theta(n).
+}
+\]
+
+No staircase assumption is used. Closure pays template/slot-resolution work
+when expanded; materialized VSC pays additional storage to return an active
+resolved root immediately.
+
+The Pareto gap can itself be asymptotic. For one slot `s` feeding `F` distinct
+products `s*a_i`, let `B` regions bind `s` to pairwise distinct atoms. Compact
+Closure stores `Theta(B+F)` records, while the canonical materialized model
+must store `BF` distinct `(MUL,x_j,a_i)` tuples:
+
+\[
+S_{closure}=\Theta(B+F),
+\qquad
+S_{VSC}=\Theta(BF).
+\]
+
+For `B=F=n`, this is linear versus quadratic. Conversely, producing an
+unmaterialized canonical structural-EXPLAIN circuit requires `Omega(F)` work
+because its `F` distinct product tuples are part of the requested output. This
+is the formal space-latency boundary between the two layouts under the frozen
+canonical structural-EXPLAIN contract. It is not a lower bound against
+distributive algebraic rewriting; the constructed polynomial can be factored,
+which must be costed as a separate physical layout.
 
 ### Layer 3: Optional Algebraic Factorization
 
@@ -490,22 +552,25 @@ counterfactual mechanism family.
 
 ### Layer 4: Physical Index and Query Bounds
 
-The primary response directory stores sorted starts and one VSC root per
-region. It gives:
+The primary response directory stores sorted starts and either a closure
+version or a materialized VSC root per region. It gives:
 
 ```text
 POINT                    O(log B_u)
-compressed-root EXPLAIN  O(log B_u)
-expanded EXPLAIN         O(log B_u + output_size)
+Closure handle           O(log B_u)
+VSC resolved root        O(log B_u)
+VSC expanded EXPLAIN     O(log B_u + output_size)
+Closure expansion        template traversal + historical slots + output work
 registered FLIP          O(log E_q + k)
 declared AGG             O(log B_group)
 ```
 
 The optional additive-frontier directory stores maximal guard runs in linear
 space in its own `K`. Any cache or factor DAG is reported in addition to the
-VSC bound, never hidden inside it. VSC matches the point-lookup complexity of a
-numeric polyline and IIP; its primary benefit there is provenance retention and
-shared storage, not a stronger lookup asymptotic.
+primary-layout bound, never hidden inside it. Materialized VSC matches the
+point/root lookup complexity of a numeric polyline and IIP; its primary benefit
+there is provenance retention and shared storage, not a stronger lookup
+asymptotic.
 
 ## Paper Claims and Non-Claims
 
@@ -516,44 +581,56 @@ shared storage, not a stronger lookup asymptotic.
 2. A scalar intervention induces a finite provenance-valued piecewise-affine
    response, and exact compilers enumerate only regions reached along that
    intervention line.
-3. VSC represents every compiled region sequence exactly under arbitrary slot
-   toggles, including `ON/OFF/ON`, while preserving mixed semiring `ADD/MUL`.
-4. VSC construction is change sensitive: it costs
-   `O(B_tot+D_0+A+H)` and stores `O(B_tot+D_0+G+H)`, with `G<=A`; balanced
-   associative blocks satisfy the batch path bound in Layer 2.
-5. Global hash-consing reuses identical subcircuits and recurring roots across
+3. Versioned Provenance Closures represent every compiled region sequence
+   exactly under arbitrary slot toggles while preserving mixed `ADD/MUL`.
+4. Closure-Compact has matching worst-case build/storage
+   `Theta(D_T+C_tot+B_tot+K_delta+H)` in its stated word-valued update model,
+   independent of downstream fan-out.
+5. VSC-Materialized has change-sensitive construction/storage, is
+   node-instance-optimal in the canonical immutable model, and has a tight
+   balanced batch-update bound.
+6. For `B=C=n` and constant-size arbitrary deltas, IIP, VSC, and Closure have
+   `Theta(n^2)`, `O(n log n)`, and `Theta(n)` storage, respectively.
+7. On the high-fan-out family, canonical materialization and Compact Closure
+   require `Theta(BF)` and `Theta(B+F)` storage respectively; on-demand
+   canonical expansion requires `Omega(F)` output work.
+8. Global hash-consing reuses identical subcircuits and recurring roots across
    adjacent regions, non-adjacent regions, and units, while per-unit bindings
    remain independent.
-6. The reduced response directory is canonical and minimum within the exact
+9. The reduced response directory is canonical and minimum within the exact
    one-dimensional interval partition induced by normalized provenance
    equality.
-7. POINT and EXPLAIN use primary indexes; registered-threshold FLIP and
+10. POINT and EXPLAIN use primary indexes; registered-threshold FLIP and
    declared-group AGG use workload-aware secondary indexes rather than fresh
    SCM replays.
-8. At explicitly declared additive frontiers, MGPF/LCF supplies an additional
+11. At explicitly declared additive frontiers, MGPF/LCF supplies an additional
    scoped factorization layer with separately reported storage and query cost.
 
 ### Non-Claims
 
 1. GPSI does not exactly support every sklearn-compatible DoWhy predictor.
-2. Canonical VSC is not claimed to be the smallest algebraically equivalent
+2. Closure's matching lower bound is a worst-case word bound for arbitrary
+   word-valued slot roots, not a bit-optimal encoding theorem for binary flips.
+3. Canonical VSC is not claimed to be the smallest algebraically equivalent
    circuit; unrestricted rewriting may identify more equivalences.
-3. VSC does not guarantee compression when every transition changes a large
+4. VSC does not guarantee compression when every transition changes a large
    cone and produces unique nodes; `A,G` can match independent materialization.
-4. VSC does not beat the asymptotic root-lookup time of an indexed numeric
+5. VSC does not beat the asymptotic root-lookup time of an indexed numeric
    polyline or IIP. Query-time speedup over event replay is a separate result.
-5. The optional `ell` approximation applies to additive factor-root count, not
+6. Closure's `O(log B_u)` result returns an exact closure handle, not a fully
+   expanded active circuit; expansion pays template and slot-resolution work.
+7. The optional `ell` approximation applies to additive factor-root count, not
    arbitrary `ADD/MUL` circuits or serialized bytes; general ReLU need not have
    small `ell`.
-6. Reset min-cut optimality applies only to its declared hierarchical reset
+8. Reset min-cut optimality applies only to its declared hierarchical reset
    family, not all equivalent circuits or serialized layouts.
-7. GPSI does not avoid worst-case exponential piecewise complexity.
-8. GPSI does not make multi-dimensional exact point location cheap.
-9. GPSI does not provide the indexed FLIP/AGG bounds for arbitrary online
+9. GPSI does not avoid worst-case exponential piecewise complexity.
+10. GPSI does not make multi-dimensional exact point location cheap.
+11. GPSI does not provide the indexed FLIP/AGG bounds for arbitrary online
    thresholds or groups.
-10. The current repository implements the linear foundation and the generic
-    VSC substrate; fitted Class-T and Class-N compilers remain to be built and
-    evaluated.
+12. The current repository implements the linear foundation, Compact Closure,
+    and Materialized VSC substrates; fitted Class-T and Class-N compilers remain
+    to be built and evaluated.
 
 ## Required Experimental Story
 
@@ -562,11 +639,12 @@ The evaluation must separate five effects:
 1. **Semantics:** exact agreement with DoWhy-style abduction-action-prediction.
 2. **Compilation:** realized line regions versus potential global
    leaf/activation combinations, compiler time, and exact boundary agreement.
-3. **Persistence:** `B_tot,D_ind,D_0,A,G,H`, unique roots, recurring roots,
-   changed slots, affected nodes, and serialized bytes versus IIP.
-4. **Querying:** indexed VSC root lookup versus event replay; POINT and expanded
-   EXPLAIN versus cached-noise replay, numeric segments, and IIP. Results must
-   not label VSC lookup as a speedup over IIP when both store region roots.
+3. **Persistence:** `B_tot,D_ind,D_T,C_tot,K_delta,A,G,H`, Closure records,
+   unique VSC roots, recurring roots, affected nodes, and serialized bytes
+   versus IIP.
+4. **Querying:** Closure handle lookup, historical-slot resolution, template
+   traversal, VSC root lookup, and event replay measured separately. Results
+   must not label VSC lookup as a speedup over IIP when both store roots.
 5. **Optional factorization:** at declared additive frontiers only, report
    `rank(M),ell,F,F*,K,D_f` and bytes separately; small instances use the exact
    ILP oracle.
@@ -581,12 +659,15 @@ Required mechanism classes:
 Required plots:
 
 - realized segment count versus model size and causal depth;
-- `A/D_ind`, `G/D_ind`, unique-root ratio, index bytes, and build time versus
-  changed slots per boundary, template size, repeated patterns, and population;
-- VSC storage and construction versus IIP for random non-staircase updates,
-  fitted tree ensembles, fitted ReLU MLPs, and mixed SCMs;
-- root lookup versus event replay, while showing that VSC and IIP have the same
-  indexed lookup asymptotic;
+- `K_delta/D_ind`, `A/D_ind`, `G/D_ind`, unique-root ratio, index bytes, and
+  build time versus changed slots, fan-out, repeated patterns, and population;
+- IIP, Closure, and VSC scaling on the theorem's `B=C=n,k=O(1)` family;
+- canonical Materialized VSC versus Compact Closure on the theorem's
+  `B=F=n` high-fan-out family, including separate on-demand expansion cost;
+- Closure/VSC storage and construction for random non-staircase updates, fitted
+  tree ensembles, fitted ReLU MLPs, and mixed SCMs;
+- Closure handle, VSC root, IIP root, and prefix-event replay lookup, followed
+  by separate expanded EXPLAIN costs;
 - query latency versus number of units and number of repeated intervention
   values;
 - registered-threshold FLIP latency versus output selectivity, including
@@ -596,7 +677,7 @@ Required plots:
 
 Optional-factorization plots report support crossing, rank/ILP gaps, guard
 runs, factor-DAG nodes, and bytes in a separate ablation. They cannot substitute
-for the primary VSC-versus-IIP result.
+for the primary two-layout-versus-IIP result.
 
 ## Recommended Paper Title
 

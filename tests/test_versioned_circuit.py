@@ -7,8 +7,11 @@ import unittest
 
 from counterprovenance import (
     CircuitArena,
+    CircuitClosure,
     CircuitTemplateBuilder,
+    VersionedClosureIndex,
     VersionedSemiringIndex,
+    VersionedSlotEnvironment,
     balanced_slot_template,
     independent_node_occurrences,
 )
@@ -44,6 +47,144 @@ class CircuitArenaTests(unittest.TestCase):
 
 
 class VersionedSemiringCircuitTests(unittest.TestCase):
+    def test_compact_environment_stores_only_effective_slot_changes(self) -> None:
+        arena = CircuitArena()
+        a = arena.atom("a")
+        b = arena.atom("b")
+        environment = VersionedSlotEnvironment({"left": arena.zero, "right": b})
+
+        environment.append_version({"left": a})
+        environment.append_version({"left": a})
+        environment.append_version({"left": arena.zero, "right": arena.zero})
+
+        self.assertEqual(environment.version_count, 4)
+        self.assertEqual(environment.change_count, 3)
+        self.assertEqual(environment.storage_records, 5)
+        self.assertEqual(environment.root_at("left", 0), arena.zero)
+        self.assertEqual(environment.root_at("left", 1), a)
+        self.assertEqual(environment.root_at("left", 2), a)
+        self.assertEqual(environment.root_at("left", 3), arena.zero)
+        self.assertEqual(environment.root_at("right", 2), b)
+        self.assertEqual(environment.root_at("right", 3), arena.zero)
+
+    def test_compact_closure_matches_materialized_vsc_for_mixed_circuit(self) -> None:
+        arena = CircuitArena()
+        atoms = {name: arena.atom(name) for name in ("a", "b", "c", "d")}
+        builder = CircuitTemplateBuilder(arena)
+        slots = {name: builder.slot(name) for name in atoms}
+        root = builder.mul(
+            builder.add(slots["a"], slots["b"]),
+            builder.add(slots["c"], slots["d"]),
+        )
+        template = builder.build(root)
+
+        initial = {
+            "a": atoms["a"],
+            "b": arena.zero,
+            "c": atoms["c"],
+            "d": atoms["d"],
+        }
+        updates = (
+            {"b": atoms["b"], "c": arena.zero},
+            {"a": arena.zero, "d": arena.zero},
+            {"a": atoms["a"], "c": atoms["c"], "d": atoms["d"]},
+        )
+        materialized = template.new_version_builder(initial)
+        environment = VersionedSlotEnvironment(initial)
+        for update in updates:
+            materialized.update(update)
+            environment.append_version(update)
+
+        valuation = {"a": 2, "b": 3, "c": 5, "d": 7}
+        for version, expected_root in enumerate(materialized.roots):
+            closure = CircuitClosure(template, environment, version)
+            self.assertEqual(closure.materialize(), expected_root)
+            self.assertEqual(
+                closure.polynomial(),
+                arena.polynomial(expected_root),
+            )
+            self.assertEqual(
+                closure.evaluate(valuation),
+                arena.evaluate(expected_root, valuation),
+            )
+
+    def test_compact_closure_index_has_left_closed_region_semantics(self) -> None:
+        arena = CircuitArena()
+        a = arena.atom("a")
+        b = arena.atom("b")
+        template = balanced_slot_template(arena, ("left", "right"))
+        environment = VersionedSlotEnvironment(
+            {"left": a, "right": arena.zero}
+        )
+        environment.append_version({"right": b})
+        environment.append_version({"left": arena.zero})
+
+        index = VersionedClosureIndex()
+        index.add_unit("u0", (0.0, 1.0, 2.0), template, environment)
+
+        self.assertEqual(index.polynomial("u0", 0.5), Counter({("a",): 1}))
+        self.assertEqual(
+            index.polynomial("u0", 1.0),
+            Counter({("a",): 1, ("b",): 1}),
+        )
+        self.assertEqual(index.polynomial("u0", 2.0), Counter({("b",): 1}))
+        self.assertEqual(index.evaluate("u0", 1.5, {"a": 2, "b": 3}), 5.0)
+
+    def test_compact_environment_cost_is_independent_of_template_fanout(self) -> None:
+        arena = CircuitArena()
+        gate = arena.atom("gate")
+        builder = CircuitTemplateBuilder(arena)
+        slot = builder.slot("gate")
+        branches = []
+        for index in range(16):
+            fixed = builder.fixed(arena.atom(f"x{index}"))
+            branches.append(builder.mul(slot, fixed))
+        root = builder.fold_balanced("add", branches)
+        template = builder.build(root)
+
+        environment = VersionedSlotEnvironment({"gate": arena.zero})
+        materialized = template.new_version_builder({"gate": arena.zero})
+        environment.append_version({"gate": gate})
+        materialized.update({"gate": gate})
+
+        self.assertEqual(environment.change_count, 1)
+        self.assertEqual(environment.storage_records, 2)
+        self.assertGreater(materialized.stats[-1].affected_template_nodes, 16)
+        self.assertEqual(
+            CircuitClosure(template, environment, 1).materialize(),
+            materialized.current_root,
+        )
+
+    def test_fanout_family_separates_closure_from_materialized_space(self) -> None:
+        arena = CircuitArena()
+        fanout = 8
+        version_count = 5
+        gate_roots = [arena.atom(f"g{version}") for version in range(version_count)]
+        builder = CircuitTemplateBuilder(arena)
+        gate = builder.slot("gate")
+        branches = []
+        for index in range(fanout):
+            fixed = builder.fixed(arena.atom(f"a{index}"))
+            branches.append(builder.mul(gate, fixed))
+        template = builder.build(builder.fold_balanced("add", branches))
+
+        environment = VersionedSlotEnvironment({"gate": gate_roots[0]})
+        materialized = template.new_version_builder({"gate": gate_roots[0]})
+        for gate_root in gate_roots[1:]:
+            environment.append_version({"gate": gate_root})
+            materialized.update({"gate": gate_root})
+
+        self.assertEqual(environment.storage_records, version_count)
+        self.assertGreaterEqual(
+            sum(stats.new_arena_nodes for stats in materialized.stats[1:]),
+            (version_count - 1) * fanout,
+        )
+        for version, expected_root in enumerate(materialized.roots):
+            self.assertEqual(
+                CircuitClosure(template, environment, version).materialize(),
+                expected_root,
+            )
+
     def test_arbitrary_toggle_sequence_matches_independent_materialization(self) -> None:
         arena = CircuitArena()
         names = ("f0", "f1", "f2")
@@ -61,17 +202,30 @@ class VersionedSemiringCircuitTests(unittest.TestCase):
         version_builder = template.new_version_builder(
             {name: atoms[name] if name in states[0] else arena.zero for name in names}
         )
+        environment = VersionedSlotEnvironment(
+            {name: atoms[name] if name in states[0] else arena.zero for name in names}
+        )
         for state in states[1:]:
-            version_builder.update(
-                {name: atoms[name] if name in state else arena.zero for name in names}
-            )
+            updates = {
+                name: atoms[name] if name in state else arena.zero for name in names
+            }
+            version_builder.update(updates)
+            environment.append_version(updates)
 
         index = VersionedSemiringIndex(arena)
         index.add_unit("u0", tuple(float(i) for i in range(len(states))), version_builder.roots)
+        closure_index = VersionedClosureIndex()
+        closure_index.add_unit(
+            "u0", tuple(float(i) for i in range(len(states))), template, environment
+        )
 
         for region, state in enumerate(states):
             expected = Counter({(name,): 1 for name in state})
             self.assertEqual(index.polynomial("u0", region + 0.5), expected)
+            self.assertEqual(
+                closure_index.polynomial("u0", region + 0.5),
+                expected,
+            )
 
         # Regions are left-closed: an exact breakpoint belongs to the new version.
         self.assertEqual(index.polynomial("u0", 2.0), Counter({("f1",): 1, ("f2",): 1}))

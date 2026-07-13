@@ -1,120 +1,307 @@
 # TESSERA 理论附录草稿
 
-状态：VSC 修订进行中。下文原有 L/T/N compiler semantics 与 MGPF/LCF 定理仍按
-各自声明的表示类成立，但 MGPF/LCF 已降为 additive frontier optimizer。general
-storage theorem 改为本节的 Versioned Semiring Circuit；restricted hardness、完整
-weighted factorization objective 和 fitted-MLP compiler bound 仍是投稿前 obligations。
+状态：主理论已改为两种明确表示模型的 Pareto spine。Compact Closure 对任意
+region-delta stream 给出 fan-out-independent、worst-case optimal storage；Materialized
+VSC 在 immutable resolved-circuit 模型中给出 canonical instance optimality 和 tight
+batch-update bound；high-fan-out family 进一步给出 linear-versus-quadratic
+space-latency separation。MGPF/LCF 仅是 additive frontier optimizer。
 
-## 0. Versioned Semiring Circuit
+## 0. Versioned Provenance 的两个表示模型
 
-### 定义 0.1：Canonical Circuit Template
+### 定义 0.1：Region-State Stream
 
-固定一个 finite acyclic template `T=(V,E)`。leaf 分为 immutable atoms 与 mutable
-slots；internal node 标签属于 `{ADD,MUL}`。所有 region versions 使用同一 topology，
-但 slot `s` 在 version `(u,j)` 中绑定到某个 canonical semiring root
-`sigma[u,j](s)`，包括 `ZERO`。
+固定 finite acyclic semiring template \(T\)。internal nodes 属于 `{ADD,MUL}`；leaves
+分为 immutable roots 与 `C_u` 个 mutable slots。unit `u` 的第 `j` 个 exact region
+给出 slot environment：
 
-全局 arena 对 `(operator, canonical child IDs, payload)` 做 hash-cons。`ADD` 保留
-重复 child，因此不假设 idempotence。令 `R[u,j]` 是按照 template 拓扑序实例化后
-的 root ID。
+\[
+\sigma_{u,j}:S_u\rightarrow \mathcal R,
+\qquad
+P_{u,j}=\operatorname{Eval}(T_u,\sigma_{u,j}),
+\]
 
-### 引理 0.1：Version Update Exactness
+其中 \(\mathcal R\) 是 canonical semiring-root IDs，包括 `ZERO`。定义有效变化集：
 
-设 `R[u,j-1]` 已精确表示 version `j-1`。把所有发生变化的 slots 更新为
-`sigma[u,j]`，并按拓扑序重新 intern 它们的 ancestor closure；其余 template node
-IDs 保持不变。得到的 root `R[u,j]` 等于从头实例化 `sigma[u,j]` 所得到的 semiring
-circuit。
+\[
+\Delta_{u,j}=\{s:\sigma_{u,j}(s)\ne\sigma_{u,j-1}(s)\},
+\qquad k_{u,j}=|\Delta_{u,j}|,
+\qquad K=\sum_{u,j>1}k_{u,j}.
+\]
 
-**证明。** 对 template 拓扑序归纳。immutable leaves 与未改变 slots 显然保持正确，
-改变 slots 被直接赋为新 binding。考虑 internal node `v`。若 `v` 不在 changed-slot
-ancestor closure 中，则所有 descendant slots 均未改变，旧 node ID 仍表示相同
-subcircuit。若 `v` 在 closure 中，算法在所有 children 已正确后，用相同 `ADD` 或
-`MUL` operator 重新 intern children roots，因此得到从头实例化 `v` 的 canonical
-root。归纳到 template root 即得结论。证明不使用 slot changes 的单调性，所以允许
-任意 `ON/OFF/ON` 序列。\(\square\)
+`ON/OFF/ON` 只是合法变化序列的一种；定义不要求 monotone、staircase、laminar 或
+相邻 versions 的完整 activation pattern 不重复。
 
-### 引理 0.2：Balanced Batch Path Bound
+我们区分两个自然物理模型：
 
-设一个 associative block 被组织为包含 `C` 个 leaves 的 height-balanced binary
-operator tree。一个 version boundary 改变 `k` 个不同 leaves。批量更新需要访问的
-changed leaves 及其 internal ancestor closure 的节点数为：
+```text
+Closure model:
+    region root = (template_root, environment_version)
+    slots 在查询/解释时按 version resolve
+
+Materialized model:
+    region root = 已经 resolve 全部 slots 的 immutable semiring-circuit root
+    查询直接遍历 active resolved circuit
+```
+
+### 引理 0.1：Closure Exactness
+
+`CLOSURE(T,sigma[u,j])` 在任意 semiring homomorphism 下等于从头把
+`sigma[u,j]` 代入 `T` 后的 materialized circuit。
+
+**证明。** 对 template 拓扑序归纳。immutable leaf 保持原 root；slot leaf 读取
+`sigma[u,j](s)`；internal `ADD/MUL` 在 children 已相等时保持 semiring 运算结果。
+归纳到 root 即得结论。该证明不使用相邻 versions 的变化方式。\(\square\)
+
+### 定理 0.1：Compact Closure Storage Theorem
+
+记 `D_T` 为 distinct templates 与 immutable atom roots 的记录数，
+`C_tot=sum_u C_u`，`B_tot=sum_u B_u`，`H=sum_u|H_u|`。对每个 slot 保存初始 root
+及其按 version 排序的有效 change records，则：
+
+\[
+\boxed{
+S_{closure}=\Theta(D_T+C_{tot}+B_{tot}+K+H)
+}
+\tag{C1}
+\]
+
+且在 changes 已按 region 顺序到达时：
+
+\[
+\boxed{
+T_{build}=\Theta(D_T+C_{tot}+B_{tot}+K+H).
+}
+\tag{C2}
+\]
+
+查询 `(u,t)` 先对 region starts 做 predecessor search，再返回
+`(template_root,environment_version)`：
+
+\[
+T_{closure-root}=O(\log B_u).
+\]
+
+当前 checked-in change-list 实现读取 slot `s` 的 versioned root 需要
+`O(log(h_s+1))`，其中 `h_s` 是该 slot 的 change records 数；完整 template evaluation
+还需计算所引用的 immutable/slot-root circuits。令 `L_{u,j}` 为这些 roots 在当前
+evaluator 下的总访问工作，则：
+
+\[
+O\!\left(
+|T_u|+\sum_{s\in S_u}\log(h_s+1)+L_{u,j}
+\right).
+\tag{C3}
+\]
+
+**正确性。** 引理 0.1。
+
+**上界。** 每个 template/atom、initial slot、region directory entry、effective change
+和 unit binding 各存一次。顺序 append 每个 change 也是 constant work；query 的
+region predecessor 与 per-slot predecessor 给出上述时间。
+
+**Lower bound。** 在 word-RAM 中令每个 initial slot root、boundary、binding 和
+effective update payload 都可独立取任意 `w`-bit word。固定其余字段后分别改变其中
+任意一个，都可能改变某个 region 的 formal provenance；exact index 必须区分全部
+输入，因此最坏需要
+`Omega((D_T+C_tot+B_tot+K+H)w)` bits，即式 (C1) 的 word lower bound。
+该 lower bound 针对 arbitrary word-valued slot roots；不声称当前布局对纯 binary
+flip streams 达到 bit-level entropy minimum。\(\square\)
+
+经典 persistence 已能以每次字段修改 constant amortized overhead 保存历史；这里的
+贡献不是重新发明 persistence，而是识别 counterfactual region provenance 的最小
+state stream，并把该 bound 同 L/T/N compiler 和 provenance queries 接起来。
+
+### 定义 0.2：Canonical Materialized VSC Model
+
+Materialized model 中，每个非原子记录是 normalized tuple：
+
+\[
+(op,child_1,\ldots,child_r),
+\]
+
+其中 `op in {ADD,MUL}`，commutative children canonical-sort，但保留 duplicates；
+`ADD(...,ZERO)`、`MUL(...,ONE)` 与 `MUL(...,ZERO)` 执行固定 identity/annihilator
+normalization。节点 immutable，每个 region 保存一个 resolved root ID。模型不允许
+用未解释的 algebraic identity 把不同 tuples 合并。
+
+### 引理 0.2：Materialized Version Update Exactness
+
+设 region `j-1` 已 materialize。更新 `Delta[u,j]`，并按拓扑序重新 intern inclusive
+ancestor closure；其余 template node IDs 保持不变。所得 root 等于从头实例化
+`sigma[u,j]`。
+
+**证明。** changed slots 直接取新 root；不在 closure 内的 node 没有 changed
+descendant，旧 root 仍精确；closure 内的 node 在 children 已精确后重新执行相同
+normalized `ADD/MUL`。拓扑归纳到 root。证明允许任意 toggle。\(\square\)
+
+### 定理 0.2：Canonical Materialization Instance Optimality
+
+令 \(\mathcal Q\) 是所有 `(u,j)` resolved circuits 中出现过的 distinct normalized
+non-atomic tuples 集合。Global hash-consed VSC 恰存 \(|\mathcal Q|\) 个此类记录。
+任何 Canonical Materialized VSC Model 的 exact representation 至少需要
+\(|\mathcal Q|\) 个 operator records，因此 VSC 在该模型内 node-optimal；加上 region
+roots、templates 与 bindings 后：
+
+\[
+S_{mat}=\Theta(D_T+B_{tot}+|\mathcal Q|+H).
+\tag{M1}
+\]
+
+**证明。** 上界来自按 tuple hash-cons。若 exact representation 把两个不同 tuples
+放入同一 record，则该 record 不能同时返回两个不同 operator/child sequences，违反
+模型的 structural EXPLAIN semantics；故每个 equivalence class 至少一条 record。
+VSC 每类恰存一条。\(\square\)
+
+这一定理是自然的 minimal-DAG quotient，不是 arbitrary algebraic-circuit minimality。
+
+### 引理 0.3：Tight Balanced Batch Path Bound
+
+设一个 associative block 是含 `C` leaves 的 height-balanced binary tree。一次
+boundary 改变 `k` 个 leaves。inclusive ancestor-path union 大小为：
 
 \[
 O\!\left(k\log\left(1+\frac{C}{k}\right)\right).
-\tag{V1}
+\tag{M2}
 \]
 
-**证明。** 先令 `C` 为 2 的幂，tree height `h=log_2 C`；非 2 的幂只改变常数。
-在 depth `d`，`k` 条 leaf-to-root paths 至多访问 `min(2^d,k)` 个不同 nodes。因此
-总访问量至多：
+并存在 changed-leaf placements 使该 union 为：
 
 \[
-\sum_{d=0}^{h}\min(2^d,k).
+\Omega\!\left(k\log\left(1+\frac{C}{k}\right)\right).
+\tag{M3}
 \]
 
-令 `d_0=floor(log_2 k)`。前 `d_0` 层之和为 `O(k)`；余下
-`h-d_0` 层每层至多 `k` 个 nodes，总计
-`O(k(h-log k))=O(k log(C/k))`。两部分合并即为式 (V1)。当 `k=C` 时右式按
-`log(1+C/k)` 写法仍为 `Theta(C)`。\(\square\)
+**上界证明。** 令 height `h=log_2 C`。root depth `d` 至多访问
+`min(2^d,k)` nodes，因此总数至多
+`sum_(d=0)^h min(2^d,k)=O(k log(1+C/k))`。
 
-### 定理 0.1：VSC Construction, Storage, and Root Lookup
+**下界证明。** 把 `k` 个 leaves 分散到 `k` 个大小 `Theta(C/k)` 的 disjoint
+subtrees。每个 subtree 内从 chosen leaf 到 subtree root（包含 changed leaf）有
+`Theta(1+log(C/k))=Theta(log(1+C/k))` 个互不重叠 affected nodes，合计
+`Omega(k log(1+C/k))`。若 changed leaves 绑定 fresh independent atom roots，则这些
+affected operator tuples 与 changed roots 不会被旧 version 复用；任何 immutable
+materialized representation 都必须创建相应 records。故 bound 在最坏 update 上
+tight。\(\square\)
 
-记：
+### 定理 0.3：相对 Independent Interval Provenance 的严格分离
 
-```text
-B_tot        population exact-region 总数
-D_0          初始 templates、atoms 与第一 versions 的 canonical node 数
-alpha[u,j]   transition 中 changed slots 加上被重新计算的 ancestor nodes
-gamma[u,j]   其中新产生的 canonical arena nodes；gamma[u,j] <= alpha[u,j]
-H_u          unit binding 大小
-```
-
-顺序构建所有 unit versions 的空间为：
+考虑一个含 `C` mutable leaves 的 balanced block 和 `B` 个 regions，并取每个
+region 的 resolved circuit 都含 `Theta(C)` records 的输入族。IIP 为每个 region
+独立保存完整 circuit：
 
 \[
-O\!\left(B_{tot}+D_0+\sum_{u,j}\gamma[u,j]+\sum_u|H_u|\right)
+S_{IIP}=\Theta(BC).
 \]
 
-构建时间为：
+两种 TESSERA layouts 分别满足：
 
 \[
-O\!\left(B_{tot}+D_0+\sum_{u,j}\alpha[u,j]+\sum_u|H_u|\right)
+S_{closure}=\Theta\!\left(C+B+\sum_{j=2}^{B}k_j\right),
+\tag{S1}
 \]
-
-个 template/arena operations，再加 boundary sorting。给每个 unit 保存 sorted
-starts 与 roots 后，查询 `(u,t)` 在 `O(log B_u)` 时间返回 compressed root；完整
-展开另需 `O(output)`。
-
-对 balanced associative block，若 transition `(u,j)` 改变 `k[u,j]` 个 slots，
-引理 0.2 给出：
 
 \[
-\alpha[u,j]
-\le
-O\!\left(k[u,j]\log\left(1+\frac{C}{k[u,j]}\right)\right),
+S_{mat}=O\!\left(
+C+B+\sum_{j=2}^{B}
+k_j\log\left(1+\frac{C}{k_j}\right)
+\right).
+\tag{S2}
 \]
 
-且 `gamma[u,j] <= alpha[u,j]`；global hash-cons 只能进一步减少实际新节点数。
+式 (S2) 是 worst-case allocation upper bound；global recurrence 可使实际
+`gamma_j` 更小。特别地，取 `B=C=n` 且每个 boundary 有 `k_j=O(1)`，允许任意
+`ON/OFF/ON`：
 
-**证明。** 引理 0.1 给出每个 root 的 exactness。arena 初始存 `D_0` nodes；每个
-transition 访问 `alpha[u,j]` 个 template nodes，至多追加 `gamma[u,j]` 个 immutable
-nodes，并追加一个 root reference；unit bindings 独立计数。sorted predecessor
-search 给出 `O(log B_u)`。balanced specialization 直接应用引理 0.2，每个访问 node
-至多产生一个新 canonical node。
+\[
+\boxed{
+S_{IIP}=\Theta(n^2),\qquad
+S_{mat}=O(n\log n),\qquad
+S_{closure}=\Theta(n).
+}
+\tag{S3}
+\]
+
+因此严格 improvement 来自 sparse region deltas，而不是 staircase nesting。
 \(\square\)
 
-### 当前 Lower-Bound 边界
+### 定理 0.4：Fan-out Space-Latency Separation
 
-任意 exact index 至少需要区分 `B_tot` 个可独立变化的 region boundaries，并编码
-所有可独立辨识的 slot changes，因此存在 families 需要
-`Omega(B_tot + sum k[u,j])` information。当前实现相对该 event bound 至多有
-balanced-tree logarithmic overhead。投稿前仍需选择明确 machine/representation
-model，证明 matching lower bound；不能把“canonical node 每种存一次”包装成无条件
-global algebraic optimality。
+构造 template
 
-完整 algebraic rewriting 可能把 syntactically different circuits 合并。该问题与
-后文 MGPF 相关，但后文任意 support-matrix hardness 还不足以证明一个受限 fitted
-Tree/ReLU family 上的 VSC minimization hardness。
+\[
+T_F(s)=\bigoplus_{i=1}^{F}(s\otimes a_i),
+\]
+
+其中一个 mutable slot `s` fan-out 到 `F` 个乘法节点，`a_i` 两两不同。令 `B` 个
+region 分别把 `s` 绑定到两两不同的 atoms `x_1,...,x_B`。则：
+
+\[
+\boxed{S_{closure}=\Theta(B+F)}
+\tag{F1}
+\]
+
+而任何 Canonical Materialized VSC Model 的表示满足：
+
+\[
+\boxed{S_{mat}=\Omega(BF)}.
+\tag{F2}
+\]
+
+当前 VSC 构造也只产生 `O(BF)` records，因此在该族上为 `Theta(BF)`。特别地取
+`B=F=n`：
+
+\[
+S_{closure}=\Theta(n),
+\qquad
+S_{mat}=\Theta(n^2).
+\tag{F3}
+\]
+
+**证明。** Compact Closure 保存一个 `Theta(F)` template、`B` 个 gate atoms、一个
+slot initial value、`B-1` 个 effective changes 和 `B` 个 region entries，故为
+`Theta(B+F)`。对任意 `(j,i)`，resolved circuit 都含 tuple
+`MUL(x_j,a_i)`。由于所有 `x_j` 与 `a_i` 两两区分，这 `BF` 个 normalized tuples
+互不相同；定义 0.2 的任何表示都至少存 `BF` 条 operator records。逐 version
+path-copying 至多重建整个 `Theta(F)` affected cone，给出 matching upper bound。
+\(\square\)
+
+该分离也给出 canonical structural latency 端的必要代价：若查询要求返回该 resolved
+structural-EXPLAIN circuit，而它尚未 materialize，则仅生成/枚举 `F` 个不同
+`MUL(x_j,a_i)` tuples 就需要 `Omega(F)` work。Closure 的 `O(log B)` 只返回 exact
+closure handle；VSC 用 `Theta(BF)` space 换取 indexed resolved root。该结论不禁止
+其他代数重写；例如允许 distributivity 时，该特定 polynomial 可改写为
+`x_j MUL (ADD_i a_i)`。因此定理 0.4 明确不是 arbitrary algebraic-circuit lower bound，
+只刻画定义 0.2 的 frozen structural-EXPLAIN contract。代数 factorization 必须作为
+单独布局计费和分析。
+
+### 推论 0.1：三类机制
+
+```text
+Linear:
+    B=1, K=0；Closure 与 Materialized 都只存一个 template/version。
+
+Tree Ensemble:
+    C=M 个 per-tree active-leaf slots；boundary j 有 q_j 棵树换 leaf，
+    因此 k_j=q_j。distinct tree breakpoints 下 q_j=1。
+
+ReLU/ExactLine:
+    C=全部 activation slots；boundary j 有 q_j 个 activation signs 改变，
+    因此 k_j=q_j。crossing ratios distinct 的 nondegenerate 情况下 q_j=1；
+    coincident zeros 仍由一般 q_j bound 精确处理。
+```
+
+Closure bound 不依赖一个 changed activation 的 downstream fan-out；Materialized bound
+使用实际 affected cone，对 balanced blocks 应用引理 0.3。ExactLine 负责枚举 exact
+boundaries，本文负责存储每个 boundary 引起的 provenance state delta。
+
+### 两种模式的 Pareto 边界
+
+Closure mode 达到最强 storage bound，但 expanded evaluation 需要在 shared template
+中解析 versioned slots。Materialized VSC 多存 resolved tuples，换取
+`O(log B_u)` 后直接得到 active root，并以 `O(output)` 展开。二者不是两个逻辑索引，
+而是同一 exact provenance closure 的 compact 与 latency physical layouts。任意选择
+部分 materialized regions 的 hybrid 仍由引理 0.1/0.2 保证 exact；workload-aware
+最优 materialization 是后续独立优化问题，不在当前定理中偷放结论。
 
 ## 1. 固定表示类
 

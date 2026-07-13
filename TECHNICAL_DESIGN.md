@@ -1,12 +1,12 @@
 # TESSERA 技术设计
 
-状态：VSC 修订进行中。本文档原有主体记录了 population MGPF/LCF 方案；该方案
-仍可作为 additive frontier 的二级 algebraic optimizer，但不再是 general storage
-layer。当前 general index 是 Versioned Semiring Circuit (VSC)。后续章节中把
-support matrix 写成所有机制的统一逻辑表示、或把 LCF 写成主索引的段落，均应按
-本节修订理解，等待逐节重写。
+状态：主索引修订为 Versioned Provenance Closure。统一逻辑对象是
+`(semiring template, region environment)`；Compact Closure 与 Materialized VSC 是
+两个 exact physical layouts。前者给出 `Theta(D+B+K+H)` 的 worst-case-optimal
+storage，后者用更多 resolved nodes 换取 output-sensitive EXPLAIN。MGPF/LCF 仅保留
+为 additive frontier 的二级 algebraic optimizer。
 
-# 第零部分：VSC 修订
+# 第零部分：Versioned Provenance Closure 修订
 
 ## 0.1 为什么修改主索引
 
@@ -21,16 +21,88 @@ tree contributions 和某些 ReLU frontier，但一般深层 ReLU provenance 同
 `ADD` 与 `MUL`。若先展开成 neural paths，逻辑 polynomial 可能指数大；若不展开，
 support matrix 并没有完整表示 circuit sharing。
 
-因此 general object 改为有序的完整 semiring circuit versions：
+因此 general object 改为有序的 exact semiring closures：
 
 \[
-P_{u,1},P_{u,2},\ldots,P_{u,B_u}.
+\mathcal C_{u,j}=(T_u,\sigma_{u,j}),
+\qquad
+P_{u,j}=\operatorname{Eval}(T_u,\sigma_{u,j}).
 \]
 
 Staircase、laminar、prefix/suffix 都只是这组 versions 可能具有的特殊结构，不再是
 索引正确性或可构建性的前提。
 
-## 0.2 Versioned Semiring Circuit
+## 0.2 Versioned Provenance Closure 的两种布局
+
+固定 unit/template 后，region `j` 只改变 mutable slot environment
+`sigma[u,j]`。定义：
+
+```text
+Delta[u,j] = {s : sigma[u,j](s) != sigma[u,j-1](s)}
+k[u,j]     = |Delta[u,j]|
+K          = sum_(u,j>1) k[u,j]
+```
+
+两种布局共享完全相同的 semiring semantics：
+
+```text
+Closure-Compact:
+    template 存一次
+    每个 slot 只保存 initial root 与 effective change records
+    region 返回 (template_root, environment_version)
+
+VSC-Materialized:
+    每个 region 保存 fully resolved canonical circuit root
+    changed slots 触发 affected-ancestor path copying
+    global hash-consing 合并重复 resolved subcircuits
+```
+
+Compact mode 的 storage 不依赖 changed slot 的 downstream fan-out；Materialized
+mode 的 expanded EXPLAIN 不需要在 shared template 中重新 resolve slots。二者形成
+space-latency Pareto endpoints，不是两套逻辑 provenance。
+
+## 0.3 Compact Closure
+
+对每个 slot `s` 保存有序 history：
+
+```text
+(version_0, initial_root),
+(version_a, changed_root_a),
+...
+```
+
+构建与查询为：
+
+```text
+BUILD_CLOSURE(unit, exact_regions, template):
+    histories = initial slot roots
+    for boundary j in increasing order:
+        for (slot,new_root) in Delta[unit,j]:
+            histories[slot].append(j,new_root)
+    return RegionDirectory(boundaries, template_root, histories)
+
+LOOKUP_CLOSURE(unit,t):
+    j = predecessor(boundaries[unit],t)
+    return (template_root, histories, j)
+```
+
+令 `D_T` 为 distinct templates/immutable roots，`C_tot=sum_u C_u`，
+`B_tot=sum_u B_u`，`H=sum_u|h_u|`。则：
+
+\[
+\boxed{
+S_{closure}=T_{build}
+=\Theta(D_T+C_{tot}+B_{tot}+K+H)
+}
+\]
+
+这里 build bound 假设 compiler 已按 intervention order 输出 regions/deltas。
+在 word-RAM 上允许每个 changed slot root 为独立 word 时，任意 exact index 最坏需要
+`Omega(D_T+C_tot+B_tot+K+H)` words，因此 Compact Closure matching-optimal。
+当前实现用 per-slot predecessor，在 `O(log B_u)` region lookup 后，slot `s` 的
+historical root lookup 是 `O(log(h_s+1))`。
+
+## 0.4 Materialized Versioned Semiring Circuit
 
 全局 immutable arena 支持：
 
@@ -60,7 +132,7 @@ choices 或 activation gates 是 mutable slots。对 region boundary `j -> j+1`�
 这同时覆盖相邻 prefix sharing、非相邻 pattern recurrence 和 cross-unit structural
 sharing。
 
-## 0.3 构建算法
+## 0.5 Materialized 构建算法
 
 ```text
 BUILD_VSC(unit, exact_regions, template):
@@ -69,7 +141,7 @@ BUILD_VSC(unit, exact_regions, template):
 
     for boundary j in increasing order:
         changed_slots = DIFF(exact_regions[j-1], exact_regions[j])
-        affected = ANCESTOR_CLOSURE(template, changed_slots)
+        affected = INCLUSIVE_ANCESTOR_CLOSURE(template, changed_slots)
 
         for node in TOPOLOGICAL_ORDER(affected):
             state[node] = INTERN(op[node], state[children[node]])
@@ -82,13 +154,14 @@ BUILD_VSC(unit, exact_regions, template):
 实现不需要构造完整 region-fragment matrix，也不需要先判断 supports 是否
 staircase/laminar。
 
-## 0.4 一般复杂度参数
+## 0.6 Materialized 复杂度与最优性
 
 记：
 
 ```text
 B_tot       所有 units 的 exact response regions 总数
-D_0         初始 canonical circuit/template 节点数
+D_T         distinct templates 与 immutable atom roots 的记录数
+C_tot       所有 units/template instances 的 mutable slots 总数
 alpha[u,j]  boundary j 上 changed slots 加被重新计算的 template ancestors 数
 gamma[u,j]  其中真正新建的 canonical arena nodes 数；gamma[u,j] <= alpha[u,j]
 H_u         unit binding h_u 的大小
@@ -99,14 +172,14 @@ H_u         unit binding h_u 的大小
 \[
 S_{VSC}
 =O\!\left(
-B_{tot}+D_0+\sum_{u,j}\gamma_{u,j}+\sum_u|H_u|
+B_{tot}+D_T+C_{tot}+\sum_{u,j}\gamma_{u,j}+\sum_u|H_u|
 \right).
 \]
 
 \[
 T_{build}
 =O\!\left(
-B_{tot}+D_0+\sum_{u,j}\alpha_{u,j}+\sum_u|H_u|
+B_{tot}+D_T+C_{tot}+\sum_{u,j}\alpha_{u,j}+\sum_u|H_u|
 \right)
 \]
 
@@ -124,7 +197,7 @@ T_{expanded}=O(\log B_u+|output|).
 
 对含 `C` 个 mutable leaves 的 balanced associative block，若一次 boundary 同时改变
 `k_j` 个 leaves，它们到 root 的 inclusive path union 大小满足
-`THEORY_PROOFS.md` 引理 0.2 的
+`THEORY_PROOFS.md` 引理 0.3 的
 bound：
 
 \[
@@ -135,21 +208,77 @@ bound：
 同时 `gamma_j <= alpha_j`，所以该式也给出新节点数的上界。
 
 一般 CDAG 使用实际 affected canonical cone 作为 `alpha[u,j]`。最坏情况下
-`alpha[u,j]=Theta(D_0)` 且所有结果都可能是新节点，因此 VSC 不声称 universal
+`alpha[u,j]=Theta(D_T+C_tot)` 且所有结果都可能是新节点，因此 VSC 不声称 universal
 compression。
 
-## 0.5 三类机制映射
+在 Canonical Materialized Model 中，每条 operator record 必须显式保存 normalized
+`(op,child_ids)`。令 `Q` 为所有 regions 中 distinct normalized tuples 的集合；global
+hash-consed VSC 恰存 `|Q|` 条 operator records，任何 exact structural-EXPLAIN
+representation 至少需要 `|Q|` 条，因此在该明确模型内 instance-optimal。该结论不
+推广到 arbitrary algebraic circuit rewriting。
+
+对一个 `C`-leaf balanced block、`B` regions 与 `K=sum_j k_j`：
+
+\[
+S_{IIP}=\Theta(BC),
+\]
+
+\[
+S_{VSC}=O\!\left(C+B+\sum_j k_j\log(1+C/k_j)\right),
+\qquad
+S_{closure}=\Theta(C+B+K).
+\]
+
+特别地，`B=C=n` 且每个 boundary 改变 `O(1)` slots 时：
+
+\[
+\boxed{
+\Theta(n^2)\ \text{(IIP)}
+\quad vs.\quad
+O(n\log n)\ \text{(VSC)}
+\quad vs.\quad
+\Theta(n)\ \text{(Closure)}.
+}
+\]
+
+变化可以任意 toggle；该 separation 不使用 staircase。
+
+还有一个 fan-out separation。令一个 slot `s` 同时进入 `F` 个不同乘法项
+`s*a_i`，并让 `B` 个 regions 把 `s` 绑定到两两不同的 `x_j`。Closure 只需一个
+`Theta(F)` template 和 `Theta(B)` version records：
+
+\[
+S_{closure}=\Theta(B+F).
+\]
+
+Canonical Materialized Model 必须区分全部 `BF` 个 tuples
+`MUL(x_j,a_i)`，当前 VSC 也恰在该量级：
+
+\[
+S_{VSC}=\Theta(BF).
+\]
+
+取 `B=F=n` 得 linear-versus-quadratic space separation。反过来，若一个未
+materialize 的 query 要返回 canonical structural circuit，仅输出这 `F` 个不同乘法
+tuples 就需 `Omega(F)` work。因此两种 layouts 在 frozen canonical structural model
+内有可证的 space-latency 分离。该结论不推广到允许 distributivity 的任意 algebraic
+circuit；例如此构造可被改写成 `s*(sum_i a_i)`，必须作为独立 factorized layout
+分析。
+
+## 0.7 三类机制映射
 
 ```text
 Linear:
-    one fixed version; intervention/root/noise remain binding slots
+    B=1, K=0
 
 Tree Ensemble:
-    balanced semiring SUM template; a threshold replaces selected leaf roots
+    C=M 个 per-tree active-leaf slots
+    boundary j 更新 q_j 棵树，因此 k_j=q_j
 
 ReLU/PWL:
-    activation selectors are mutable slots inside ADD/MUL circuit templates
-    arbitrary OFF/ON/OFF sequences are legal
+    C=activation slots
+    boundary j 更新 q_j 个 activation signs，因此 k_j=q_j
+    arbitrary OFF/ON/OFF sequences remain legal
 ```
 
 完整 fitted MLP 的下一步实现是 semiring selector matrix/product tree。固定 activation
@@ -165,7 +294,11 @@ P_{u,j}
 homogeneous coordinate 表示。该结构保留 matrix product circuit，不展开 neural
 paths。
 
-## 0.6 MGPF/LCF 的新位置
+Tree breakpoints distinct 或 ExactLine crossing ratios nondegenerate/distinct 时，通常
+`q_j=1`；coincident boundaries 使用一般 `q_j`，不影响 exactness。Compact Closure
+bound 与 changed gate 的 downstream fan-out 无关，VSC 则按实际 affected cone 计费。
+
+## 0.8 MGPF/LCF 的新位置
 
 在一个明确选定的 additive frontier 上，仍可把 frontier roots 写成 support matrix，
 并运行 occurrence lifting、MGPF、LCF、reset min-cut 和 stabbing-semigroup index。
@@ -175,7 +308,8 @@ semantics。
 新的两级关系是：
 
 ```text
-general exact layer:       VSC canonical persistent sharing
+general exact layer:       Versioned Provenance Closure
+physical endpoints:        Closure-Compact / VSC-Materialized
 optional algebraic layer:  weighted guarded factorization at additive frontiers
 ```
 
@@ -1631,7 +1765,7 @@ LEAF(m,l)
 
 `tau` 是独立 intervention indeterminate，物理上表示为 `TAU(T)`。
 
-General VSC semantics 使用：
+General Closure/VSC semantics 使用：
 
 ```text
 K = N[Z]
@@ -1654,12 +1788,14 @@ h_audit_lineage
 
 `h_value` 重建 numeric response；`h_response_lineage` 返回 arithmetic contributors；`h_audit_lineage` 再加入 certificate control dependencies。
 
-一般 logical response 直接由 VSC root 给出：
+一般 logical response 由 provenance closure 给出；materialized root 是其可选物理化：
 
 \[
-P_{u,j}=h_u(R_{u,j}),
+\mathcal C_{u,j}=(T_u,\sigma_{u,j}),
 \qquad
-\Pi_u(t)=h_{u,t}(R_{u,j(t)}).
+P_{u,j}=h_u(\operatorname{Eval}(\mathcal C_{u,j})),
+\qquad
+R_{u,j}=\operatorname{Materialize}(\mathcal C_{u,j}).
 \]
 
 该定义保留完整 `ADD/MUL` circuit，不要求 path expansion，也不要求 support
@@ -1689,11 +1825,13 @@ homomorphism `pi` 将 occurrence symbols 映射到原 `K[tau]` fragment
 polynomials；再复合任意 unit binding `h_u` 和 value/lineage homomorphism，
 等式仍然保持。这一步是允许 arbitrary per-unit weights 的关键。
 
-VSC 主定理使用：
+Closure/VSC 主定理使用：
 
 ```text
 B_tot   population regions，sum_u B_u
-D_0     atoms、templates 与 first-version canonical nodes
+D_T     distinct templates 与 immutable atom roots
+C_tot   sum_u C_u initial mutable-slot records
+K       全部 effective slot changes，sum_(u,j) k[u,j]
 alpha   changed slots 与 affected ancestors 的 transition 总工作
 gamma   transition 中真正新 intern 的 nodes，gamma <= alpha
 H       sum_u |h_u|
@@ -1735,26 +1873,59 @@ A_u,j   materialized provenance output size at population cell (u,j)
 
 而 leaf-combination construction 可能产生 `product_m b_m` 个组合。完整 causal composition 仍可能指数增长。
 
-### 定理 3：VSC Exactness、Construction 与 Storage
+### 定理 3：Two-Layout Exactness、Optimality 与 Strict Separation
 
-给定 exact region sequence、固定 circuit template 和每个 boundary 的 slot delta，
-VSC 对任意 `ON/OFF/ON` 更新序列返回与每个 region 从头 materialize 完全相同的
-free-semiring circuit。令 `alpha[u,j]` 是 changed slots 与 affected ancestor closure
-大小，`gamma[u,j]` 是其中真正新 intern 的 arena nodes，则：
+给定 exact region sequence、fixed semiring templates 和每个 boundary 的 effective
+slot deltas：
+
+1. Compact Closure 与从头 slot substitution 在任意 semiring homomorphism 下相等；
+2. Closure build/space 为 matching worst-case bound：
 
 \[
-T_{build}=O\!\left(B_{tot}+D_0+\sum_{u,j}\alpha[u,j]+H\right),
+\boxed{
+\Theta(D_T+C_{tot}+B_{tot}+K+H)
+};
+\]
+
+3. Materialized VSC 对任意 `ON/OFF/ON` 更新返回同一 formal circuit。令
+   `alpha[u,j]` 是 changed slots 与 affected ancestor closure，`gamma[u,j]` 是其中
+   真正新 intern 的 arena nodes，则：
+
+\[
+T_{VSC}=O\!\left(B_{tot}+D_T+C_{tot}+\sum_{u,j}\alpha[u,j]+H\right),
 \]
 
 \[
-S_{VSC}=O\!\left(B_{tot}+D_0+\sum_{u,j}\gamma[u,j]+H\right),
+S_{VSC}=O\!\left(B_{tot}+D_T+C_{tot}+\sum_{u,j}\gamma[u,j]+H\right),
 \qquad \gamma[u,j]\le\alpha[u,j].
 \]
 
 对 balanced associative block，若 `C` 个 leaves 中有 `k` 个改变，则 inclusive
-ancestor-path union 为 `O(k log(1+C/k))`。证明见 `THEORY_PROOFS.md` 第 0 节。
-一般 circuit 可有 `alpha=Theta(D_0)`，所以本定理不声称 universal compression 或
-arithmetic-circuit global optimality。
+ancestor-path union 在最坏 changed-leaf placement 上为 tight
+`Theta(k log(1+C/k))`。若 `B=C=n` 且每个 boundary 改变 `O(1)` slots：
+
+\[
+\boxed{
+S_{IIP}=\Theta(n^2),\qquad
+S_{VSC}=O(n\log n),\qquad
+S_{closure}=\Theta(n).
+}
+\]
+
+4. 对单个 slot fan-out 到 `F` 个 distinct products、并在 `B` 个 regions 取不同
+   roots 的族：
+
+\[
+S_{closure}=\Theta(B+F),qquad
+S_{VSC}=\Theta(BF).
+\]
+
+若不预先 materialize，返回 canonical structural circuit 需要
+`Omega(F)` output work。
+
+证明见 `THEORY_PROOFS.md` 第 0 节。Closure lower bound 位于 arbitrary word-valued
+slot-update model；Materialized VSC 的 instance optimality 位于 canonical immutable
+resolved-circuit model。二者都不声称 arbitrary algebraic-circuit global optimality。
 
 ### 定理 3A：Additive-Frontier Provenance DAG 与 Unit Binding 正确性
 
@@ -2036,9 +2207,10 @@ region-root cache 再使用 `O(S_r)` pointers；aggregate ADD nodes/edges 明确
 ### 18.1 明确的 Non-Claims
 
 1. Canonical VSC 不保证是最小 algebraically equivalent circuit；它只对固定
-   template topology 做 exact persistence 与 syntactic interning。
+   template topology 做 exact persistence 与 syntactic interning。定理 0.4 的
+   fan-out lower bound 也只属于该模型；distributive factorization 可能进一步压缩。
 2. VSC 不保证 universal compression；一般 transition 可有
-   `alpha,gamma=Theta(D_0)`。
+   `alpha,gamma=Theta(D_T+C_tot)`。
 3. VSC 与 IIP 都保存 indexed region roots，因此不声称比 IIP 有更好的 POINT/root
    lookup 渐近复杂度。
 4. `ell`-approximation 只针对 guarded factor-root count `F`，不针对 arbitrary
@@ -2060,7 +2232,7 @@ region-root cache 再使用 `O(S_r)` pointers；aggregate ADD nodes/edges 明确
 12. FLIP bound 只适用于 registered thresholds，AGG bound 只适用于 declared
    groups。
 
-## 19. 算法优势总结（VSC 主线）
+## 19. 算法优势总结（Two-Layout 主线）
 
 下面只比较 response/provenance index；所有方法共同需要的 fitted SCM、observed
 data 和 abduction bindings 不重复计入。记：
@@ -2070,7 +2242,9 @@ B_u          unit u 的 response regions 数量
 B_tot        sum_u B_u
 L[u,j]       region (u,j) 独立 materialize 时的 circuit size
 D_ind        sum_(u,j) L[u,j]
-D_0          atoms、templates 与 first versions 的 canonical nodes
+D_T          distinct templates 与 immutable atom roots
+C_tot        sum_u C_u initial mutable-slot records
+K            sum_(u,j) k[u,j] effective slot changes
 alpha[u,j]   transition (u,j) 的 changed slots 加被重新计算的 ancestors
 gamma[u,j]   其中真正新 intern 的 arena nodes，gamma <= alpha
 A,G          分别为 alpha 与 gamma 在全部 transitions 上的总和
@@ -2084,37 +2258,48 @@ Q_u,j        EXPLAIN 实际输出的 provenance 大小
 S_{IIP}=\Theta(B_{tot}+D_{ind}+H).
 \]
 
-VSC 保存：
+Compact Closure 与 Materialized VSC 分别保存：
 
 \[
-S_{VSC}=O(B_{tot}+D_0+G+H),
-\qquad
-T_{build}=O(B_{tot}+D_0+A+H).
+S_{closure}=\Theta(D_T+C_{tot}+B_{tot}+K+H),
 \]
 
-这两个式子不能只凭符号声称 VSC 总是更小。理论优势是 change-sensitive：当相邻
-regions 只改变小 affected cone，`A << D_ind`；当更新结果复用旧 subcircuits 或旧
-patterns，`G << A`。最坏情况下 `A,G=Theta(D_ind)`，不保证压缩。
+\[
+S_{VSC}=O(B_{tot}+D_T+C_{tot}+G+H),
+\qquad
+T_{VSC}=O(B_{tot}+D_T+C_{tot}+A+H).
+\]
+
+Closure 的 bound 与 circuit fan-out 无关，并在 arbitrary word-valued update model
+达到 worst-case lower bound。VSC 的理论优势是 materialized change sensitivity：
+`A << D_ind` 时减少 build，`G << D_ind` 时减少 space；最坏情况下它可以退化到
+IIP 量级，但 canonical tuple 模型内仍 instance-optimal。
 
 | Index | Build time | Space | POINT/root | EXPLAIN | 核心判断 |
 |---|---:|---:|---:|---:|---|
 | cached-noise replay | `O(T_abduct)` | `O(n|V|)` | `Theta(C_replay)` | `Theta(C_replay+Q_u,j)` | 每次仍传播 SCM |
 | numeric segment array | `O(B_tot)` | `Theta(B_tot)` | `O(log B_u)` | 不支持 provenance | 最强纯数值 lookup baseline |
 | IIP | `Theta(D_ind)` | `Theta(B_tot+D_ind+H)` | `O(log B_u)` | `O(log B_u+Q_u,j)` | 每个 region 单独保存完整 circuit |
-| event log + first circuit | `O(D_0+sum k[u,j])` | `O(D_0+sum k[u,j])` | 需 replay prefix events | replay 后再输出 | 空间轻，但把 version reconstruction 推迟到查询 |
-| **TESSERA VSC-Core** | **`O(B_tot+D_0+A+H)`** | **`O(B_tot+D_0+G+H)`** | **`O(log B_u)`** | **`O(log B_u+Q_u,j)`** | **任意 slot toggles；mixed `ADD/MUL`；跨相邻、非相邻和跨 unit 共享** |
+| event log + first environment | `O(D_T+C_tot+K)` | `O(D_T+C_tot+K)` | 需 replay prefix events | replay 后再输出 | 不提供任意 version 的 direct environment access |
+| **TESSERA Closure-Compact** | **`Theta(D_T+C_tot+B_tot+K+H)`** | **同 build，matching-optimal** | **closure handle `O(log B_u)`** | **template traversal + historical slots + output work** | **fan-out-independent；任意 toggles；mixed `ADD/MUL`** |
+| **TESSERA VSC-Materialized** | **`O(B_tot+D_T+C_tot+A+H)`** | **`O(B_tot+D_T+C_tot+G+H)`** | **resolved root `O(log B_u)`** | **`O(log B_u+Q_u,j)`** | **canonical-model instance-optimal；跨相邻、非相邻和 units 共享** |
 | VSC + optional additive factorization | Core 加 factorization cost | Core 加 `O(F+K+D_f)` | 同 Core | factor reporting 另计 | 只优化声明的 additive frontier |
 
-必须公平解释两种速度比较：
+必须公平解释三种比较：
 
 1. VSC 和 IIP 都保存 region root，POINT/root lookup 的渐近复杂度相同；VSC 对 IIP
    的主优势是 storage 与 construction。
-2. VSC 对 event log 的 query 优势来自预先保存每个 persistent root；不能把该数字
+2. Closure 返回 exact `(template,environment version)`，但 expanded evaluation 可能
+   比 VSC 多遍历 inactive template structure；这是达到 `Theta(D+B+K+H)` 的代价。
+3. VSC/Closure 对 event log 的 query 优势来自 direct version access；不能把该数字
    写成“VSC 比 IIP 查询快”。
 
-对 balanced associative block，`k` 个 changed leaves 的 ancestor-path union 是
-`O(k log(1+C/k))`。这是 Tree ensemble sums 和 MLP 内部 balanced product/sum blocks
-的可证明 specialization；一般 circuit 使用实测 `alpha`。
+对 balanced associative block，`k` 个 changed leaves 的 ancestor-path union 在
+最坏 placement 上是 tight `Theta(k log(1+C/k))`。当 `B=C=n,k=O(1)` 时，IIP、
+VSC、Closure 严格分离为 `Theta(n^2)`、`O(n log n)`、`Theta(n)`。
+在 `B=F=n` high-fan-out family 上，VSC 与 Closure 进一步分离为
+`Theta(n^2)` 与 `Theta(n)`；Closure 的 on-demand structural expansion 同时有
+`Omega(F)` output lower bound。
 
 功能层面的优势如下：
 
@@ -2123,6 +2308,7 @@ patterns，`G << A`。最坏情况下 `A,G=Theta(D_ind)`，不保证压缩。
 | 一次 abduction | replay | online query 不再恢复 residual |
 | trajectory compilation | global-region materialization | 不枚举 intervention line 未到达的组合 |
 | 三类 exact compiler | 三套独立 index | 统一输出 regions、slot deltas 与 certificates |
+| Compact Closure | IIP/event replay | 每个 effective delta 存一次，并 direct access 任意 region environment |
 | persistent VSC | IIP | 只重建 affected ancestors，并全局复用 canonical subcircuits |
 | region root directory | event replay | query 不重放 boundary updates |
 | response/certificate 分离 | 不分离的 guard segments | POINT 保持 response-minimal，audit 仍精确 |
@@ -2134,8 +2320,10 @@ patterns，`G << A`。最坏情况下 `A,G=Theta(D_ind)`，不保证压缩。
 
 ```text
 GPSI = exact L/T/N trajectory compiler
-     + Versioned Semiring Circuit arena
-     + per-unit boundary -> persistent-root directory
+     + Versioned Provenance Closure
+         - Closure-Compact layout
+         - VSC-Materialized layout
+     + per-unit boundary -> closure/resolved-root directory
      + independent unit bindings h_u
      + optional additive-frontier optimizer
      + provenance-native secondary query indexes
@@ -2163,7 +2351,8 @@ GPSI = exact L/T/N trajectory compiler
 ### 21.2 Construction
 
 - 分开报告 abduction、local compilation、region diff、affected-ancestor
-  recomputation、arena interning、region-directory build 和 total build time；
+  recomputation、environment append、arena interning、region-directory build 和
+  total build time；
 - 报告 realized segments 与 potential global regions；
 - 报告每个 transition 的 `k[u,j]`、`alpha[u,j]`、`gamma[u,j]`；
 - 报告相对于 cached-noise replay 的 amortization query count。
@@ -2171,9 +2360,10 @@ GPSI = exact L/T/N trajectory compiler
 ### 21.3 Compression
 
 - 报告 response/certificate segments；
-- 主实验报告 `B_tot,D_ind,D_0,A,G,H`、unique roots、recurring roots、arena nodes
-  和 serialized bytes；
-- 对比 IIP、只存 event log、仅 adjacent path-copy、global hash-consed VSC；
+- 主实验报告 `B_tot,D_ind,D_T,C_tot,K,A,G,H`、environment records、unique roots、
+  recurring roots、arena nodes 和 serialized bytes；
+- 对比 IIP、prefix event replay、Closure-Compact、仅 adjacent path-copy、global
+  hash-consed VSC；
 - 分别改变 transition sparsity、pattern recurrence 和 cross-unit template reuse；
 - 改变 population、causal path multiplicity、tree depth/count、MLP width/depth；
 - 包含无共享的 worst-case workload。
@@ -2184,6 +2374,8 @@ reset max-flow 时间和 serialized bytes。它不能替代 VSC 对 IIP 的主�
 ### 21.4 Queries
 
 - 分别测试 POINT、response EXPLAIN、audit EXPLAIN、registered FLIP、declared AGG；
+- 分开计时 Closure handle lookup、historical slot resolution、template traversal、
+  VSC resolved-root lookup 和 output traversal；
 - 使用第 16 节指定的对应 baseline；
 - 改变 units、intervention values、selectivity 和 repeated-query count。
 
@@ -2191,6 +2383,10 @@ reset max-flow 时间和 serialized bytes。它不能替代 VSC 对 IIP 的主�
 
 | Theory claim | 必须对应的实验 |
 |---|---|
+| Closure exactness | 每个 version 的 closure polynomial/value 与 independent materialization 相等 |
+| Closure storage theorem | 验证 records=`D_T+C_tot+B_tot+K+H`，改变 fan-out 时环境记录数不变 |
+| strict separation | `B=C=n,k=O(1)` scaling 上分别拟合 IIP quadratic、VSC `n log n`、Closure linear |
+| fan-out Pareto separation | `B=F=n` scaling 上拟合 Materialized quadratic、Closure linear，并单列 on-demand expansion work |
 | VSC exactness | 每个 version 的 free-semiring polynomial 与 independent materialization 相等 |
 | change-sensitive construction | 每个 transition 记录 `k,alpha,gamma`，验证 `gamma<=alpha` 并测量 `A/D_ind` |
 | balanced batch bound | 改变 `C,k`，报告 visited ancestors 与 `k log(1+C/k)` 的比例 |
@@ -2248,11 +2444,13 @@ expression DAG、tree-ensemble DD 与 provenance index 的交叉文献。
 
 ## 23. 设计冻结检查表
 
-- [x] VSC 已替换 LCF 成为 general storage layer；
+- [x] Versioned Provenance Closure 已替换 LCF 成为 general logical layer；
+- [x] Closure-Compact 与 VSC-Materialized 两种 exact layouts 已定义并实现；
 - [x] arbitrary `ON/OFF/ON` 与 mixed `ADD/MUL` exactness 已定义并有实现测试；
 - [x] `alpha` construction 与 `gamma` storage bounds 已分离；
 - [x] IIP 与 event-log baselines 已分开，未混用 query speedup；
-- [ ] canonical VSC 的明确 representation-model lower bound 已完成；
+- [x] Compact Closure matching lower bound 与 canonical VSC
+      representation-model instance optimality 已完成；
 - [ ] fitted Tree compiler 已接入 VSC；
 - [ ] fitted ReLU/ExactLine compiler 与 semiring product tree 已接入 VSC；
 - [ ] 三类函数的反事实推导及数值例子已确认；

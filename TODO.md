@@ -1,29 +1,42 @@
 # TODO
 
-[`TECHNICAL_DESIGN.md`](TECHNICAL_DESIGN.md) records the complete earlier
-GPSI/LCF design; [`THEORY_PROOFS.md`](THEORY_PROOFS.md) contains its independently
-checkable proofs. The current implementation pivot makes Versioned Semiring
-Circuits (VSC) the general storage layer and retains MGPF/LCF as an optional
-algebraic optimizer at additive frontiers. The documents must now be reconciled
-with the checked-in VSC semantics before the paper is frozen again.
+[`TECHNICAL_DESIGN.md`](TECHNICAL_DESIGN.md) records the active design;
+[`THEORY_PROOFS.md`](THEORY_PROOFS.md) contains independently checkable proof
+drafts. The general logical object is now a Versioned Provenance Closure with
+two exact physical layouts: storage-optimal Closure-Compact and
+latency-oriented VSC-Materialized. MGPF/LCF remains an optional algebraic
+optimizer at declared additive frontiers.
 
 ## D0: Theory and Algorithm Freeze (Current)
 
 - [x] Remove staircase/laminar structure as a requirement of the general index.
-- [x] Define the general indexed object as ordered versions of exact semiring
-      circuits with one root per `(unit,region)`.
+- [x] Define the general indexed object as ordered exact closures
+      `(shared template, region slot environment)`.
 - [x] Preserve both `ADD` and `MUL`; do not require deep neural provenance to be
       expanded into an additive path-fragment matrix.
 - [x] Implement immutable hash-consed circuit nodes and affected-ancestor
       path copying for arbitrary slot toggles.
-- [x] Replace the old primary storage theorem with the change-sensitive VSC
-      bound `O(B_tot + D_0 + sum gamma_u,j + bindings)`.
+- [x] Prove matching Compact Closure build/storage
+      `Theta(D_T + C_tot + B_tot + K_delta + H)` in the stated word-valued
+      update model.
+- [x] Retain the change-sensitive Materialized VSC construction/storage bounds
+      in terms of affected nodes `A` and newly interned nodes `G`.
 - [x] Prove the balanced batch-update lemma
-      `O(k_j log(1 + C/k_j))` for associative circuit blocks.
-- [ ] State and prove the exact representation model in which canonical VSC is
+      `Theta(k_j log(1 + C/k_j))` in the worst case for balanced associative
+      circuit blocks.
+- [x] State and prove the exact representation model in which canonical VSC is
       optimal, and separate it from harder algebraic circuit minimization.
-- [ ] Prove hardness on a counterfactual-realizable restricted circuit family;
-      arbitrary support-matrix hardness alone is secondary evidence.
+- [x] Prove the sparse-toggle separation
+      `IIP=Theta(n^2)`, `VSC=O(n log n)`, `Closure=Theta(n)` without a
+      staircase assumption.
+- [x] Prove the canonical high-fan-out layout separation
+      `Materialized=Theta(BF)` versus `Closure=Theta(B+F)`, plus the
+      `Omega(F)` on-demand structural-expansion lower bound.
+- [x] Derive Class-L, Class-T, and Class-N corollaries through effective slot
+      changes `k_j=q_j`.
+- [ ] Decide whether restricted-family algebraic-factorization hardness is
+      strong enough to retain as a secondary theorem; it is not required by
+      the primary Closure/VSC bounds.
 - [ ] Reformulate laminar DP/min-cut against one weighted storage objective,
       rather than optimizing factor count and runs in separate claims.
 
@@ -85,7 +98,7 @@ Acceptance criteria:
 - [x] Support arbitrary cDAGs, fixed roots, and multiple interventions in the
       existing prototype.
 - [x] Add random-DAG generation and correctness tests.
-- [ ] Preserve the existing implementation unchanged until D0 is accepted.
+- [x] Preserve the existing linear API while adding the versioned layouts.
 
 ## M1: Guarded Piecewise-Affine Algebra
 
@@ -126,9 +139,37 @@ Acceptance criteria:
 - the implementation uses no unrestricted MUL node.
 
 This milestone now describes the specialized Linear/path-prefix layer. General
-Tree/ReLU storage is handled by M2.1 and may contain canonical `MUL` nodes.
+Tree/ReLU storage is handled by M2.1A/M2.1B and may contain canonical `MUL`
+nodes.
 
-## M2.1: Versioned Semiring Circuit Core
+## M2.1A: Compact Versioned Provenance Closure
+
+- [x] Implement one shared semiring template with named mutable slots.
+- [x] Store one initial root per slot and only effective region changes.
+- [x] Implement exact historical slot lookup and left-closed region lookup.
+- [x] Return exact `(template,environment version)` closure handles.
+- [x] Implement direct numeric and free-semiring evaluation without first
+      materializing a resolved root.
+- [x] Materialize a closure on demand into the canonical circuit arena.
+- [x] Test arbitrary toggles, mixed `ADD/MUL`, and equality with materialized
+      versions under numeric and free-semiring valuations.
+- [x] Test that environment records are independent of template fan-out.
+- [x] Add Closure build/storage and handle lookup to the random-toggle
+      benchmark.
+- [x] Add theorem-aligned `B=C=n,k=1` and `B=F=n` scaling experiments.
+- [ ] Replace per-slot Python lists with compact columnar histories.
+- [ ] Add byte-accurate accounting and a sampled/hybrid materialization policy.
+
+Acceptance criteria:
+
+- storage records equal `C_tot + K_delta` plus explicitly reported templates,
+  region entries, and bindings;
+- every closure evaluates to the same formal polynomial and numeric value as
+  independent materialization;
+- returning a closure handle takes `O(log B_u)` region lookup;
+- measured environment storage is unchanged when only template fan-out grows.
+
+## M2.1B: Materialized Versioned Semiring Circuit
 
 - [x] Implement immutable `ZERO`, `ONE`, `ATOM`, `ADD`, `MUL`, and `SWITCH`
       nodes with global hash-consing.
