@@ -1,20 +1,22 @@
-# TESSERA Linear Trie
+# TESSERA Counterfactual Provenance Index
 
 Repository: <https://github.com/JayLZhou/CounterProvenance>
 
-TESSERA Linear Trie is a small prototype for **fast repeated counterfactual
-queries over learned linear SCMs on arbitrary causal DAGs**.
+TESSERA is a research prototype for **exact indexed counterfactual queries over
+learned structural causal models**. The current code implements the linear
+foundation on arbitrary causal DAGs; the paper design extends the same
+provenance semantics and physical index to trees, tree ensembles, and
+piecewise-affine neural mechanisms.
 
-The core idea is simple:
+The core idea is:
 
-> A linear additive-noise SCM does not need to replay every mechanism for every
-> counterfactual query. Its counterfactual replay can be compiled into semiring
-> provenance, stored as a compressed propagation trie, and evaluated through a
-> fast closed-form query plan.
+> Do not index model regions or cache individual answers. Index the complete
+> provenance-valued response function `Pi[u,Y](t) = Y_{u;do(T=t)}`. Store each
+> unit's maximal intervention intervals as pointers to a shared provenance DAG.
 
-This repository is the first sanity check for the larger TESSERA paper idea:
-**factorized semiring provenance for counterfactual query processing over
-learned structural causal models**.
+The full mechanism class, index design, baselines, and theorem targets are in
+[`POSITIONING.md`](POSITIONING.md). The current linear trie is the one-region
+special case of that design.
 
 ## Why This Exists
 
@@ -31,34 +33,99 @@ work again and again. TESSERA asks:
 > Can we materialize the reusable counterfactual derivation once, then answer
 > repeated queries by evaluating stored provenance?
 
-This demo answers that question for linear SCMs over arbitrary cDAGs.
+This demo answers that question for linear SCMs over arbitrary cDAGs. The
+broader paper asks how to answer `POINT`, `FLIP`, `AGG`, and `EXPLAIN` queries
+without fresh SCM replay.
 
-## Exact f(.) Coverage
+## Three Exact f(.) Classes
 
-The broader TESSERA paper classifies structural mechanisms by their exact
-region structure, rather than by model family names. A mechanism is in scope
-when it can be written as a finite guarded expression:
+TESSERA claims support for exactly three mechanism classes. They share the
+internal property **finite guarded-affine and exactly line-intersectable**:
 
 ```text
-f(x) = sum_r 1[x in Omega_r] * h_r(x)
+f(x) = a[r]^T x + b[r]  when exact guard g[r](x) holds
+
+optional factorization:
+f(x) = sum_m lambda_m * f_m(x)
 ```
 
-where each region guard `Omega_r` is exact, and each local expression `h_r` is
-either a numeric constant or a numeric affine expression. The table below is
-restricted to exact numerical structural mechanisms; categorical classifier
-mechanisms are outside this prototype's coverage.
+When the counterfactual parents are affine on an intervention interval,
+`x(t) = A*t + c`, the local compiler must be able to enumerate every exact
+value of `t` at which the active guard changes.
 
-This makes linear models, trees, tree ensembles, and ReLU-style networks part
-of one exact finite-region family:
+| Class | Representative fitted `f(.)` | Exact local operation | Status |
+|---|---|---|---|
+| L: Linear | OLS, LinearRegression, Ridge, Lasso, ElasticNet, linear SVR | one affine segment | implemented for generic linear cDAGs |
+| T: Tree Ensemble | one regression tree, Random Forest, Extra Trees, GBDT, HistGBDT, numerical XGBoost/LightGBM/CatBoost with raw or identity-link regression output | threshold tracing per tree plus breakpoint multiway merge | first nonlinear target |
+| N: ExactLine/PWL Neural | ReLU MLPs and ExactLine-supported piecewise-linear inference graphs | ExactLine-style line partitioning plus provenance lifting | second nonlinear target |
 
-| Mechanism class | Region structure | Local expression `h_r(x)` | Typical models | Provenance representation | Compression opportunity | Prototype status |
-|---|---|---|---|---|---|---|
-| Global affine | One global region, `Omega = R^d` | `a^T x + b` | LinearRegression, Ridge, Lasso, OLS additive-noise mechanisms | affine semiring path provenance | shared causal path suffixes; compiled linear form | implemented |
-| Global basis-affine | One global region after explicit feature lifting | `a^T phi(x) + b` | polynomial regression, fixed basis expansion | symbolic expression DAG over basis tokens | shared basis subexpressions and causal paths | planned |
-| Guarded constant, or piecewise constant | Finite guarded regions, usually one per leaf | `c_r` | regression tree, numeric rule list | guard provenance plus leaf-value token | shared guard prefixes; collapse subtrees with identical leaf provenance | planned |
-| Additive guarded constant ensemble | Sum of many guarded-constant components | `sum_m c_{m,r_m}` without materializing global leaf combinations | random forest, GBDT, XGBoost/LightGBM-style tree ensembles | factorized sum of tree-level guarded provenance | avoids Cartesian-product region explosion across trees | high-priority planned |
-| Guarded affine, or piecewise affine | Finite guarded regions, one per activation/sign/segment pattern | `a_r^T x + b_r` | ReLU MLP, leaky-ReLU MLP, maxout, segmented linear models, linear splines | guard provenance plus affine template | shared activation prefixes; shared affine templates; dead-path pruning | planned |
-| Additive guarded affine | Additive sum of smaller guarded affine components | `sum_m (a_{m,r}^T x_m + b_{m,r})` | GAM-style splines, additive piecewise-linear models | factorized component-level provenance | avoids full cross-product of component regions | planned |
+Single trees are the `M=1` case of Class T. Mixed SCMs may use any of L/T/N at
+different causal nodes. Class N builds on
+[ExactLine](https://papers.nips.cc/paper_files/paper/2019/hash/908075ea2c025c335f4865f7db427062-Abstract.html)
+for numeric line partitioning and adds counterfactual provenance and indexing.
+
+KNN, rule lists, splines/GAMs, AdaBoost, sigmoid/tanh/GELU networks, RBF
+models, Gaussian processes, polynomial regression, arbitrary black boxes, and
+categorical classifiers are outside the submitted three-class claim.
+
+## Unified Index: GPSI
+
+The Guarded Provenance Segment Index has one logical and physical design for
+every supported mechanism:
+
+```text
+GPSI
+|-- local mechanism DAG
+|-- shared prefix-factorized provenance DAG
+|      reverse trie + hash-consed semiring subcircuits
+|-- optional guard-certificate DAG for raw path witnesses
+|-- segment directory: (version, unit, treatment, target)
+|      -> sorted [(left, right, alpha, beta, template_id, certificate_id)]
+|-- unit store: factual and versioned abducted-noise pointers
+`-- event indexes for FLIP and optional SUM/AVG queries
+```
+
+L produces one segment, T performs threshold tracing and breakpoint merging,
+and N performs ExactLine-style partitioning. These are three implementations
+of one `COMPILE_LINE` contract; causal composition, semiring provenance,
+template sharing, segment coalescing, and query execution remain unchanged.
+Prefix factorization is mandatory: for a fixed target, causal paths are reversed
+so shared source-to-target suffixes become shared trie prefixes. The trie
+compresses derivations; the segment directory indexes their validity.
+
+## Baselines and Theory Targets
+
+The evaluation compares GPSI against:
+
+1. DoWhy-style replay from observed data;
+2. cached-noise replay, which removes abduction but still traverses the SCM;
+3. global-region materialization;
+4. exact numeric per-unit polylines, which match point-lookup complexity but
+   omit provenance;
+5. exact provenance polylines that duplicate a full expression per segment;
+6. tree-ensemble ADD/decision-diagram compilation;
+7. unmodified numeric ExactLine for Class N.
+
+The main theoretical advantages are:
+
+- exact closure of L/T/N under causal composition for scalar interventions;
+- a Class-T non-Cartesian bound: tree partitions of sizes `b_m` require
+  at most `1 + sum_m(b_m - 1)` line intervals, rather than their product;
+- output-sensitive construction in realized guard crossings and retained
+  segments, with no potential-global-region term;
+- exact prefix storage with one node per distinct canonical reversed path
+  prefix, instead of one copy per expanded path occurrence;
+- a canonical minimum segment quotient after coalescing adjacent intervals
+  with identical normalized provenance;
+- storage `O(S + D + n*|V|)` instead of `Theta(S*L)` for per-unit full
+  expressions, where `S` is the number of realized segments and `D` is the
+  shared provenance-DAG size;
+- `POINT` in `O(log B_u)` and indexed `FLIP` in `O(log E + k)`.
+
+These are scoped claims. TESSERA does not promise universal compression or
+avoid the worst-case exponential number of realized piecewise-affine segments.
+It matches, rather than asymptotically beats, numeric polyline point lookup;
+the advantage is exact shared provenance plus indexed derived queries.
 
 ## Generic Linear cDAG Support
 
@@ -282,6 +349,7 @@ Useful flags:
 
 ```text
 README.md                                           this document
+POSITIONING.md                                      paper scope, unified index, baselines, and theorem targets
 REPO_INTRO.md                                       copy-ready repository introduction
 TODO.md                                             next steps
 requirements.txt                                    minimal Python dependencies
@@ -293,34 +361,35 @@ tests/test_linear_general.py                         correctness tests for arbit
 
 ## What This Prototype Does Not Claim
 
-This demo is intentionally narrow.
+The checked-in implementation is intentionally narrower than the paper design.
 
 It does not yet handle:
 
-- nonlinear mechanisms;
-- ReLU/tree guarded provenance;
+- the guarded segment directory;
+- tree, ensemble, or ReLU local compilers;
+- FLIP or aggregate event indexes;
 - optimized trie execution;
 - batched multi-target workload optimization.
 
-Those are the next steps in the broader TESSERA agenda. This prototype only
-establishes the linear foundation:
+Those are the next steps in the broader TESSERA agenda. The prototype only
+establishes the one-region affine foundation:
 
 > linear counterfactual replay can be represented as semiring provenance,
 > compressed as a propagation trie, and compiled into a fast query plan.
 
 ## Research Direction
 
-The larger paper direction is:
+The repositioned paper is:
 
-**TESSERA: Factorized Semiring Provenance for Counterfactual Query Processing
-over Learned SCMs**
+**TESSERA: An Exact Provenance Index for Parametric Counterfactual Queries over
+Piecewise-Affine Structural Causal Models**
 
-Planned extension path:
+The implementation path follows the unified index rather than creating a
+separate data structure for every model family:
 
-1. linear SCMs as the single-region affine baseline;
-2. decision trees as guarded constant mechanisms;
-3. tree ensembles as additive guarded-constant mechanisms that avoid global
-   leaf-combination materialization;
-4. ReLU MLPs and piecewise-linear models as guarded affine mechanisms;
-5. provenance-equivalence compression and indexing for repeated counterfactual
-   workloads.
+1. implement the generic piecewise-affine segment algebra;
+2. compile regression trees and additive tree ensembles into that algebra;
+3. add the shared reverse-prefix provenance trie/DAG and canonical segment quotient;
+4. add FLIP and aggregate event indexes;
+5. lift ExactLine pieces to Class-N counterfactual provenance;
+6. evaluate mixed SCMs and prove the bounds stated in `POSITIONING.md`.
