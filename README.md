@@ -4,19 +4,22 @@ Repository: <https://github.com/JayLZhou/CounterProvenance>
 
 TESSERA is a research prototype for **exact indexed counterfactual queries over
 learned structural causal models**. The current code implements the linear
-foundation on arbitrary causal DAGs; the paper design extends the same
-provenance semantics and physical index to trees, tree ensembles, and
-piecewise-affine neural mechanisms.
+foundation on arbitrary causal DAGs and a model-independent **Versioned
+Semiring Circuit (VSC)** core. Tree and ReLU compilers remain future work, but
+their arbitrary region-to-region ON/OFF patterns no longer require a
+staircase assumption in the storage layer.
 
 The core idea is:
 
-> Do not index model regions or cache individual answers. Index the complete
-> provenance-valued response function `Pi[u,Y](t) = Y_{u;do(T=t)}`. Store each
-> unit's maximal intervention intervals as pointers to a shared provenance DAG.
+> Compile the exact intervention line into an ordered sequence of semiring
+> circuit versions. Store every distinct `ADD`/`MUL` subcircuit once in a
+> global immutable arena, store per-unit bindings separately, and let each
+> unit-region keep only a persistent root pointer.
 
 The full mechanism class, index design, baselines, and theorem targets are in
 [`POSITIONING.md`](POSITIONING.md). The current linear trie is the one-region
-special case of that design.
+special case; `counterprovenance/versioned.py` implements the general
+arbitrary-version storage substrate.
 
 ## Why This Exists
 
@@ -68,7 +71,22 @@ KNN, rule lists, splines/GAMs, AdaBoost, sigmoid/tanh/GELU networks, RBF
 models, Gaussian processes, polynomial regression, arbitrary black boxes, and
 categorical classifiers are outside the submitted three-class claim.
 
-## Unified Index: GPSI
+## Unified Index: VSC-Backed GPSI
+
+For unit `u`, region `j`, let `P[u,j]` be its exact parameterized provenance and
+let `h_u` bind arbitrary unit-specific parameters, roots, and abducted noises.
+VSC stores the ordered family
+
+```text
+root[u,1], root[u,2], ..., root[u,B_u]
+```
+
+inside one global hash-consed arena containing `ZERO`, `ONE`, `ATOM`, `ADD`,
+`MUL`, and optional `SWITCH` nodes. At a region boundary, only changed slots
+and their affected ancestors are rebuilt. A fragment may follow
+`ON -> OFF -> ON` repeatedly; non-adjacent regions and different units still
+reuse an identical root whenever canonical structure matches. Numeric values
+remain outside the shared topology in each unit's binding `h_u`.
 
 The Guarded Provenance Segment Index has one logical and physical design for
 every supported mechanism:
@@ -76,22 +94,26 @@ every supported mechanism:
 ```text
 GPSI
 |-- local mechanism DAG
-|-- shared prefix-factorized provenance DAG
-|      reverse trie + hash-consed semiring subcircuits
-|-- optional guard-certificate DAG for raw path witnesses
-|-- segment directory: (version, unit, treatment, target)
-|      -> sorted [(left, right, alpha, beta, template_id, certificate_id)]
-|-- unit store: factual and versioned abducted-noise pointers
-`-- event indexes for FLIP and optional SUM/AVG queries
+|-- response segment directory
+|      sorted boundaries -> persistent root IDs
+|-- Versioned Semiring Circuit
+|      immutable ZERO/ONE/ATOM/ADD/MUL/SWITCH nodes
+|      batch slot updates + affected-ancestor path copying
+|      global hash-consing across regions and units
+|-- optional additive frontier optimizer
+|      maximal runs -> LCF when supports are structured
+|      linear-space stabbing-semigroup directory in compact mode
+|-- optional, finer certificate DAG and interval directory
+|-- unit store: parameter, factual-root, abducted-noise, and anchor bindings h_u
+|-- registered-threshold FLIP event indexes
+`-- declared-group SUM/AVG response maps
 ```
 
-L produces one segment, T performs threshold tracing and breakpoint merging,
-and N performs ExactLine-style partitioning. These are three implementations
-of one `COMPILE_LINE` contract; causal composition, semiring provenance,
-template sharing, segment coalescing, and query execution remain unchanged.
-Prefix factorization is mandatory: for a fixed target, causal paths are reversed
-so shared source-to-target suffixes become shared trie prefixes. The trie
-compresses derivations; the segment directory indexes their validity.
+L adds no boundary, T emits leaf changes, and N emits activation changes after
+ExactLine partitioning. All become updates to one circuit-template interface.
+The support-matrix/LCF representation remains useful at an additive circuit
+frontier, but it is no longer the universal logical model: VSC preserves
+products directly and therefore does not require expansion into neural paths.
 
 ## Baselines and Theory Targets
 
@@ -99,33 +121,51 @@ The evaluation compares GPSI against:
 
 1. DoWhy-style replay from observed data;
 2. cached-noise replay, which removes abduction but still traverses the SCM;
-3. global-region materialization;
-4. exact numeric per-unit polylines, which match point-lookup complexity but
+3. exact numeric per-unit segments, which match point-lookup complexity but
    omit provenance;
-5. exact provenance polylines that duplicate a full expression per segment;
+4. exact segments that duplicate fully expanded provenance paths;
+5. global-region materialization on tractable cases;
 6. tree-ensemble ADD/decision-diagram compilation;
 7. unmodified numeric ExactLine for Class N.
 
-The main theoretical advantages are:
+The revised theory targets are:
 
 - exact closure of L/T/N under causal composition for scalar interventions;
+- general persistent storage
+  `O(B_tot + D_0 + sum_(u,j) gamma_(u,j) + sum_u|h_u|)`, where `gamma_(u,j)`
+  is the number of new canonical nodes created by a region transition;
+- construction
+  `O(B_tot + D_0 + sum_(u,j) alpha_(u,j) + sum_u|h_u|)`, where `alpha_(u,j)`
+  includes changed slots and the affected template ancestors at that transition and
+  `gamma_(u,j) <= alpha_(u,j)`;
+- for a balanced associative block with `C` mutable slots and `k_j` changed
+  slots at one boundary, batch path copying touches
+  `O(k_j log(1 + C/k_j))` template nodes;
+- independent interval provenance stores
+  `Theta(sum_(u,j)|P[u,j]|)` nodes, while VSC keeps the same logarithmic region
+  lookup and returns a compressed root in constant time after lookup;
+- staircase is only the insert-only `k_j=1` corollary, not a required input
+  class; arbitrary deep-ReLU toggles use the same change-sensitive bound;
 - a Class-T non-Cartesian bound: tree partitions of sizes `b_m` require
   at most `1 + sum_m(b_m - 1)` line intervals, rather than their product;
-- output-sensitive construction in realized guard crossings and retained
-  segments, with no potential-global-region term;
-- exact prefix storage with one node per distinct canonical reversed path
-  prefix, instead of one copy per expanded path occurrence;
+- algebraic factorization beyond canonical subcircuit sharing remains a
+  secondary optimization: unrestricted MGPF is NP-complete, while LCF targets
+  exact/approximate algorithms for structured additive frontiers;
 - a canonical minimum segment quotient after coalescing adjacent intervals
   with identical normalized provenance;
-- storage `O(S + D + n*|V|)` instead of `Theta(S*L)` for per-unit full
-  expressions, where `S` is the number of realized segments and `D` is the
-  shared provenance-DAG size;
-- `POINT` in `O(log B_u)` and indexed `FLIP` in `O(log E + k)`.
+- `POINT` in `O(log B_u)` and registered-threshold `FLIP` in
+  `O(log E_q + k)`, including tree-induced jumps.
 
 These are scoped claims. TESSERA does not promise universal compression or
 avoid the worst-case exponential number of realized piecewise-affine segments.
 It matches, rather than asymptotically beats, numeric polyline point lookup;
 the advantage is exact shared provenance plus indexed derived queries.
+The active definitions are in
+[`TECHNICAL_DESIGN.md`](TECHNICAL_DESIGN.md); VSC and scoped MGPF/LCF proof
+drafts are in [`THEORY_PROOFS.md`](THEORY_PROOFS.md).
+[`tests/test_lcf_theory.py`](tests/test_lcf_theory.py) exhaustively checks all
+laminar families through four regions and all nonempty three-region support
+matrices against the theorem bounds and an exact rectangle-partition oracle.
 
 ## Generic Linear cDAG Support
 
@@ -185,13 +225,15 @@ bias:B  * theta:B->Y
 noise:B * theta:B->Y
 ```
 
-The valuation is:
+The valuation is shown below. The current prototype shares learned coefficients,
+while the active paper semantics generalizes each parameter token to a slot and
+allows a different binding `h_u` for every unit:
 
 ```text
 do:T        -> intervention value t'
 noise:X     -> abducted residual N_X(u)
-bias:X      -> learned intercept b_X
-theta:X->Z  -> learned coefficient w_XZ
+bias:X      -> unit binding b_X(u)
+theta:X->Z  -> unit binding w_XZ(u)
 oplus       -> numeric addition
 otimes      -> numeric multiplication
 ```
@@ -227,6 +269,33 @@ Y_cf(u, t') = constant + alpha * t' + sum_i beta_i * N_i(u)
 ```
 
 ## Current Results
+
+### Arbitrary-Toggle VSC
+
+`experiments/tessera_vsc/versioned_circuit_demo.py` starts with a random active
+set and toggles fragments at every boundary. Individual fragments repeatedly
+turn off and back on, so these workloads are deliberately not staircase.
+
+One local three-trial median run with 1,000 root queries produced:
+
+| Components | Regions | Changes/boundary | IIP node occurrences | VSC nodes + roots | Compression | Build speedup |
+|---:|---:|---:|---:|---:|---:|---:|
+| 64 | 500 | 2 | 30,852 | 3,414 | 9.04x | 12.41x |
+| 128 | 1,000 | 3 | 128,580 | 10,646 | 12.08x | 16.49x |
+| 256 | 2,000 | 4 | 506,016 | 31,422 | 16.10x | 20.05x |
+
+VSC root lookup was `146.89x`, `399.73x`, and `872.39x` faster than rebuilding
+the requested state from its event log. This is not presented as a speedup over
+IIP: both IIP and VSC already keep one indexed root per region and therefore
+have the same lookup complexity. VSC's advantage over IIP is construction and
+storage sharing while retaining that lookup time.
+
+The checked-in tests also cover mixed `ADD`/`MUL` circuits, non-idempotent
+multiplicity, cross-unit structural sharing with different numeric bindings,
+and a two-layer ReLU-style expression whose gates follow arbitrary
+`ON/OFF/ON` patterns.
+
+### Linear Foundation
 
 On the toy SCM:
 
@@ -292,6 +361,25 @@ Run with only NumPy installed:
 python experiments/tessera_linear_trie/linear_trie_demo.py
 ```
 
+Run the general non-staircase VSC benchmark:
+
+```bash
+python experiments/tessera_vsc/versioned_circuit_demo.py
+
+python experiments/tessera_vsc/versioned_circuit_demo.py \
+  --components 256 \
+  --regions 2000 \
+  --changes 4 \
+  --queries 1000 \
+  --trials 3
+```
+
+Run all correctness and exhaustive theory tests:
+
+```bash
+python -m unittest discover -s tests -p 'test_*.py' -v
+```
+
 Run a larger speed check against the lightweight NumPy replay baseline:
 
 ```bash
@@ -350,13 +438,18 @@ Useful flags:
 ```text
 README.md                                           this document
 POSITIONING.md                                      paper scope, unified index, baselines, and theorem targets
+TECHNICAL_DESIGN.md                                 active problem, semantics, algorithms, proofs, and baselines
 REPO_INTRO.md                                       copy-ready repository introduction
 TODO.md                                             next steps
 requirements.txt                                    minimal Python dependencies
 requirements-dowhy.txt                              optional DoWhy comparison dependencies
 counterprovenance/linear.py                          generic linear cDAG provenance engine
+counterprovenance/versioned.py                       persistent semiring circuit and region index
 experiments/tessera_linear_trie/linear_trie_demo.py main prototype and benchmark
+experiments/tessera_vsc/versioned_circuit_demo.py    arbitrary-toggle VSC benchmark
 tests/test_linear_general.py                         correctness tests for arbitrary linear cDAGs
+tests/test_lcf_theory.py                              exhaustive small-instance factorization verifier
+tests/test_versioned_circuit.py                       VSC, products, toggles, sharing, and space tests
 ```
 
 ## What This Prototype Does Not Claim
@@ -365,17 +458,18 @@ The checked-in implementation is intentionally narrower than the paper design.
 
 It does not yet handle:
 
-- the guarded segment directory;
-- tree, ensemble, or ReLU local compilers;
+- fitted tree, ensemble, or ExactLine/ReLU local compilers;
+- semiring-matrix compilation for a complete fitted MLP;
 - FLIP or aggregate event indexes;
-- optimized trie execution;
+- the weighted algebraic-factorization optimizer over VSC frontiers;
 - batched multi-target workload optimization.
 
-Those are the next steps in the broader TESSERA agenda. The prototype only
-establishes the one-region affine foundation:
+The prototype currently establishes two foundations:
 
-> linear counterfactual replay can be represented as semiring provenance,
-> compressed as a propagation trie, and compiled into a fast query plan.
+1. linear counterfactual replay can be represented as semiring provenance and
+   compiled into a fast query plan;
+2. arbitrary ordered provenance-circuit versions can share exact `ADD` and
+   `MUL` subcircuits without a staircase assumption.
 
 ## Research Direction
 
@@ -384,12 +478,11 @@ The repositioned paper is:
 **TESSERA: An Exact Provenance Index for Parametric Counterfactual Queries over
 Piecewise-Affine Structural Causal Models**
 
-The implementation path follows the unified index rather than creating a
-separate data structure for every model family:
+The implementation path now follows one versioned circuit substrate:
 
-1. implement the generic piecewise-affine segment algebra;
-2. compile regression trees and additive tree ensembles into that algebra;
-3. add the shared reverse-prefix provenance trie/DAG and canonical segment quotient;
-4. add FLIP and aggregate event indexes;
-5. lift ExactLine pieces to Class-N counterfactual provenance;
-6. evaluate mixed SCMs and prove the bounds stated in `POSITIONING.md`.
+1. connect Linear compilation to VSC as its one-version case;
+2. emit tree leaf-selector updates into persistent semiring sum trees;
+3. lift ExactLine activation masks to semiring selectors without path expansion;
+4. formalize change complexity `gamma` and prove the batch path-copy bound;
+5. add algebraic LCF/min-cut optimization only at suitable additive frontiers;
+6. implement FLIP/AGG and evaluate mixed SCM workloads.

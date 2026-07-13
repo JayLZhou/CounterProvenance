@@ -1,5 +1,10 @@
 # TESSERA Paper Positioning
 
+The complete problem definition and earlier GPSI/LCF design are recorded in
+[`TECHNICAL_DESIGN.md`](TECHNICAL_DESIGN.md). The active revision makes
+Versioned Semiring Circuits the general storage layer and retains MGPF/LCF as
+an additive-frontier optimizer. This file follows that revision.
+
 ## One-Sentence Positioning
 
 TESSERA is an exact database index for repeated parametric counterfactual
@@ -7,17 +12,33 @@ queries over additive-noise SCMs whose learned mechanisms are drawn from three
 classes: linear, numerical tree ensembles, and ExactLine-style piecewise-linear
 neural networks.
 
-The indexed object is not a model region and not a cached answer. For a fixed
-unit `u`, scalar intervention variable `T`, target `Y`, and model version,
-TESSERA indexes the complete provenance-valued response function
+The indexed object is not a model region and not a cached answer. For an indexed
+population `U`, scalar intervention variable `T`, target `Y`, and model version,
+TESSERA jointly indexes the complete provenance-valued response family
 
 ```text
 Pi[u,Y](t) = Y_{u; do(T=t)}.
 ```
 
-This response is piecewise affine in `t`. Each maximal interval points to a
-shared semiring-provenance template that can reproduce both the numeric answer
-and its derivation.
+Each unit response is piecewise affine in `t`. Its exact regions form an
+ordered sequence of complete semiring-circuit versions. A global immutable
+arena hash-conses `ADD` and `MUL` subcircuits; per-unit homomorphisms `h_u` bind
+arbitrary weights, roots, and noises; each unit-region stores one persistent
+root. Sharing is discovered, not assumed, and selectors may follow arbitrary
+`ON/OFF/ON` patterns.
+
+The general physical semantics is:
+
+\[
+\Pi_u(t)=h_{u,t}(R_{u,j(t)}),
+\qquad
+j(t)=\operatorname{pred}_{\mathcal B_u}(t),
+\]
+
+where `R[u,j]` is a root in the global Versioned Semiring Circuit, `B_u` is the
+sorted region-boundary directory, and `h_{u,t}=ev_t o h_u`. At a selected
+additive frontier, an optional guarded factorization may still represent roots
+as interval-valid payload bundles; it is not required by the general semantics.
 
 ## Core Workload
 
@@ -30,13 +51,19 @@ input:
   a fixed scalar treatment T
   one or more targets Y
   a bounded intervention domain [t_min, t_max]
+  optional registered (target, threshold) FLIP workloads
+  optional declared (group, target, SUM|AVG) workloads
 
 workload:
-  POINT(u, Y, t)            -> exact counterfactual value and provenance
-  FLIP(Y, threshold, range) -> units whose outcome crosses the threshold
-  AGG(group, Y, t)          -> exact SUM/AVG counterfactual response
-  EXPLAIN(u, Y, t)          -> active facts, noises, parameters, and causal paths
+  POINT(u, Y, t)                -> exact value and response provenance
+  EXPLAIN(u, Y, t, mode)        -> response derivation and optional audit witness
+  FLIP(Y, registered_q, range)  -> threshold-state changes, including tree jumps
+  AGG(declared_group, Y, t)     -> exact preprocessed SUM/AVG response
 ```
+
+The indexed FLIP bound applies only to thresholds registered at build time, and
+the indexed AGG bound applies only to declared groups. Arbitrary thresholds or
+groups remain valid replay/scan queries but do not receive those bounds.
 
 The logical provenance circuit can represent multiple interventions. The
 canonical segment index and its strongest complexity guarantees are scoped to
@@ -47,7 +74,7 @@ separate extension, not a headline claim.
 
 The paper claims exact support for exactly three mechanism classes:
 
-1. global affine mechanisms;
+1. affine mechanisms with arbitrary per-unit parameter bindings;
 2. additive numerical regression-tree ensembles;
 3. piecewise-linear neural mechanisms in the ExactLine class.
 
@@ -60,10 +87,10 @@ composition demonstrates one unified system and is not a fourth class.
 For every endogenous node `v`, TESSERA assumes
 
 ```text
-X_v = f_v(X_pa(v)) + N_v,
+X^u_v = f^u_v(X^u_pa(v)) + N^u_v,
 ```
 
-where `N_v` is the abducted unit-level noise and `f_v` has a finite
+where `N^u_v` is the abducted unit-level noise and `f^u_v` has a finite
 guarded-affine decomposition:
 
 ```text
@@ -107,20 +134,21 @@ factorization, validity indexing, and provenance-native queries.
 
 ### One Compiler Contract
 
-Every class implements the same local interface:
+Every class implements the same cell-local interface:
 
 ```text
-COMPILE_LINE(f_v, parent_responses, intervention_domain)
-  -> sorted [(left, right, alpha, beta, provenance, certificate)]
+COMPILE_CELL(f_v, parent_affine_lines, parent_provenance, interval)
+  -> sorted response pieces
+     sorted certificate pieces
 ```
 
-- L returns one segment by affine substitution.
+- L returns one response piece per inherited parent cell and adds no boundary.
 - T traces each tree independently and merges its sorted breakpoint streams.
 - N invokes an ExactLine-style partitioner and lifts every numeric piece to a
   provenance-annotated piece.
 
-All subsequent causal composition, prefix factorization, segment quotienting,
-storage, and query processing are class independent.
+All subsequent causal composition, persistent circuit versioning, segment
+quotienting, storage, and query processing are class independent.
 
 ### Explicitly Outside the Three-Class Claim
 
@@ -159,11 +187,13 @@ sum_r [guard_r(Pi[u,pa(v)](t))]
       * (bias_r + sum_p theta[r,p] * Pi[u,p](t) + noise[u,v]).
 ```
 
-The provenance vocabulary is shared by every supported model:
+The provenance vocabulary is shared by every supported model. Templates use
+unit-bindable slots rather than embedding a unit ID, which permits exact
+cross-unit structural sharing:
 
 ```text
-facts          observed root or anchor tokens
-noises         abducted unit-level noise tokens
+facts          ROOT_SLOT(v), instantiated for a unit
+noises         NOISE_SLOT(v), instantiated for a unit
 parameters     coefficients, biases, leaf values, and network weights
 interventions  the symbolic value do(T=t)
 guards         split predicates or activation signs
@@ -191,34 +221,44 @@ GPSI
 |-- Local Mechanism DAG
 |     exact guarded-affine representation of each fitted f_v
 |
-|-- Shared Prefix-Factorized Provenance DAG
-|     reverse trie over canonical target-oriented derivation paths
-|     hash-consed ADD/MUL/ATOM/reference nodes across templates and units
+|-- Versioned Semiring Circuit Arena
+|     immutable ZERO/ONE/ATOM/ADD/MUL/SWITCH nodes
+|     global hash-consing across regions and units
 |
-|-- Guard Certificate DAG
-|     optional raw split/activation witnesses for audit queries
+|-- Persistent Version Builder
+|     batch slot changes -> affected ancestors -> canonical region roots
 |
-|-- Segment Directory
+|-- Response Segment Directory
 |     (model_version, unit, treatment, target)
-|       -> sorted [(left, right, alpha, beta, template_id, certificate_id)]
+|       -> sorted numeric regions + VSC root IDs
+|
+|-- Optional Additive-Frontier Optimizer
+|     MGPF/LCF + maximal runs + stabbing-semigroup directory
+|
+|-- Certificate DAG and Directory
+|     optional, possibly finer split/activation witness intervals
 |
 |-- Unit Store
-|     factual anchor pointer + versioned abducted-noise pointer
+|     parameter/bias/root/noise/anchor bindings h_u
 |
-`-- Secondary Event Indexes
-      sorted threshold crossings for FLIP
-      optional preaggregated segment maps for SUM/AVG
+|-- Registered FLIP Event Index
+|     (model_version, target, registered_threshold)
+|       -> continuous, jump, and plateau threshold-state events
+|
+`-- Declared Aggregate Directory
+      preprocessed piecewise-affine SUM/AVG maps
 ```
 
 There is no separate linear index, tree index, and neural index. Every
-mechanism supplies only a local guard-crossing compiler. Causal composition,
-template reduction, segment coalescing, storage, and query processing are
-shared.
+mechanism supplies local boundaries and slot changes. Causal composition,
+version construction, segment coalescing, storage, and query processing are
+shared. Staircase and laminarity may trigger specialized optimizers, but are
+not required by the general index.
 
 ### Construction
 
-For each unit and target workload, the compiler proceeds in causal topological
-order:
+The local compiler first proceeds independently for each unit in causal
+topological order:
 
 ```text
 COMPILE(M, u, T, domain):
@@ -232,10 +272,12 @@ COMPILE(M, u, T, domain):
       continue
 
     parent_partition <- merge breakpoints of response[pa(v)]
-    candidate <- compose local_mechanism[v] with response[pa(v)]
-    refined <- split candidate only at exact guard crossings
-    normalized <- intern provenance templates in the shared DAG
+    for each parent cell:
+      response_pieces, certificate_pieces <-
+          COMPILE_CELL(local_mechanism[v], parent lines, parent roots, cell)
+    normalized <- intern response templates and certificates in separate DAGs
     response[v] <- coalesce adjacent response-provenance-equivalent segments
+    certificates[v] <- retain the possibly finer audit partition
 
   return response
 ```
@@ -244,71 +286,91 @@ The compiler never enumerates all global model regions. It visits only regions
 reached by the one-dimensional intervention trajectory and retains only
 maximal intervals with distinct provenance.
 
-### Mandatory Prefix Factorization
+After each unit is compiled, GPSI orders its exact regions and diffs the mutable
+mechanism/activation slots at every boundary. VSC instantiates the first
+circuit, then path-copies only the affected ancestor closure for each later
+version. Every version stores one root ID in the region directory. All units
+use the same immutable arena, so identical subcircuits and recurring complete
+roots share automatically.
 
-Prefix sharing is a required physical invariant of GPSI, not an optional
-model-specific optimization. Every provenance derivation is serialized in a
-canonical token order. For a fixed target, source-to-target causal paths are
-reversed before insertion, so a common suffix near the target becomes a common
-trie prefix.
+### Persistent Circuit Sharing and Optional Factorization
+
+Numeric parameters are represented by slots and bound by `h_u`. Canonical
+operator nodes preserve both semiring addition and multiplication, including
+non-idempotent multiplicity. The general sharing unit is therefore a complete
+subcircuit rather than an expanded path or additive fragment.
 
 ```text
-source * theta:e1 * theta:e2 * theta:e3
-
-stored as
-
-theta:e3 -> theta:e2 -> theta:e1 -> source
+region j:     root_j -> ADD(MUL(...), ...)
+region j+1:   root_k -> ADD(shared_subcircuit, changed_subcircuit)
 ```
 
-This gives three forms of exact sharing:
+Linear path provenance may still use the existing reverse trie because it is a
+compact specialization of this arena. Tree ensembles may use a balanced
+semiring sum template. ReLU networks retain activation selectors inside mixed
+`ADD/MUL` templates, avoiding mandatory expansion into exponentially many
+neural paths.
 
-- causal propagation prefixes are shared by the reverse provenance trie;
-- tree split or neural activation prefixes are shared by local mechanism DAGs;
-- identical trie/subcircuit nodes are hash-consed across segment templates and
-  units, turning the collection of tries into one shared DAG.
+This gives three forms of exact sharing without requiring support nesting:
 
-Repeated template-ID sequences may additionally be dictionary encoded, but
-every unit-specific numeric breakpoint, slope, and intercept is retained unless
-it has an exactly shared representation. A suffix automaton, BST, or ANN is not
-the primary abstraction.
+- unchanged template subcircuits persist between adjacent regions;
+- recurring non-adjacent activation/leaf patterns reuse old roots;
+- structurally identical nodes are hash-consed across units while bindings stay
+  independent.
 
-A trie is not the whole index: it compresses derivations inside templates,
-while the segment directory indexes where each template is valid. These are
-orthogonal dimensions of compression.
+At a declared additive frontier, population MGPF/LCF may further factor
+frontier roots and store their maximal guard runs in a stabbing-semigroup
+directory. This optional layer never replaces the full circuit semantics.
 
 ## Baselines
 
 Let:
 
 ```text
-n   number of units
-C_Q cost of replaying the causal slice for one unit and query
-B_u number of maximal provenance segments for unit u
-S   sum_u B_u
-L   average size of an unfactorized provenance expression per segment
-D   number of nodes in the shared prefix-factorized provenance DAG
-E   number of materialized threshold-crossing events
-k   output size of a reporting query
+n             number of units
+C_Q           cost of replaying the causal slice for one unit and query
+B_u           number of maximal response regions for unit u and one target
+B_tot         total retained response regions, sum_u B_u
+B_c           number of certificate regions
+H             total per-unit binding records, sum_u |h_u|
+L[u,j]        size of region (u,j)'s independently materialized circuit
+D_ind         independent-circuit occurrences, sum_(u,j) L[u,j]
+D_0           atoms, templates, and first-version canonical arena nodes
+alpha[u,j]    changed slots plus recomputed ancestors at transition (u,j)
+gamma[u,j]    newly interned arena nodes; gamma[u,j] <= alpha[u,j]
+A             total affected work, sum_(u,j) alpha[u,j]
+G             total newly interned nodes, sum_(u,j) gamma[u,j]
+D_c           nodes in the optional certificate DAG
+F,K,D_f       optional additive-factor roots, guard runs, and factor-DAG nodes
+E_q           events for one registered threshold q
+k             output size of a reporting query
 ```
 
 | Baseline | What it stores | Point-query work | Space | Missing capability |
 |---|---|---:|---:|---|
 | B0: DoWhy-style replay | nothing reusable | `O(n*C_Q)` for all units; may repeat abduction | `O(1)` beyond model/data | no indexed provenance or structural FLIP query |
 | B1: cached-noise replay | abducted noises | `O(n*C_Q)` without abduction | `O(n*|V|)` | still traverses every active mechanism per query |
-| B2: global-region materialization | one record per global leaf/activation combination | lookup after potentially exponential construction | proportional to materialized global regions | enumerates unreachable and duplicate provenance regions |
-| B3: numeric per-unit polyline | boundaries plus numeric slope/intercept | `O(log B_u)` | `Theta(S)` | matches point lookup but cannot return derivation provenance |
-| B4: provenance per-unit polyline | every segment with a full affine expression | `O(log B_u)` | `Theta(S*L)` | duplicates templates and causal subexpressions |
+| B2: numeric per-unit segment index | boundaries plus numeric slope/intercept | `O(log B_u)` | `Theta(B_tot)` | matches point lookup but cannot return derivation provenance |
+| B3: independent provenance per interval (IIP) | one complete exact circuit and root for every `(unit,region)` | `O(log B_u)`; expansion adds output | `Theta(B_tot+D_ind+H)` | duplicates unchanged subcircuits across regions and units |
+| B4: global-region materialization | one record per global leaf/activation combination | lookup after potentially exponential construction | proportional to materialized global regions | enumerates unreachable combinations |
 | B5: tree-ensemble ADD/decision diagram | tree predicates and numeric terminals | diagram traversal | diagram-dependent | no abducted-noise, causal-path, or unit segment semantics |
-| B6: ExactLine | exact numeric affine pieces for one PWL neural input line | `O(log B_u)` after construction | `Theta(S)` numeric pieces | no SCM abduction, typed provenance, cross-unit sharing, or derived indexes |
-| TESSERA GPSI | maximal segments plus pointers to a shared provenance DAG | `O(log B_u)` per unit | `O(S + D + n*|V|)` | deliberately supports only L/T/N |
+| B6: ExactLine | exact numeric affine pieces for one PWL neural input line | `O(log B_u)` after construction | `Theta(B_tot)` numeric pieces | no SCM abduction, typed provenance, cross-unit sharing, or derived indexes |
+| **TESSERA VSC-Core** | region boundaries, one persistent root per region, global canonical arena, and unit bindings | **POINT/root `O(log B_u)`; expanded EXPLAIN adds output** | **`O(B_tot+D_0+G+H)`** | deliberately supports only L/T/N |
+| TESSERA VSC+AF | VSC-Core plus optional additive-frontier factors and maximal guard runs | VSC lookup plus factor reporting | Core plus `O(F+K+D_f)` | optimizer applies only at declared additive frontiers |
+| TESSERA VSC-Audit | Core plus exact guard witnesses | Core plus audit lookup | Core plus `O(B_c+D_c)` | optional extra audit storage |
 
-B1 and B3 are the strongest speed baselines. TESSERA does not claim a better
-asymptotic point lookup than a numeric polyline; it matches that bound while
-retaining exact derivation provenance. B4 is the storage baseline for that
-additional capability. B2 exposes the asymptotic benefit of
-trajectory-sensitive factorization. B5 is the required Class-T compilation
-baseline. B6 is the required Class-N line-partition baseline and isolates the
-cost and benefit of provenance lifting.
+B1 and B2 are the strongest replay and numeric-lookup baselines. B3 is the
+primary provenance-storage baseline: both B3 and VSC store an indexed root per
+region, so VSC does **not** claim a faster asymptotic root lookup than B3. Its
+advantage over B3 is change-sensitive construction and storage when
+`A << D_ind` or `G << D_ind`. In the worst case `A,G=Theta(D_ind)`, and no
+compression is guaranteed. Against an event-log baseline that reconstructs a
+version at query time, VSC additionally replaces event replay with one indexed
+root lookup; that is a different comparison and must be reported separately.
+
+B4 exposes the benefit of trajectory-sensitive compilation. B5 is the required
+Class-T compilation baseline. B6 is the required Class-N line-partition
+baseline and isolates the cost and benefit of provenance lifting.
 
 Per-class comparisons are fixed:
 
@@ -319,206 +381,131 @@ Per-class comparisons are fixed:
 
 ## Related-Work Boundary
 
-The novelty cannot be semiring provenance, circuit sharing, or decision-diagram
-reduction by itself. Those ideas already have established formulations in
+The novelty cannot be semiring provenance, hash-consing, path copying, dynamic
+expression trees, or decision-diagram reduction by itself. Those ideas already
+have established formulations in
 [provenance semirings](https://repository.upenn.edu/entities/publication/f1141264-46ee-4d61-b5ea-4ee75fb8d1be),
 [factorized databases](https://ora.ox.ac.uk/objects/uuid%3A9116c474-1e8a-4d63-943e-e0d038454f25),
+[persistent data structures](https://www.sciencedirect.com/science/article/pii/0022000089900342),
+[dynamic expression trees](https://cs.brown.edu/research/pubs/techreports/reports/CS-90-35.html),
 and [tree-ensemble compilation to algebraic decision diagrams](https://eldorado.tu-dortmund.de/server/api/core/bitstreams/41b47e64-79f2-47fa-baf2-91e0dcf8df6c/content).
 Likewise, [ExactLine](https://papers.nips.cc/paper_files/paper/2019/hash/908075ea2c025c335f4865f7db427062-Abstract.html)
 already computes exact numeric affine partitions of piecewise-linear neural
 networks along one input line. TESSERA treats it as the Class-N local compiler
 and baseline, not as the provenance or index contribution.
 
-TESSERA's contribution is their counterfactual-query-specific composition:
+The optional support crossing graph is also not claimed as new. Work on
+[nested and 2-nested matrices](https://arxiv.org/abs/1906.11970) uses the same
+neither-disjoint-nor-nested conflict relation, under an additional consecutive-
+ones requirement. Existing
+[co-chordal biclique-partition algorithms](https://doi.org/10.1016/j.dam.2023.05.001)
+also establish exact graph subclasses. MGPF/LCF therefore remains a scoped
+secondary optimizer until its weighted objective and counterfactual-realizable
+hardness are complete.
+
+TESSERA's claimed contribution is the counterfactual-query-specific problem
+definition and algorithmic composition, rather than any component in
+isolation:
 
 1. abduction produces versioned unit-level noise atoms;
 2. causal composition produces a provenance-valued parametric response, not
    merely a predictor decision diagram;
-3. the scalar intervention line induces a canonical maximal-interval quotient;
-4. the index shares derivation templates while retaining unit-specific numeric
-   segments;
-5. threshold crossings and aggregates become indexed database queries.
+3. exact L/T/N compilers turn the scalar intervention line into a canonical
+   ordered sequence of response regions and circuit-slot deltas;
+4. VSC applies those deltas to mixed `ADD/MUL` templates, preserves unchanged
+   subcircuits, and hash-conses recurring roots across non-adjacent regions and
+   units without any staircase or laminarity precondition;
+5. the change-sensitive analysis separates recomputation work `A` from newly
+   stored canonical nodes `G`, including a balanced batch-update bound;
+6. optional MGPF/LCF and stabbing-semigroup layouts optimize only selected
+   additive frontiers and never define the general logical semantics;
+7. registered threshold-state changes, including tree jumps, and declared
+   aggregates become indexed database queries.
 
 ## Theoretical Advantages
 
-The paper should prove the following claims. They are stronger and more
-specific than a generic statement that prefix sharing saves space.
+The active definitions are in `TECHNICAL_DESIGN.md`; proof drafts for VSC and
+the scoped MGPF/LCF optimizer are in `THEORY_PROOFS.md`.
+The revised paper theory has four layers rather than a flat list of storage
+bounds.
 
-### Theorem 1: Exact Compositional Closure
+### Layer 1: Exact Counterfactual Semantics
 
-For an acyclic additive-noise SCM whose mechanisms are finite
-guarded-affine and exactly line-intersectable, fixing a unit and one scalar
-intervention variable yields a finite piecewise-affine provenance function at
-every descendant node. GPSI construction returns exactly that function.
-
-Proof direction: induction over the causal topological order. Affine
-substitution preserves affine expressions on each current interval. A finite
-set of exact guard crossings produces a finite refinement. Addition of the
-fixed noise token preserves the local form.
-
-### Theorem 2: Additive Non-Cartesian Bound
-
-Suppose an additive mechanism has components `f_1, ..., f_M`. On one parent
-interval, component `m` induces `b_m` subintervals along the intervention line.
-The exact common refinement for their sum contains at most
+For an acyclic additive-noise SCM whose nodes use L/T/N, fixing a unit and one
+bounded scalar intervention yields a finite, possibly discontinuous,
+piecewise-affine guarded provenance response at every relevant node. GPSI
+construction returns exactly that response. For a tree ensemble, component
+partitions of sizes `b_m` induce at most
 
 ```text
 1 + sum_m (b_m - 1)
 ```
 
-intervals. A component-combination baseline can materialize up to
+line intervals rather than a Cartesian product. Formal provenance equality is
+proved first in a free semiring and is then preserved by every per-unit binding
+`h_u` and value/lineage homomorphism.
+
+### Layer 2: Versioned Semiring Circuits
+
+Let `alpha[u,j]` include the changed slots and their affected template ancestor
+closure at a region transition, and let `gamma[u,j]` be the canonical nodes
+that are actually new after global interning. Batched path copying is exact for
+arbitrary slot changes and `gamma[u,j] <= alpha[u,j]`. The general bounds are:
+
+\[
+T_{build}=O(B_{tot}+D_0+A+H),
+\qquad
+S_{VSC}=O(B_{tot}+D_0+G+H).
+\]
+
+For a height-balanced associative block with `C` mutable leaves and `k[u,j]`
+changed leaves at one boundary:
+
+\[
+\alpha[u,j]
+=O\!\left(k[u,j]\log\left(1+\frac{C}{k[u,j]}\right)\right).
+\]
+
+This is a change-sensitive upper bound, not universal compression: an arbitrary
+mixed circuit can have `alpha[u,j]=Theta(D_0)`, and every recomputed node may be
+new. The remaining theory obligation is a matching lower bound under an
+explicit representation or machine model; canonical hash-consing alone is not
+claimed as globally optimal algebraic minimization.
+
+### Layer 3: Optional Algebraic Factorization
+
+For a declared additive frontier, occurrence lifting yields a
+`(unit,region)`-by-fragment support matrix. Its exact guarded rectangle
+factorization is MGPF. In that restricted representation, the existing draft
+establishes an NP-completeness boundary, the rank lower bound
+`F* >= rank_R(M)`, laminar optimality, and a produced-cover guarantee
+`F_LCF <= ell*F*`.
+
+These results apply only after choosing that additive frontier. They do not
+justify expanding a general ReLU circuit into additive paths, and they do not
+replace VSC's mixed `ADD/MUL` semantics. Before submission, factor-root count,
+payload references, and guard runs must be unified into one weighted storage
+objective and the hardness reduction must be realized by a restricted
+counterfactual mechanism family.
+
+### Layer 4: Physical Index and Query Bounds
+
+The primary response directory stores sorted starts and one VSC root per
+region. It gives:
 
 ```text
-product_m b_m
+POINT                    O(log B_u)
+compressed-root EXPLAIN  O(log B_u)
+expanded EXPLAIN         O(log B_u + output_size)
+registered FLIP          O(log E_q + k)
+declared AGG             O(log B_group)
 ```
 
-combinations. Thus Class-T tree ensembles admit an exact sum-sized line index
-without a Cartesian-product region construction.
-
-This theorem does not claim that the full SCM is polynomial in the worst case;
-causal composition can still generate exponentially many realized segments.
-
-Proof direction: component `m` contributes at most `b_m - 1` internal
-breakpoints. The common refinement is induced by the union of those breakpoint
-sets, whose cardinality is at most their sum. Taking a Cartesian product of
-component segment IDs is therefore unnecessary on a line.
-
-### Theorem 3: Output-Sensitive Construction
-
-Let `H` be the number of local guard/circuit nodes inspected on the realized
-intervention trajectories, `C` the number of exact crossing events emitted by
-local compilers, and `S_all` the number of segments retained across all
-materialized intermediate responses. With sorted breakpoint merging and
-hash-consing, GPSI can be constructed in
-
-```text
-O(H + C*log(C + 1) + S_all + D)
-```
-
-time and `O(S_all + D)` working space, in addition to the unit noise store. The
-bound contains no term for the number of potential global activation/leaf
-regions. If a local compiler emits crossings already sorted, its sorting term
-reduces to linear multiway-merge cost.
-
-Any explicit exact segment index needs `Omega(S)` time and space merely to
-write its final segment records. GPSI is therefore output-sensitive and
-optimal in final segment output size up to local guard inspection, sorting,
-and provenance construction.
-
-This theorem is parameterized by the L/T/N local compiler. L has no crossings;
-T counts visited split nodes; N inherits ExactLine-style layer/segment work.
-The theorem does not hide that `H`, `C`, and `S_all` can be exponential in a
-worst-case deep piecewise-linear SCM.
-
-### Theorem 4: Exact Prefix-Factorization Bound
-
-Let `P_occ` be the multiset of canonical target-oriented token-path occurrences
-in the materialized provenance templates, let `P_distinct` be its set of
-distinct paths, and let
-
-```text
-L_expanded = sum_{p in P_occ} |p|.
-```
-
-An expanded path store uses `Theta(L_expanded)` token slots. The reverse trie
-uses exactly
-
-```text
-1 + |Pref(P_distinct)|
-```
-
-nodes, where `Pref(P_distinct)` is the set of distinct non-empty path prefixes.
-Hence
-
-```text
-1 + |Pref(P_distinct)| <= 1 + L_expanded,
-```
-
-with a strict inequality whenever a path is repeated or two distinct
-derivations share a non-empty reversed causal prefix. For the fixed canonical
-token order, every exact trie must distinguish all distinct prefixes, so this
-representation is minimum among tries respecting that order. Subsequent
-hash-consing can merge additional isomorphic subcircuits without weakening the
-bound.
-
-Proof direction: root-to-leaf trie paths are in one-to-one correspondence with
-the canonical provenance paths. Each trie node corresponds to exactly one
-distinct prefix. Semiring branching preserves addition and edge traversal
-preserves multiplication, so trie evaluation is exactly the expanded
-provenance polynomial.
-
-### Theorem 5: Canonical Minimum Segment Quotient
-
-Define two adjacent intervals as equivalent when their normalized contributing
-provenance templates are identical, including parameter, noise, intervention,
-and causal-path tokens. The interval directory itself is the normalized guard.
-The union of two adjacent interval guards is again one interval, so repeatedly
-coalescing equivalent neighbors produces the unique partition into maximal
-connected response-provenance-equivalence classes.
-
-Raw activation signatures or tree-path witnesses may differ across a merged
-interval. If requested, they remain in the optional certificate DAG as a finer
-audit view; they are not part of the minimum response-index equivalence.
-
-For a fixed unit, treatment, target, model version, and canonical template
-normalization, every exact interval index that stores one template per interval
-requires at least `B_u` intervals. GPSI stores exactly `B_u`.
-
-This is the main minimality theorem. It is intentionally restricted to the
-ordered one-dimensional interval-index class; it does not claim globally
-minimum arbitrary arithmetic circuits.
-
-Proof direction: every boundary retained by the reduced partition separates
-two unequal response-provenance templates. Any exact interval leaf crossing
-that boundary would assign one template to two different responses and is
-therefore unsound. Hence every exact interval index must retain every reduced
-boundary. Coalescing removes all and only the unnecessary boundaries.
-
-### Theorem 6: Factorized Storage Bound
-
-An exact provenance per-unit polyline baseline uses `Theta(S*L)` expression
-slots. A numeric-only polyline already uses `Theta(S)` and is therefore the
-matching lower-space speed baseline. GPSI adds exact shared provenance using
-
-```text
-O(S + D + n*|V|)
-```
-
-space: one boundary, numeric affine payload, and template pointer per maximal
-segment, one shared copy of each canonical provenance-DAG node, and one
-unit-level noise vector.
-
-Strict provenance compression is workload dependent. In the worst case every
-provenance template is unique, and any exact representation needs `Omega(S)`
-segment records. The theorem provides a dominance bound and a matching
-lower-bound story rather than an invalid universal compression claim.
-
-### Theorem 7: Indexed Query Bounds
-
-With sorted segment boundaries:
-
-```text
-POINT(u, Y, t) = O(log B_u)
-```
-
-because each segment materializes its numeric `alpha*t + beta` payload. Emitting
-the requested provenance additionally costs the size of the returned active
-template or witness. With sorted crossing events:
-
-```text
-FLIP(range) = O(log E + k).
-```
-
-Without a crossing index, replay or per-unit curve evaluation must inspect all
-`n` units to discover the same answer. For predeclared groups, an aggregated
-piecewise-affine map supports numeric `SUM/AVG(Y(t))` lookup in logarithmic
-time after preprocessing.
-
-Proof direction: point lookup is predecessor search over sorted boundaries.
-Flip lookup is a range query over sorted crossing events followed by reporting.
-For an unindexed collection of per-unit responses, an unseen unit can always
-contain the only qualifying crossing, giving an `Omega(n)` inspection lower
-bound in the worst case.
+The optional additive-frontier directory stores maximal guard runs in linear
+space in its own `K`. Any cache or factor DAG is reported in addition to the
+VSC bound, never hidden inside it. VSC matches the point-lookup complexity of a
+numeric polyline and IIP; its primary benefit there is provenance retention and
+shared storage, not a stronger lookup asymptotic.
 
 ## Paper Claims and Non-Claims
 
@@ -527,36 +514,62 @@ bound in the worst case.
 1. Counterfactual replay over L/T/N and their mixed SCM compositions has an
    exact guarded semiring-provenance semantics.
 2. A scalar intervention induces a finite provenance-valued piecewise-affine
-   response that can be indexed directly.
-3. GPSI factorizes causal paths, additive mechanism components, provenance
-   templates, and unit-specific segment boundaries without global-region
-   enumeration.
-4. Canonical provenance paths are stored once per distinct reversed prefix.
-5. The reduced segment directory is canonical and minimum within the exact
-   one-dimensional interval-index class.
-6. POINT, FLIP, AGG, and EXPLAIN become storage operations rather than fresh
+   response, and exact compilers enumerate only regions reached along that
+   intervention line.
+3. VSC represents every compiled region sequence exactly under arbitrary slot
+   toggles, including `ON/OFF/ON`, while preserving mixed semiring `ADD/MUL`.
+4. VSC construction is change sensitive: it costs
+   `O(B_tot+D_0+A+H)` and stores `O(B_tot+D_0+G+H)`, with `G<=A`; balanced
+   associative blocks satisfy the batch path bound in Layer 2.
+5. Global hash-consing reuses identical subcircuits and recurring roots across
+   adjacent regions, non-adjacent regions, and units, while per-unit bindings
+   remain independent.
+6. The reduced response directory is canonical and minimum within the exact
+   one-dimensional interval partition induced by normalized provenance
+   equality.
+7. POINT and EXPLAIN use primary indexes; registered-threshold FLIP and
+   declared-group AGG use workload-aware secondary indexes rather than fresh
    SCM replays.
+8. At explicitly declared additive frontiers, MGPF/LCF supplies an additional
+   scoped factorization layer with separately reported storage and query cost.
 
 ### Non-Claims
 
 1. GPSI does not exactly support every sklearn-compatible DoWhy predictor.
-2. GPSI does not guarantee compression when every unit and segment has unique
-   provenance.
-3. GPSI does not avoid worst-case exponential piecewise complexity.
-4. GPSI does not make multi-dimensional exact point location cheap.
-5. The current repository implements only the one-region affine foundation;
-   Class-T and Class-N compilers remain to be built and evaluated.
+2. Canonical VSC is not claimed to be the smallest algebraically equivalent
+   circuit; unrestricted rewriting may identify more equivalences.
+3. VSC does not guarantee compression when every transition changes a large
+   cone and produces unique nodes; `A,G` can match independent materialization.
+4. VSC does not beat the asymptotic root-lookup time of an indexed numeric
+   polyline or IIP. Query-time speedup over event replay is a separate result.
+5. The optional `ell` approximation applies to additive factor-root count, not
+   arbitrary `ADD/MUL` circuits or serialized bytes; general ReLU need not have
+   small `ell`.
+6. Reset min-cut optimality applies only to its declared hierarchical reset
+   family, not all equivalent circuits or serialized layouts.
+7. GPSI does not avoid worst-case exponential piecewise complexity.
+8. GPSI does not make multi-dimensional exact point location cheap.
+9. GPSI does not provide the indexed FLIP/AGG bounds for arbitrary online
+   thresholds or groups.
+10. The current repository implements the linear foundation and the generic
+    VSC substrate; fitted Class-T and Class-N compilers remain to be built and
+    evaluated.
 
 ## Required Experimental Story
 
-The evaluation must separate four effects:
+The evaluation must separate five effects:
 
 1. **Semantics:** exact agreement with DoWhy-style abduction-action-prediction.
-2. **Region avoidance:** realized segments versus potential global regions.
-3. **Factorization:** expanded path slots versus distinct trie prefixes, and
-   `Theta(S*L)` per-unit polyline storage versus `O(S+D)` GPSI storage.
-4. **Indexing:** POINT, FLIP, and AGG latency versus cached-noise replay and
-   exact per-unit polyline baselines.
+2. **Compilation:** realized line regions versus potential global
+   leaf/activation combinations, compiler time, and exact boundary agreement.
+3. **Persistence:** `B_tot,D_ind,D_0,A,G,H`, unique roots, recurring roots,
+   changed slots, affected nodes, and serialized bytes versus IIP.
+4. **Querying:** indexed VSC root lookup versus event replay; POINT and expanded
+   EXPLAIN versus cached-noise replay, numeric segments, and IIP. Results must
+   not label VSC lookup as a speedup over IIP when both store region roots.
+5. **Optional factorization:** at declared additive frontiers only, report
+   `rank(M),ell,F,F*,K,D_f` and bytes separately; small instances use the exact
+   ILP oracle.
 
 Required mechanism classes:
 
@@ -568,14 +581,22 @@ Required mechanism classes:
 Required plots:
 
 - realized segment count versus model size and causal depth;
-- unique provenance-template count versus population size;
-- expanded provenance token slots versus reverse-trie prefixes and DAG nodes;
-- index size and build time versus exact per-unit polyline;
+- `A/D_ind`, `G/D_ind`, unique-root ratio, index bytes, and build time versus
+  changed slots per boundary, template size, repeated patterns, and population;
+- VSC storage and construction versus IIP for random non-staircase updates,
+  fitted tree ensembles, fitted ReLU MLPs, and mixed SCMs;
+- root lookup versus event replay, while showing that VSC and IIP have the same
+  indexed lookup asymptotic;
 - query latency versus number of units and number of repeated intervention
   values;
-- FLIP latency versus output selectivity;
+- registered-threshold FLIP latency versus output selectivity, including
+  continuous and tree-jump events;
 - retraining invalidation/rebuild cost, without claiming that only templates
   change.
+
+Optional-factorization plots report support crossing, rank/ILP gaps, guard
+runs, factor-DAG nodes, and bytes in a separate ablation. They cannot substitute
+for the primary VSC-versus-IIP result.
 
 ## Recommended Paper Title
 

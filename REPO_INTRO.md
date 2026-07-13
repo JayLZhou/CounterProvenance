@@ -8,21 +8,22 @@ linear, tree-based, and piecewise-affine structural causal models.
 ## One-Paragraph Intro
 
 TESSERA studies how to compile repeated counterfactual workloads over learned
-additive-noise SCMs into a Guarded Provenance Segment Index. For a fixed unit,
-scalar treatment, and target, the index represents the complete response
-`Pi[u,Y](t) = Y_{u;do(T=t)}` as maximal intervention intervals pointing to a
-shared semiring-provenance DAG. Linear mechanisms produce one interval; tree
-thresholds and ReLU activations refine the same index through exact guard
-crossings. The checked-in prototype implements the linear foundation over
-arbitrary cDAGs and validates it against DoWhy-GCM.
+additive-noise SCMs into a Versioned Semiring Circuit index. For an indexed
+population, scalar treatment, and target, the exact intervention line becomes
+an ordered sequence of provenance-circuit versions. A global immutable arena
+stores each `ADD`/`MUL` subcircuit once, each region stores a root pointer, and
+per-unit bindings retain independent parameters, roots, and abducted noises.
+The checked-in prototype implements the linear foundation and a general VSC
+core with arbitrary `ON/OFF/ON` selector changes, cross-unit hash-consing, and
+indexed region lookup.
 
 ## Paper Positioning
 
 **TESSERA: An Exact Provenance Index for Parametric Counterfactual Queries over
 Piecewise-Affine Structural Causal Models**
 
-The submitted system claims exactly three mechanism classes: L, global affine
-regressors; T, additive numerical regression-tree ensembles, with a single tree
+The submitted system claims exactly three mechanism classes: L, affine
+regressors with arbitrary per-unit parameter bindings; T, additive numerical regression-tree ensembles, with a single tree
 as `M=1`; and N, ReLU-style piecewise-linear neural mechanisms handled by an
 ExactLine-style local compiler. Mixed SCMs may use L, T, and N at different
 causal nodes. Other model families are explicitly outside the paper claim.
@@ -31,38 +32,41 @@ causal nodes. Other model families are explicitly outside the paper claim.
 
 The Guarded Provenance Segment Index contains:
 
-- a local guarded-affine mechanism DAG;
-- a shared reverse-prefix trie with hash-consed semiring-provenance subcircuits;
-- a per-unit sorted segment directory of validity intervals and template IDs;
-- versioned factual/noise pointers;
-- secondary threshold-crossing indexes for FLIP queries and optional aggregate
-  response indexes.
+- a local exact L/T/N mechanism compiler and response-segment directory;
+- a global immutable arena of `ZERO/ONE/ATOM/ADD/MUL/SWITCH` nodes;
+- persistent region versions built by batch slot updates and affected-ancestor
+  path copying;
+- one root pointer per `(unit,region)`, globally hash-consed across versions and
+  units;
+- optional LCF/min-cut and stabbing-semigroup optimization at additive circuit
+  frontiers;
+- separate response and optional finer certificate interval directories;
+- versioned parameter/factual/noise/anchor slot bindings `h_u`;
+- registered-threshold FLIP events and declared-group aggregate responses.
 
-There is no independent tree index or neural index. L/T/N only provide three
-implementations of one `COMPILE_LINE` contract; causal composition, prefix
-factorization, segment reduction, storage, and query execution are shared.
+There is no independent tree index or neural index. L/T/N emit different local
+boundary and selector events into one VSC substrate. Staircase and laminar
+patterns are optional optimizable cases, not input assumptions.
 
 ## Theoretical Spine
 
-The paper targets seven formal results:
+The revised theory has four layers:
 
-1. exact piecewise-affine closure of L/T/N under causal composition;
-2. a sum-sized interval bound for Class-T ensembles instead of a Cartesian
-   leaf-combination construction;
-3. output-sensitive construction in realized guard crossings and segments,
-   independent of the potential global-region count;
-4. exact prefix factorization with one node per distinct canonical reversed
-   path prefix;
-5. a canonical minimum segment quotient within exact one-dimensional interval
-   indexes;
-6. `O(S + D + n*|V|)` factorized storage versus `Theta(S*L)` per-unit full
-   expressions;
-7. `O(log B_u)` point lookup and `O(log E + k)` indexed flip reporting.
+1. exact piecewise-affine closure of L/T/N, semiring soundness, and the
+   non-Cartesian Class-T breakpoint bound;
+2. exact persistent-version semantics and change-sensitive storage
+   `O(B_tot + D_0 + sum gamma_u,j + bindings)`;
+3. a balanced batch-update bound
+   `alpha_u,j = O(k_u,j log(1 + C/k_u,j))`, with
+   `gamma_u,j <= alpha_u,j`;
+4. secondary algebraic factorization: general hardness, exact structured
+   subclasses, and physical interval indexing at additive frontiers.
 
 The design explicitly allows worst-case exponential realized segments and does
-not claim universal compression.
+not claim arbitrary-circuit minimality, universal compression, or that every
+deep-ReLU boundary changes only a small affected cone.
 
-## Current Linear Foundation
+## Current Implementation
 
 The repository currently demonstrates that:
 
@@ -72,10 +76,17 @@ The repository currently demonstrates that:
 - expanded propagation paths can be compressed with a reverse trie;
 - the provenance can be compiled into a vectorized closed-form evaluator;
 - the evaluator matches DoWhy-GCM counterfactual samples to floating-point
-  error and accelerates repeated queries.
+  error and accelerates repeated queries;
+- VSC preserves non-idempotent semiring multiplicity and mixed `ADD`/`MUL`;
+- arbitrary non-staircase selector sequences share persistent circuit versions;
+- identical non-adjacent and cross-unit roots are hash-consed while numeric
+  bindings remain independent;
+- the random-toggle benchmark reports independent node occurrences, unique VSC
+  nodes, changed slots, affected nodes, and indexed-root query latency.
 
-See `POSITIONING.md` for the formal scope, baseline matrix, theorem statements,
-and evaluation plan. See `TODO.md` for the implementation milestones.
+See `TECHNICAL_DESIGN.md` for the VSC revision and the earlier GPSI/LCF design;
+`THEORY_PROOFS.md` contains the VSC construction theorem and scoped MGPF/LCF
+proofs. See `TODO.md` for implementation milestones.
 
 ## Suggested Tags
 

@@ -18,6 +18,18 @@ from .linear import (
     simulate_linear_scm,
     vectorized_trie_eval,
 )
+from .versioned import (
+    CircuitArena,
+    CircuitNode,
+    CircuitTemplate,
+    CircuitTemplateBuilder,
+    CircuitVersionBuilder,
+    UnitRegionVersions,
+    VersionUpdateStats,
+    VersionedSemiringIndex,
+    balanced_slot_template,
+    independent_node_occurrences,
+)
 
 __all__ = [
     "CompiledLinearForm",
@@ -36,4 +48,14 @@ __all__ = [
     "root_values_from_data",
     "simulate_linear_scm",
     "vectorized_trie_eval",
+    "CircuitArena",
+    "CircuitNode",
+    "CircuitTemplate",
+    "CircuitTemplateBuilder",
+    "CircuitVersionBuilder",
+    "UnitRegionVersions",
+    "VersionUpdateStats",
+    "VersionedSemiringIndex",
+    "balanced_slot_template",
+    "independent_node_occurrences",
 ]
