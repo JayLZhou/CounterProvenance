@@ -35,6 +35,13 @@ from .versioned import (
     balanced_slot_template,
     independent_node_occurrences,
 )
+from .tree import (
+    TreeIndexStats,
+    TreeLeafInterval,
+    TreeProvenanceIndex,
+    TreeQueryStats,
+    TreeStabbingClosure,
+)
 
 __all__ = [
     "CompiledLinearForm",
@@ -68,4 +75,9 @@ __all__ = [
     "VersionedSlotEnvironment",
     "balanced_slot_template",
     "independent_node_occurrences",
+    "TreeIndexStats",
+    "TreeLeafInterval",
+    "TreeProvenanceIndex",
+    "TreeQueryStats",
+    "TreeStabbingClosure",
 ]
