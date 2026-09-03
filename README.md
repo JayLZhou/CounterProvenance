@@ -4,10 +4,11 @@ Repository: <https://github.com/JayLZhou/CounterProvenance>
 
 TESSERA is a research prototype for **exact indexed counterfactual queries over
 learned structural causal models**. The current code implements the linear
-foundation on arbitrary causal DAGs and a model-independent **Versioned
-Provenance Closure** core. Tree and ReLU compilers remain future work, but
-their arbitrary region-to-region `ON/OFF/ON` patterns no longer require a
-staircase assumption in the storage layer.
+foundation on arbitrary causal DAGs, a model-independent **Versioned
+Provenance Closure** core, and a two-dimensional **MCPST** index prototype for
+exact tree ensembles. End-to-end causal Tree/ReLU compilers remain future
+work, but their arbitrary region-to-region `ON/OFF/ON` patterns no longer
+require a staircase assumption in the storage layer.
 
 The core idea is:
 
@@ -286,6 +287,84 @@ Y_cf(u, t') = constant + alpha * t' + sum_i beta_i * N_i(u)
 
 ## Current Results
 
+### Two-Dimensional Tree-Ensemble MCPST
+
+`counterprovenance/mcpst.py` implements the paper's fixed-layout physical
+model: a balanced persistent factor tree, exact path-union transition costs,
+a source-augmented minimum spanning construction plan, immutable path copying,
+and a directly addressable root for every two-dimensional counterfactual cell.
+
+On general-position stump grids, every boundary changes one component. The
+measured internal-node count exactly equals
+`(M - 1) + (K - 1) log2(M)`:
+
+| Trees M | Cells K | Strong IIP | Full duplicate | MCPST | vs IIP | vs full |
+|---:|---:|---:|---:|---:|---:|---:|
+| 16 | 81 | 1,328 | 2,592 | 448 | 2.96x | 5.79x |
+| 32 | 289 | 9,312 | 18,496 | 1,824 | 5.11x | 10.14x |
+| 64 | 1,089 | 69,824 | 139,392 | 7,808 | 8.94x | 17.85x |
+| 128 | 4,225 | 541,056 | 1,081,600 | 34,176 | 15.83x | 31.65x |
+| 256 | 16,641 | 4,260,608 | 8,520,192 | 150,528 | 28.30x | 56.60x |
+| 512 | 66,049 | 33,818,112 | 67,634,176 | 662,016 | 51.08x | 102.16x |
+
+The comparison gives IIP the same shared payload records, balanced factor-tree
+layout, point locator, and per-cell root directory. The only difference is
+independent root materialization versus MCPST path copying.
+
+The `51.08x` number is therefore the conservative comparison against an IIP
+that already shares all leaf payload records. A genuinely fully duplicated
+factor tree also copies every active leaf payload and gives `102.16x`. If one
+leaf provenance payload contains an average of `q=4` or `q=16` circuit nodes,
+the corresponding parametric reductions are `254.23x` and `848.70x`; these
+larger values are model projections until full payload circuits are compiled.
+
+A separate packed-byte experiment removes Python object overhead and scales the
+general-position workload through one million cells. MCPST actually allocates
+and populates all packed child arrays, root IDs, cached values, thresholds, and
+payload records. Baseline bytes are exact counts under the same schema:
+
+| Trees M | Cells K | MCPST actual | Strong IIP | Full duplicate | vs IIP | vs full |
+|---:|---:|---:|---:|---:|---:|---:|
+| 256 | 16,641 | 1.21 MiB | 32.51 MiB | 65.01 MiB | 26.78x | 53.55x |
+| 512 | 66,049 | 5.31 MiB | 258.02 MiB | 516.01 MiB | 48.62x | 97.24x |
+| 1,024 | 263,169 | 23.12 MiB | 2.01 GiB | 4.02 GiB | 88.92x | 177.85x |
+| 2,048 | 1,050,625 | **100.26 MiB** | **16.03 GiB** | **32.06 GiB** | **163.74x** | **327.48x** |
+
+The strong IIP baseline is even allowed to derive root offsets without a root
+directory. Its 16 GiB array is not allocated, to avoid exhausting memory; its
+byte count is exact for two-int32 internal nodes. The specialized snake builder
+is optimal because every transition changes one component. Its build timing
+does not include generic cell discovery, graph construction, or MST planning.
+
+The spanning-plan ablation holds `c_e=4` constant while changing PFT leaf
+locality. Exact copy-cost MCPST uses 695 internal nodes; change-count and
+unweighted MSTs each use 1,271 nodes, or `1.83x` MCPST's write cost. This is the
+case where the weighted MST is doing real work rather than merely locating
+cells.
+
+For 100,000 exact point queries, indexed lookup is `8.37x` faster than raw
+256-stump replay. It is intentionally not claimed to beat IIP query latency:
+IIP and MCPST use the same point-location and root-directory lookup, while
+MCPST improves storage and construction writes.
+
+A fitted `sklearn.ensemble.GradientBoostingRegressor` sanity check uses an
+exact global-threshold grid. At 64 trees it obtains `14.46x` record compression
+and `5.69x` query speedup over `model.predict`; random queries and exact split-
+threshold queries both have zero observed error under sklearn's float32 input
+semantics. This refinement is exact but is not claimed to be a minimum cell
+decomposition.
+
+Against DoWhy 0.14, 500 separate two-dimensional parameter queries over a
+fixed factual unit were evaluated with a fitted 64-tree GBDT mechanism. Calling
+`counterfactual_samples(..., observed_data=unit)` for every query, which reruns
+abduction, action, and prediction, is `321.92x` slower than online scalar MCPST
+lookup. Even supplying cached noise to DoWhy leaves a `159.44x` gap. A separate
+vectorized MCPST batch reaches `6056.93x` throughput, but the conservative
+online scalar number is the appropriate headline. All answers agree exactly.
+
+Raw CSVs, figures, environment details, and the complete interpretation are in
+[`experiments/mcpst_2d/results/RESULTS.md`](experiments/mcpst_2d/results/RESULTS.md).
+
 ### Arbitrary-Toggle Closure and VSC
 
 `experiments/tessera_vsc/versioned_circuit_demo.py` starts with a random active
@@ -307,7 +386,7 @@ IIP, VSC, and Closure all have indexed region lookup. Closure returns an exact
 `(template,environment version)` handle; VSC returns a directly traversable
 resolved root. The primary comparison with IIP is construction and storage.
 
-The 25 checked-in tests also cover mixed `ADD`/`MUL` circuits, non-idempotent
+The 40 checked-in tests also cover mixed `ADD`/`MUL` circuits, non-idempotent
 multiplicity, cross-unit structural sharing with different numeric bindings,
 and a two-layer ReLU-style expression whose gates follow arbitrary
 `ON/OFF/ON` patterns. Compact Closure is checked against Materialized VSC under
@@ -432,6 +511,26 @@ Run the theorem-aligned storage scaling check:
 python experiments/tessera_vsc/theory_scaling_demo.py
 ```
 
+Run the full two-dimensional MCPST benchmark:
+
+```bash
+pip install -r requirements-mcpst.txt
+python experiments/mcpst_2d/run_experiments.py
+```
+
+Run the million-cell packed-byte scaling experiment:
+
+```bash
+python experiments/mcpst_2d/run_packed_scaling.py
+```
+
+Run the complete DoWhy-GCM recomputation comparison:
+
+```bash
+pip install -r requirements-dowhy.txt
+python experiments/mcpst_2d/run_dowhy_benchmark.py
+```
+
 Run all correctness and exhaustive theory tests:
 
 ```bash
@@ -501,14 +600,20 @@ REPO_INTRO.md                                       copy-ready repository introd
 TODO.md                                             next steps
 requirements.txt                                    minimal Python dependencies
 requirements-dowhy.txt                              optional DoWhy comparison dependencies
+requirements-mcpst.txt                              tested MCPST experiment dependencies
 counterprovenance/linear.py                          generic linear cDAG provenance engine
 counterprovenance/versioned.py                       compact closures, materialized VSC, and region indexes
+counterprovenance/mcpst.py                            2D MCPST planner, PFT materializer, and point index
 experiments/tessera_linear_trie/linear_trie_demo.py main prototype and benchmark
 experiments/tessera_vsc/versioned_circuit_demo.py    arbitrary-toggle IIP/Closure/VSC benchmark
 experiments/tessera_vsc/theory_scaling_demo.py       theorem-aligned n^2/n-log-n/n storage check
+experiments/mcpst_2d/run_experiments.py              reproducible MCPST experiment suite
+experiments/mcpst_2d/run_dowhy_benchmark.py           full DoWhy-GCM query comparison
+experiments/mcpst_2d/run_packed_scaling.py            million-cell packed-byte scaling
 tests/test_linear_general.py                         correctness tests for arbitrary linear cDAGs
 tests/test_lcf_theory.py                              exhaustive small-instance factorization verifier
 tests/test_versioned_circuit.py                       Closure/VSC exactness, toggles, sharing, and space tests
+tests/test_mcpst.py                                   MCPST costs, materialization, query, and boundary tests
 ```
 
 ## What This Prototype Does Not Claim
@@ -517,7 +622,8 @@ The checked-in implementation is intentionally narrower than the paper design.
 
 It does not yet handle:
 
-- fitted tree, ensemble, or ExactLine/ReLU local compilers;
+- end-to-end causal compilation from fitted tree/ensemble or ExactLine/ReLU
+  mechanisms (the MCPST experiment directly extracts sklearn tree states);
 - semiring-matrix compilation for a complete fitted MLP;
 - FLIP or aggregate event indexes;
 - the weighted algebraic-factorization optimizer over closure frontiers;

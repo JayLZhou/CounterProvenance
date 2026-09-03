@@ -1,0 +1,4 @@
+strategy,M,K_cells,source_roots,internal_nodes,total_records,iip_total_records,compression_vs_iip_x,overhead_vs_mcpst_x,mean_selected_transition_weight,plan_and_materialize_s
+MCPST (exact PFT weight),64,81,1,695,904,5312,5.876106194690266,1.0,7.9,0.0006036249978933483
+Change-count MST,64,81,1,1271,1480,5312,3.5891891891891894,1.8287769784172663,15.1,0.0008922089982661419
+Unweighted MST,64,81,1,1271,1480,5312,3.5891891891891894,1.8287769784172663,15.1,0.0015918749995762482
