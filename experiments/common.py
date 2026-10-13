@@ -104,16 +104,16 @@ def model_zoo(quick: bool = False) -> dict[str, Callable[[], object]]:
     zoo["sklearn-GBR"] = lambda: GradientBoostingRegressor(n_estimators=n, max_depth=3, learning_rate=0.1, random_state=0)
     zoo["sklearn-HGB"] = lambda: HistGradientBoostingRegressor(max_iter=n, max_depth=3, learning_rate=0.1, random_state=0)
     zoo["sklearn-RF"] = lambda: RandomForestRegressor(
-        n_estimators=max(20, n // 3), max_depth=6, random_state=0, n_jobs=8
+        n_estimators=max(20, n // 3), max_depth=6, random_state=0, n_jobs=1
     )
     try:
         import xgboost as xgb
 
         zoo["XGBoost-exact"] = lambda: xgb.XGBRegressor(
-            n_estimators=n, max_depth=3, learning_rate=0.1, tree_method="exact", random_state=0, n_jobs=8
+            n_estimators=n, max_depth=3, learning_rate=0.1, tree_method="exact", random_state=0, n_jobs=1
         )
         zoo["XGBoost-hist"] = lambda: xgb.XGBRegressor(
-            n_estimators=n, max_depth=4, learning_rate=0.1, tree_method="hist", random_state=0, n_jobs=8
+            n_estimators=n, max_depth=4, learning_rate=0.1, tree_method="hist", random_state=0, n_jobs=1
         )
     except ImportError:
         pass
@@ -121,7 +121,7 @@ def model_zoo(quick: bool = False) -> dict[str, Callable[[], object]]:
         import lightgbm as lgb
 
         zoo["LightGBM"] = lambda: lgb.LGBMRegressor(
-            n_estimators=n, num_leaves=15, learning_rate=0.1, random_state=0, verbose=-1, n_jobs=8
+            n_estimators=n, num_leaves=15, learning_rate=0.1, random_state=0, verbose=-1, n_jobs=1
         )
     except ImportError:
         pass

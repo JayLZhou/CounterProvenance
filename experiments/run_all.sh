@@ -4,6 +4,8 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 export PYTHONWARNINGS=ignore
+# single-threaded inference so that per-row baselines are not dominated by thread start-up
+export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
 PY=${PYTHON:-python}
 DATA=${DATA_HOME:-../data}
 QUICK=${1:-}
