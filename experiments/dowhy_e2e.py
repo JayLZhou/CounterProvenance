@@ -30,6 +30,7 @@ def main() -> None:
     parser.add_argument("--queries", type=int, default=200)
     parser.add_argument("--dims", default="2,4")
     parser.add_argument("--quick", action="store_true")
+    parser.add_argument("--suffix", default="", help="output file suffix (for parallel runs)")
     args = parser.parse_args()
     import networkx as nx
     import pandas as pd
@@ -113,7 +114,7 @@ def main() -> None:
                       f"{row['dowhy_cached_noise_us']:8.1f}us index {row['index_us']:6.1f}us -> "
                       f"{row['speedup_vs_fresh']:.0f}x / {row['speedup_vs_cached']:.0f}x (err {err:.1e}, pieces {pieces:.1f})",
                       flush=True)
-            write_csv("r4_dowhy.csv", rows)
+            write_csv(f"r4_dowhy{args.suffix}.csv", rows)
 
 
 if __name__ == "__main__":

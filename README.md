@@ -1,655 +1,186 @@
-# TESSERA Counterfactual Provenance Index
+# CounterProvenance
 
-Repository: <https://github.com/JayLZhou/CounterProvenance>
+**Exact, compact provenance indexes for repeated counterfactual queries over
+tree-ensemble causal models.**
 
-TESSERA is a research prototype for **exact indexed counterfactual queries over
-learned structural causal models**. The current code implements the linear
-foundation on arbitrary causal DAGs, a model-independent **Versioned
-Provenance Closure** core, and a two-dimensional **MCPST** index prototype for
-exact tree ensembles. End-to-end causal Tree/ReLU compilers remain future
-work, but their arbitrary region-to-region `ON/OFF/ON` patterns no longer
-require a staircase assumption in the storage layer.
+A counterfactual engine such as DoWhy-GCM answers `do(T = t)` for an observed
+unit by abduction, action and prediction, and returns a number. Asking again
+with a new `t` replays the model even though the fitted model and the unit's
+noise have not changed. CounterProvenance compiles the whole intervention
+space of one unit once and then answers every `do(T = t)` with
 
-The core idea is:
+* the **exact counterfactual value** (the model's own leaf selection,
+  including points exactly on split thresholds), and
+* its **exact provenance**: the multiset of `(tree, leaf)` contributions as an
+  element of the free commutative semiring `N[X]`, returned as a handful of
+  pre-materialised circuit roots.
 
-> Compile the exact intervention line into a shared semiring template plus an
-> ordered sequence of slot environments. Store this one logical closure in
-> either a storage-optimal compact layout or a latency-oriented materialized
-> circuit layout, while keeping per-unit numeric bindings separate.
+It works on fitted **scikit-learn** (GBR, HistGBR, random forests, extra
+trees, single trees), **XGBoost** (`exact`, `hist`, ...) and **LightGBM**
+regressors, and on any number of intervention variables.
 
-The full mechanism class, index design, baselines, and theorem targets are in
-[`POSITIONING.md`](POSITIONING.md). The current linear trie is the one-region
-special case; `counterprovenance/versioned.py` implements both exact physical
-layouts for arbitrary region versions.
-
-## Why This Exists
-
-Libraries such as DoWhy-GCM can compute counterfactuals by running Pearl's
-abduction-action-prediction procedure:
-
-1. recover each unit's residual/noise from observed data;
-2. apply an intervention such as `do(T=t')`;
-3. replay the SCM forward with the same unit-level residuals.
-
-That is correct, but repeated counterfactual workloads do the same structural
-work again and again. TESSERA asks:
-
-> Can we materialize the reusable counterfactual derivation once, then answer
-> repeated queries by evaluating stored provenance?
-
-This demo answers that question for linear SCMs over arbitrary cDAGs. The
-broader paper asks how to answer `POINT`, `FLIP`, `AGG`, and `EXPLAIN` queries
-without fresh SCM replay.
-
-## Three Exact f(.) Classes
-
-TESSERA claims support for exactly three mechanism classes. They share the
-internal property **finite guarded-affine and exactly line-intersectable**:
-
-```text
-f(x) = a[r]^T x + b[r]  when exact guard g[r](x) holds
-
-optional factorization:
-f(x) = sum_m lambda_m * f_m(x)
+```
+pip install -r requirements-models.txt
 ```
 
-When the counterfactual parents are affine on an intervention interval,
-`x(t) = A*t + c`, the local compiler must be able to enumerate every exact
-value of `t` at which the active guard changes.
+```python
+import xgboost as xgb
+from sklearn.datasets import fetch_california_housing
+from counterprovenance import from_model, bind, ProvenanceIndex, autotune
 
-| Class | Representative fitted `f(.)` | Exact local operation | Status |
-|---|---|---|---|
-| L: Linear | OLS, LinearRegression, Ridge, Lasso, ElasticNet, linear SVR | one affine segment | implemented for generic linear cDAGs |
-| T: Tree Ensemble | one regression tree, Random Forest, Extra Trees, GBDT, HistGBDT, numerical XGBoost/LightGBM/CatBoost with raw or identity-link regression output | threshold tracing per tree plus breakpoint multiway merge | first nonlinear target |
-| N: ExactLine/PWL Neural | ReLU MLPs and ExactLine-supported piecewise-linear inference graphs | ExactLine-style line partitioning plus provenance lifting | second nonlinear target |
+X, y = fetch_california_housing(return_X_y=True)
+model = xgb.XGBRegressor(n_estimators=300, max_depth=4).fit(X, y)
+unit = X[17]
+noise = y[17] - model.predict(unit[None, :])[0]          # abduction (additive noise)
 
-Single trees are the `M=1` case of Class T. Mixed SCMs may use any of L/T/N at
-different causal nodes. Class N builds on
-[ExactLine](https://papers.nips.cc/paper_files/paper/2019/hash/908075ea2c025c335f4865f7db427062-Abstract.html)
-for numeric line partitioning and adds counterfactual provenance and indexing.
+bound = bind(from_model(model), unit, axes=[0, 6, 7], noise=noise)
+index = ProvenanceIndex(bound)                            # or: autotune(bound, sample_points).index
 
-KNN, rule lists, splines/GAMs, AdaBoost, sigmoid/tanh/GELU networks, RBF
-models, Gaussian processes, polynomial regression, arbitrary black boxes, and
-categorical classifiers are outside the submitted three-class claim.
-
-## Unified Index: Closure-Backed GPSI
-
-For unit `u`, region `j`, let `P[u,j]` be its exact parameterized provenance and
-let `h_u` bind arbitrary unit-specific parameters, roots, and abducted noises.
-The unified logical object is
-
-```text
-C[u,j] = (shared template T[u], slot environment sigma[u,j])
-P[u,j] = Eval(T[u], sigma[u,j])
+answer = index.query([4.5, 34.1, -118.2])                 # do(X0=4.5, X6=34.1, X7=-118.2)
+answer.value        # counterfactual Y, equal to model.predict(...) + noise
+answer.labels()     # Counter({(tree, leaf): multiplicity, ...}) - one leaf per tree
+answer.pieces       # pre-materialised provenance roots (a few to a few dozen)
 ```
 
-It has two exact physical layouts:
+## How it works
 
-- **Closure-Compact** stores each slot's initial root and only its effective
-  changes. Its storage is independent of downstream circuit fan-out.
-- **VSC-Materialized** resolves every region to a canonical immutable
-  `ADD`/`MUL` root. It path-copies affected ancestors and globally hash-conses
-  recurring subcircuits across regions and units.
-
-A fragment may follow `ON -> OFF -> ON` repeatedly in either layout. Numeric
-values remain outside shared topology in each unit's binding `h_u`.
-
-The Guarded Provenance Segment Index has one logical and physical design for
-every supported mechanism:
-
-```text
-GPSI
-|-- local mechanism DAG
-|-- response segment directory
-|      sorted boundaries -> environment versions or materialized root IDs
-|-- Versioned Provenance Closure
-|      shared ZERO/ONE/ATOM/ADD/MUL template
-|      Closure-Compact: initial slots + effective change histories
-|      VSC-Materialized: affected-ancestor path copying + hash-consing
-|-- optional additive frontier optimizer
-|      maximal runs -> LCF when supports are structured
-|      linear-space stabbing-semigroup directory in compact mode
-|-- optional, finer certificate DAG and interval directory
-|-- unit store: parameter, factual-root, abducted-noise, and anchor bindings h_u
-|-- registered-threshold FLIP event indexes
-`-- declared-group SUM/AVG response maps
+```
+fitted ensemble ──bind(unit, axes)──► N leaf boxes in R^d
+                                          │
+            ┌─────────────────────────────┴─────────────────────────────┐
+            │ ProvenanceIndex(tau, group budget)                        │
+            │   1. group trees by the intervention axes they split on   │
+            │   2. inside a group: overlay small enough (<= tau cells)?  │
+            │        yes -> one MCPST leaf                              │
+            │        no  -> segment tree on the busiest axis, recurse   │
+            │   3. MCPST leaf: exact overlay -> face graph with change  │
+            │      labels -> MST construction plan -> persistent factor │
+            │      tree (path / node copying) -> one root per face      │
+            └───────────────────────────────────────────────────────────┘
+query(t): locate t in every visited leaf, return one root per leaf (+ cached values)
 ```
 
-L adds no boundary, T emits leaf changes, and N emits activation changes after
-ExactLine partitioning. All become updates to one circuit-template interface.
-The support-matrix/LCF representation remains useful at an additive circuit
-frontier, but it is no longer the universal logical model: the closure
-preserves products directly and therefore does not require expansion into
-neural paths.
-
-## Baselines and Theory Targets
-
-The evaluation compares GPSI against:
-
-1. DoWhy-style replay from observed data;
-2. cached-noise replay, which removes abduction but still traverses the SCM;
-3. exact numeric per-unit segments, which match point-lookup complexity but
-   omit provenance;
-4. exact segments that duplicate fully expanded provenance paths;
-5. global-region materialization on tractable cases;
-6. tree-ensemble ADD/decision-diagram compilation;
-7. unmodified numeric ExactLine for Class N.
-
-The revised theory spine is:
-
-- exact closure of L/T/N under causal composition for scalar interventions;
-- Compact Closure matching build/storage
-  `Theta(D_T + C_tot + B_tot + K_delta + H)`, where `K_delta` is the number
-  of effective slot changes; the matching word-RAM lower bound allows each
-  changed slot root to carry an independent word;
-- Materialized VSC construction
-  `O(D_T + C_tot + B_tot + A + H)` and storage
-  `O(D_T + C_tot + B_tot + G + H)`, where `A` counts affected template nodes
-  and `G` counts newly interned canonical nodes;
-- canonical VSC is node-instance-optimal within the explicitly defined
-  immutable resolved-circuit model, not among all algebraically equivalent
-  circuits;
-- for a balanced associative block with `C` mutable slots and `k_j` changed
-  slots at one boundary, batch path copying has tight worst-case cost
-  `Theta(k_j log(1 + C/k_j))`;
-- for `B=C=n` and `k_j=O(1)` arbitrary toggles, Independent Interval
-  Provenance, Materialized VSC, and Compact Closure use respectively
-  `Theta(n^2)`, `O(n log n)`, and `Theta(n)` storage;
-- for one slot with fan-out `F` and `B` pairwise distinct versions, Compact
-  Closure uses `Theta(B+F)` records while any canonical materialized layout
-  needs `Theta(BF)`; resolving an unmaterialized structural circuit requires
-  `Omega(F)` output work;
-- staircase is only the insert-only `k_j=1` corollary, not a required input
-  class; arbitrary deep-ReLU toggles use the same change-sensitive bound;
-- for tree ensembles, `k_j=q_j` when `q_j` trees change leaves at a boundary;
-  for ExactLine/ReLU, `k_j=q_j` when `q_j` activation signs change;
-- a Class-T non-Cartesian bound: tree partitions of sizes `b_m` require
-  at most `1 + sum_m(b_m - 1)` line intervals, rather than their product;
-- algebraic factorization beyond canonical subcircuit sharing remains a
-  secondary optimization: unrestricted MGPF is NP-complete, while LCF targets
-  exact/approximate algorithms for structured additive frontiers;
-- a canonical minimum segment quotient after coalescing adjacent intervals
-  with identical normalized provenance;
-- `POINT` in `O(log B_u)` and registered-threshold `FLIP` in
-  `O(log E_q + k)`, including tree-induced jumps.
-
-These are scoped claims. TESSERA does not promise universal compression or
-avoid the worst-case exponential number of realized piecewise-affine segments.
-It matches, rather than asymptotically beats, numeric polyline point lookup;
-the advantage is exact shared provenance plus indexed derived queries.
-The active definitions are in
-[`TECHNICAL_DESIGN.md`](TECHNICAL_DESIGN.md); Closure/VSC and scoped MGPF/LCF
-proof drafts are in [`THEORY_PROOFS.md`](THEORY_PROOFS.md).
-[`tests/test_lcf_theory.py`](tests/test_lcf_theory.py) exhaustively checks all
-laminar families through four regions and all nonempty three-region support
-matrices against the theorem bounds and an exact rectangle-partition oracle.
-
-## Generic Linear cDAG Support
-
-The reusable engine in `counterprovenance/linear.py` supports:
-
-- arbitrary directed acyclic causal graphs;
-- additive linear mechanisms;
-- non-intervened root variables preserved from the observed unit;
-- one or more structural interventions;
-- any single target node per compiled query;
-- expanded semiring monomials as logical provenance;
-- reverse trie storage as physical provenance compression;
-- compiled closed-form evaluation for fast repeated queries.
-
-The toy SCM below is just the smallest readable example.
-
-## Toy SCM
-
-The demo uses the following additive linear SCM:
-
-```text
-T -> A -> B -> Y
-T -> A -> C -> Y
-T -> D -> Y
-T -> Y
-```
-
-with mechanisms:
-
-```text
-A = w_TA T + b_A + N_A
-B = w_AB A + b_B + N_B
-C = w_AC A + b_C + N_C
-D = w_TD T + b_D + N_D
-Y = w_BY B + w_CY C + w_DY D + w_TY T + b_Y + N_Y
-```
-
-For `do(T=t')`, standard counterfactual replay computes:
-
-```text
-T_cf = t'
-A_cf = w_TA T_cf + b_A + N_A(u)
-B_cf = w_AB A_cf + b_B + N_B(u)
-C_cf = w_AC A_cf + b_C + N_C(u)
-D_cf = w_TD T_cf + b_D + N_D(u)
-Y_cf = w_BY B_cf + w_CY C_cf + w_DY D_cf + w_TY T_cf + b_Y + N_Y(u)
-```
-
-## Semiring Provenance
-
-TESSERA expands `Y_cf` into semiring monomials. Example terms:
-
-```text
-do:T    * theta:T->A * theta:A->B * theta:B->Y
-noise:A * theta:A->B * theta:B->Y
-bias:B  * theta:B->Y
-noise:B * theta:B->Y
-```
-
-The valuation is shown below. The current prototype shares learned coefficients,
-while the active paper semantics generalizes each parameter token to a slot and
-allows a different binding `h_u` for every unit:
-
-```text
-do:T        -> intervention value t'
-noise:X     -> abducted residual N_X(u)
-bias:X      -> unit binding b_X(u)
-theta:X->Z  -> unit binding w_XZ(u)
-oplus       -> numeric addition
-otimes      -> numeric multiplication
-```
-
-Under this valuation, the semiring provenance evaluates to the same value as
-additive-noise counterfactual replay.
-
-## Trie Compression
-
-The expanded monomials can share propagation fragments. For a fixed target
-`Y`, this demo stores them in a **reverse trie** from target back to source.
-
-For example:
-
-```text
-theta:B->Y, theta:A->B, theta:T->A, do:T
-theta:B->Y, theta:A->B, noise:A
-theta:B->Y, noise:B
-```
-
-The shared suffix-to-target fragment `A -> B -> Y` is stored once.
-
-Important distinction:
-
-- the raw trie is the compressed provenance store;
-- the fast runtime path is a compiled closed-form evaluator derived from that
-  provenance store.
-
-For this linear case, the compiled evaluator has the form:
-
-```text
-Y_cf(u, t') = constant + alpha * t' + sum_i beta_i * N_i(u)
-```
-
-## Current Results
-
-### Two-Dimensional Tree-Ensemble MCPST
-
-`counterprovenance/mcpst.py` implements the paper's fixed-layout physical
-model: a balanced persistent factor tree, exact path-union transition costs,
-a source-augmented minimum spanning construction plan, immutable path copying,
-and a directly addressable root for every two-dimensional counterfactual cell.
-
-On general-position stump grids, every boundary changes one component. The
-measured internal-node count exactly equals
-`(M - 1) + (K - 1) log2(M)`:
-
-| Trees M | Cells K | Strong IIP | Full duplicate | MCPST | vs IIP | vs full |
-|---:|---:|---:|---:|---:|---:|---:|
-| 16 | 81 | 1,328 | 2,592 | 448 | 2.96x | 5.79x |
-| 32 | 289 | 9,312 | 18,496 | 1,824 | 5.11x | 10.14x |
-| 64 | 1,089 | 69,824 | 139,392 | 7,808 | 8.94x | 17.85x |
-| 128 | 4,225 | 541,056 | 1,081,600 | 34,176 | 15.83x | 31.65x |
-| 256 | 16,641 | 4,260,608 | 8,520,192 | 150,528 | 28.30x | 56.60x |
-| 512 | 66,049 | 33,818,112 | 67,634,176 | 662,016 | 51.08x | 102.16x |
-
-The comparison gives IIP the same shared payload records, balanced factor-tree
-layout, point locator, and per-cell root directory. The only difference is
-independent root materialization versus MCPST path copying.
-
-The `51.08x` number is therefore the conservative comparison against an IIP
-that already shares all leaf payload records. A genuinely fully duplicated
-factor tree also copies every active leaf payload and gives `102.16x`. If one
-leaf provenance payload contains an average of `q=4` or `q=16` circuit nodes,
-the corresponding parametric reductions are `254.23x` and `848.70x`; these
-larger values are model projections until full payload circuits are compiled.
-
-A separate packed-byte experiment removes Python object overhead and scales the
-general-position workload through one million cells. MCPST actually allocates
-and populates all packed child arrays, root IDs, cached values, thresholds, and
-payload records. Baseline bytes are exact counts under the same schema:
-
-| Trees M | Cells K | MCPST actual | Strong IIP | Full duplicate | vs IIP | vs full |
-|---:|---:|---:|---:|---:|---:|---:|
-| 256 | 16,641 | 1.21 MiB | 32.51 MiB | 65.01 MiB | 26.78x | 53.55x |
-| 512 | 66,049 | 5.31 MiB | 258.02 MiB | 516.01 MiB | 48.62x | 97.24x |
-| 1,024 | 263,169 | 23.12 MiB | 2.01 GiB | 4.02 GiB | 88.92x | 177.85x |
-| 2,048 | 1,050,625 | **100.26 MiB** | **16.03 GiB** | **32.06 GiB** | **163.74x** | **327.48x** |
-
-The strong IIP baseline is even allowed to derive root offsets without a root
-directory. Its 16 GiB array is not allocated, to avoid exhausting memory; its
-byte count is exact for two-int32 internal nodes. The specialized snake builder
-is optimal because every transition changes one component. Its build timing
-does not include generic cell discovery, graph construction, or MST planning.
-
-The spanning-plan ablation holds `c_e=4` constant while changing PFT leaf
-locality. Exact copy-cost MCPST uses 695 internal nodes; change-count and
-unweighted MSTs each use 1,271 nodes, or `1.83x` MCPST's write cost. This is the
-case where the weighted MST is doing real work rather than merely locating
-cells.
-
-For 100,000 exact point queries, indexed lookup is `8.37x` faster than raw
-256-stump replay. It is intentionally not claimed to beat IIP query latency:
-IIP and MCPST use the same point-location and root-directory lookup, while
-MCPST improves storage and construction writes.
-
-A fitted `sklearn.ensemble.GradientBoostingRegressor` sanity check uses an
-exact global-threshold grid. At 64 trees it obtains `14.46x` record compression
-and `5.69x` query speedup over `model.predict`; random queries and exact split-
-threshold queries both have zero observed error under sklearn's float32 input
-semantics. This refinement is exact but is not claimed to be a minimum cell
-decomposition.
-
-Against DoWhy 0.14, 500 separate two-dimensional parameter queries over a
-fixed factual unit were evaluated with a fitted 64-tree GBDT mechanism. Calling
-`counterfactual_samples(..., observed_data=unit)` for every query, which reruns
-abduction, action, and prediction, is `321.92x` slower than online scalar MCPST
-lookup. Even supplying cached noise to DoWhy leaves a `159.44x` gap. A separate
-vectorized MCPST batch reaches `6056.93x` throughput, but the conservative
-online scalar number is the appropriate headline. All answers agree exactly.
-
-Raw CSVs, figures, environment details, and the complete interpretation are in
-[`experiments/mcpst_2d/results/RESULTS.md`](experiments/mcpst_2d/results/RESULTS.md).
-
-### Arbitrary-Toggle Closure and VSC
-
-`experiments/tessera_vsc/versioned_circuit_demo.py` starts with a random active
-set and toggles fragments at every boundary. Individual fragments repeatedly
-turn off and back on, so these workloads are deliberately not staircase.
-
-One local five-trial median run with 1,000 handle/root queries produced:
-
-| Components | Regions | Changes/boundary | IIP records | VSC records | Closure records | VSC compression | Closure compression | VSC build speedup | Closure build speedup |
-|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 64 | 500 | 2 | 31,352 | 3,541 | 1,755 | 8.85x | 17.86x | 13.99x | 149.81x |
-| 128 | 1,000 | 3 | 129,580 | 10,901 | 4,510 | 11.89x | 28.73x | 16.45x | 263.76x |
-| 256 | 2,000 | 4 | 508,016 | 31,933 | 11,021 | 15.91x | 46.10x | 23.22x | 429.14x |
-
-Against rebuilding the requested state from its event log, VSC root lookup was
-`160.06x`, `424.05x`, and `897.31x` faster; Compact Closure handle lookup was
-`66.81x`, `188.44x`, and `464.09x` faster. These are not speedups over IIP:
-IIP, VSC, and Closure all have indexed region lookup. Closure returns an exact
-`(template,environment version)` handle; VSC returns a directly traversable
-resolved root. The primary comparison with IIP is construction and storage.
-
-The 40 checked-in tests also cover mixed `ADD`/`MUL` circuits, non-idempotent
-multiplicity, cross-unit structural sharing with different numeric bindings,
-and a two-layer ReLU-style expression whose gates follow arbitrary
-`ON/OFF/ON` patterns. Compact Closure is checked against Materialized VSC under
-both numeric and free-semiring valuations, and its environment record count is
-verified to be independent of template fan-out.
-
-### Theorem-Aligned Scaling
-
-The strict-separation workload fixes `B=C=n` and changes exactly one slot per
-boundary. The normalized record counts remain stable in the predicted classes:
-
-| n | IIP records | IIP / n^2 | VSC records | VSC / (n log2 n) | Closure records | Closure / n |
-|---:|---:|---:|---:|---:|---:|---:|
-| 64 | 3,744 | 0.914 | 538 | 1.401 | 384 | 6.000 |
-| 128 | 15,568 | 0.950 | 1,247 | 1.392 | 768 | 6.000 |
-| 256 | 67,092 | 1.024 | 2,752 | 1.344 | 1,536 | 6.000 |
-| 512 | 261,920 | 0.999 | 6,011 | 1.304 | 3,072 | 6.000 |
-
-This is the experiment corresponding to the `Theta(n^2)`, `O(n log n)`, and
-`Theta(n)` theorem. It is separate from the larger arbitrary-toggle table,
-whose number of changes per boundary varies by configuration.
-
-The fan-out separation family fixes `B=F=n` and changes one high-fan-out slot
-to a fresh atom at every boundary:
-
-| n | Materialized records | Materialized / n^2 | Closure records | Closure / n |
-|---:|---:|---:|---:|---:|
-| 64 | 8,514 | 2.079 | 450 | 7.031 |
-| 128 | 33,410 | 2.039 | 898 | 7.016 |
-| 256 | 132,354 | 2.020 | 1,794 | 7.008 |
-| 512 | 526,850 | 2.010 | 3,586 | 7.004 |
-
-This second family validates the `Theta(BF)` versus `Theta(B+F)` Pareto
-separation. Compact Closure removes fan-out from stored version deltas; an
-on-demand canonical structural expansion still pays `Omega(F)` work. This
-claim is scoped to the frozen structural-EXPLAIN model: distributive algebraic
-factorization may compress this particular polynomial and is a separately
-costed layout, not part of the lower bound.
-
-### Linear Foundation
-
-On the toy SCM:
-
-```text
-expanded monomials      = 16
-expanded token slots    = 39
-reverse trie tokens     = 25
-storage compression     = 1.56x
-```
-
-Correctness:
-
-```text
-max |trie(Y_cf) - replay(Y_cf)|     = 1.776e-15
-max |compiled(Y_cf) - replay(Y_cf)| = 3.553e-15
-max |trie(Y_cf) - dowhy.gcm(Y_cf)|  = 2.665e-15
-```
-
-Speed:
-
-```text
-n = 10,000, repeats = 5
-DoWhy-GCM counterfactual_samples: 0.0160s
-compiled TESSERA evaluation:      0.0001s
-speedup:                          117.82x
-```
-
-Against a hand-written NumPy replay baseline:
-
-```text
-n = 1,000,000, repeats = 20
-NumPy replay:                 0.3384s
-compiled TESSERA evaluation:  0.1062s
-speedup:                      3.19x
-```
-
-On a random layered cDAG:
-
-```text
-layers = (3, 8, 8, 8, 1), nodes = 28, mechanisms = 25
-expanded monomials      = 164
-expanded token slots    = 572
-reverse trie tokens     = 279
-storage compression     = 2.05x
-compiled speedup        = 7.96x vs NumPy replay
-```
-
-These are early sanity numbers, not final system benchmarks. The main point is
-that compiled provenance agrees with DoWhy-style counterfactual semantics and
-already avoids repeated mechanism replay in the linear case.
-
-## Quick Start
-
-Install the minimal dependency:
-
-```bash
-pip install -r requirements.txt
-```
-
-Run with only NumPy installed:
-
-```bash
-python experiments/tessera_linear_trie/linear_trie_demo.py
-```
-
-Run the general non-staircase Closure/VSC benchmark:
-
-```bash
-python experiments/tessera_vsc/versioned_circuit_demo.py
-
-python experiments/tessera_vsc/versioned_circuit_demo.py \
-  --components 256 \
-  --regions 2000 \
-  --changes 4 \
-  --queries 1000 \
-  --trials 5
-```
-
-Run the theorem-aligned storage scaling check:
-
-```bash
-python experiments/tessera_vsc/theory_scaling_demo.py
-```
-
-Run the full two-dimensional MCPST benchmark:
-
-```bash
-pip install -r requirements-mcpst.txt
-python experiments/mcpst_2d/run_experiments.py
-```
-
-Run the million-cell packed-byte scaling experiment:
-
-```bash
-python experiments/mcpst_2d/run_packed_scaling.py
-```
-
-Run the complete DoWhy-GCM recomputation comparison:
+* **Leaf boxes.** Binding a unit follows every split on a non-intervened
+  feature with the unit's own value; each tree becomes a partition of the
+  intervention space into axis-aligned boxes, and a query is a
+  point-enclosure query over those boxes.
+* **Exact overlay.** Box faces label the grid edges they cross with the trees
+  whose leaf changes there; faces are the components of the unlabelled-edge
+  graph. No cell-by-tree matrix is ever built, and conditional thresholds of
+  deep trees do not create spurious cells.
+* **MST planning + persistence.** Adjacent faces differ in a few trees. A
+  persistent factor tree over the trees stores one directly addressable root
+  per face: immutable path copying along the source-augmented MST of the
+  exact copy costs, node copying along a covering walk of the face graph, or
+  a hybrid that picks the cheaper plan.
+* **Groups and the segment tree.** The two parameters move the index between
+  one root per query with `Theta(K)` faces (`tau = inf`, one group) and
+  `O(log^{d-1} N)` roots per query with `O(N log^{d-1} N)` space independent of
+  the overlay size (`tau = 0`). `autotune` picks the point from sample queries.
+
+Exact statements, cost models and proofs: [`docs/DESIGN.md`](docs/DESIGN.md).
+
+## Guarantees (summary)
+
+| | statement | model |
+|---|---|---|
+| T1 | value and provenance equal the fitted model's own leaf selection, on and off split thresholds | all supported models |
+| T2 | 1D: one direct root per region in `O(P + B + K_Delta)` space, `K_Delta = N - M` | explicit change representation |
+| T3 | the source-augmented MST under the exact path-copy cost is optimal among adjacency-constrained single-parent immutable plans | fixed factor-tree layout |
+| T4 | the MST shortcut walk is a 2-approximation of the cheapest covering walk; node copying realises it with O(1) amortised records per change; in general position every plan needs `K - 1` changes and a Hamiltonian chain attains it | additive per-change cost |
+| T5 | `tau = 0`: `O(N log^{d-1} N)` space, `O(log^{d-1} N)` pieces per group, `O(log^d N)` time | pointer machine |
+
+Not claimed: optimal realised allocation of the hybrid (its MST minimises a
+surrogate), optimal grouping, bit-level optimality, arbitrary algebraic
+factorisation, model families outside the list above.
+
+## Results
+
+Full tables: [`results/RESULTS.md`](results/RESULTS.md) (CSV files alongside). Every
+reported index was checked query by query: values against `model.predict`
+and DoWhy, provenance against brute force and each library's own leaf ids,
+including points exactly on split thresholds. All runs are single-threaded
+(`n_jobs=1`, `OMP_NUM_THREADS=1`). Space is counted in structural records;
+times are pure Python and are compared only with other Python code.
+
+**Compression against independent per-cell provenance (IIP)** - synthetic
+families where every boundary changes one tree:
+
+| workload | IIP records | path copying (rho-MST) | node copying / hybrid | grouped index |
+|---|---|---|---|---|
+| 1D, 16,384 trees | 268.5 M | 344 K (780x) | 131 K (2,049x) | - |
+| 2D, 1,024 stumps, 263 K cells | 270.0 M | 3.43 M (79x) | 1.19 M (227x) | 8,196 records, 2 pieces per query |
+
+**The MST matters on real models** (California housing, d = 2, exact
+overlay; `c_e` = trees that change across a face boundary, mean 1.5-3.9,
+max 15-25): an MST plan uses 1.2-1.8x fewer persistent records than a random
+spanning tree, e.g. LightGBM 91 K vs 133 K (path copying) and 36 K vs 61 K
+(hybrid). The exact overlay has 2.0-6.9x fewer faces than the threshold grid.
+
+**Against DoWhy-GCM** (California housing, 8 features, star SCM, autotuned
+index, per query):
+
+| intervened features d | DoWhy fresh | index | speed-up vs fresh | vs DoWhy cached noise |
+|---|---|---|---|---|
+| 2 | 3.1-7.1 ms | 9-10 us | 303-757x | 153-371x |
+| 4 | 3.1-7.2 ms | 20-76 us | 44-354x | 22-174x |
+| 8 | 3.0-7.2 ms | 193-494 us | 7-37x | 3-18x |
+
+**Hundreds of features** (OpenML topo_2_1 with 261 and yprop_4_1 with 212
+features, 300 trees, the d most-used features intervened). DoWhy's cost grows
+with the number of nodes; after binding the unit only the trees that split on
+an intervened feature remain ("effective trees"), and the rest collapse into
+one constant piece:
+
+| d | effective trees | pieces | index | DoWhy fresh | speed-up vs fresh | vs single-row `predict` |
+|---|---|---|---|---|---|---|
+| 2 | 26-93 / 300 | 3-7 | 7-16 us | 41-57 ms | 2,578-7,814x | 26-307x |
+| 8 | 90-177 / 300 | 13-25 | 36-82 us | 38-57 ms | 534-1,460x | 5-53x |
+| 16 | 147-238 / 300 | 28-56 | 100-359 us | 41-54 ms | 125-538x | 1.2-21x |
+
+**Limits.** The overlay grows roughly like `N^d`, so a single MCPST is only
+feasible for small `d` (here `d <= 2`); beyond that the index trades space for
+pieces. With 8 features and `d = 8` it is 7-37x faster than DoWhy but no
+faster than a single-row `predict` call; on 200-260 features at `d = 16` it
+stays 125-538x faster than DoWhy and 1.2-21x faster than `predict`. Index
+build takes 0.05 s (d = 2) to about a minute (d = 16) per unit. Only star
+SCMs (the ensemble's inputs are intervened or fixed) are supported; chains of
+mechanisms between the intervention and the target are future work.
+
+## Reproducing
+
+All numbers were produced on a Linux server (112 cores, one single-threaded
+Python process per experiment, three experiments in parallel) with Python
+3.11, numpy 2.4, scikit-learn 1.9, XGBoost 3.2, LightGBM 4.7 and DoWhy 0.14.
 
 ```bash
 pip install -r requirements-dowhy.txt
-python experiments/mcpst_2d/run_dowhy_benchmark.py
+python -m unittest discover -s tests          # 27 tests, includes XGBoost/LightGBM if installed
+bash experiments/run_all.sh                   # writes results/*.csv and results/RESULTS.md
+bash experiments/run_all.sh --quick           # small configuration for a smoke test
 ```
 
-Run all correctness and exhaustive theory tests:
+The California housing data are downloaded by scikit-learn on first use
+(`DATA_HOME` selects the cache directory).
 
-```bash
-python -m unittest discover -s tests -p 'test_*.py' -v
+## Repository layout
+
+```
+counterprovenance/
+  semiring.py     hash-consed circuits in N[X] (non-idempotent sum)
+  ensemble.py     sklearn / XGBoost / LightGBM compilers, unit binding, slabs
+  overlay.py      exact overlay with boundary labels and face adjacency
+  persistence.py  persistent factor tree: path copying + node copying
+  plan.py         MST, Euler / shortcut / greedy-DFS covering walks
+  cellindex.py    MCPST leaf (overlay + plan + materialisation)
+  index.py        ProvenanceIndex (groups + adaptive segment tree) and autotune
+  synthetic.py    synthetic ensembles for tests and controlled experiments
+tests/            exactness and optimality tests (brute force, model leaf APIs)
+experiments/      synthetic.py, real_models.py, dowhy_e2e.py, report.py, run_all.sh
+results/          CSV files and RESULTS.md
+docs/DESIGN.md    design, cost models, theorems and non-claims
+docs/archive/     design documents of the v1 prototype
 ```
 
-Run a larger speed check against the lightweight NumPy replay baseline:
-
-```bash
-python experiments/tessera_linear_trie/linear_trie_demo.py \
-  --n 1000000 \
-  --repeats 20 \
-  --skip-dowhy \
-  --quiet \
-  --skip-raw-trie-timing
-```
-
-Run a random layered cDAG stress check:
-
-```bash
-python experiments/tessera_linear_trie/linear_trie_demo.py \
-  --mode layered \
-  --layer-sizes 3,8,8,8,1 \
-  --edge-prob 0.45 \
-  --n 10000 \
-  --repeats 10 \
-  --skip-dowhy \
-  --quiet \
-  --skip-raw-trie-timing
-```
-
-If DoWhy is installed, compare against real `dowhy.gcm.counterfactual_samples`:
-
-```bash
-pip install -r requirements-dowhy.txt
-
-python experiments/tessera_linear_trie/linear_trie_demo.py \
-  --n 10000 \
-  --repeats 5 \
-  --quiet \
-  --skip-raw-trie-timing \
-  --bench-dowhy
-```
-
-Useful flags:
-
-```text
---n                    number of observed units
---mode                 toy or layered
---layer-sizes          comma-separated layer sizes for random layered cDAGs
---edge-prob            edge probability for random layered cDAGs
---t-prime              intervention value for do(T=t')
---repeats              repeated query count for timing
---skip-dowhy           skip optional DoWhy comparison
---bench-dowhy          time real dowhy.gcm.counterfactual_samples
---skip-raw-trie-timing skip slow per-unit Python trie traversal
---quiet                do not print every expanded monomial
-```
-
-## Files
-
-```text
-README.md                                           this document
-POSITIONING.md                                      paper scope, unified index, baselines, and theorem targets
-TECHNICAL_DESIGN.md                                 active problem, semantics, algorithms, proofs, and baselines
-REPO_INTRO.md                                       copy-ready repository introduction
-TODO.md                                             next steps
-requirements.txt                                    minimal Python dependencies
-requirements-dowhy.txt                              optional DoWhy comparison dependencies
-requirements-mcpst.txt                              tested MCPST experiment dependencies
-counterprovenance/linear.py                          generic linear cDAG provenance engine
-counterprovenance/versioned.py                       compact closures, materialized VSC, and region indexes
-counterprovenance/mcpst.py                            2D MCPST planner, PFT materializer, and point index
-experiments/tessera_linear_trie/linear_trie_demo.py main prototype and benchmark
-experiments/tessera_vsc/versioned_circuit_demo.py    arbitrary-toggle IIP/Closure/VSC benchmark
-experiments/tessera_vsc/theory_scaling_demo.py       theorem-aligned n^2/n-log-n/n storage check
-experiments/mcpst_2d/run_experiments.py              reproducible MCPST experiment suite
-experiments/mcpst_2d/run_dowhy_benchmark.py           full DoWhy-GCM query comparison
-experiments/mcpst_2d/run_packed_scaling.py            million-cell packed-byte scaling
-tests/test_linear_general.py                         correctness tests for arbitrary linear cDAGs
-tests/test_lcf_theory.py                              exhaustive small-instance factorization verifier
-tests/test_versioned_circuit.py                       Closure/VSC exactness, toggles, sharing, and space tests
-tests/test_mcpst.py                                   MCPST costs, materialization, query, and boundary tests
-```
-
-## What This Prototype Does Not Claim
-
-The checked-in implementation is intentionally narrower than the paper design.
-
-It does not yet handle:
-
-- end-to-end causal compilation from fitted tree/ensemble or ExactLine/ReLU
-  mechanisms (the MCPST experiment directly extracts sklearn tree states);
-- semiring-matrix compilation for a complete fitted MLP;
-- FLIP or aggregate event indexes;
-- the weighted algebraic-factorization optimizer over closure frontiers;
-- batched multi-target workload optimization.
-
-The prototype currently establishes three foundations:
-
-1. linear counterfactual replay can be represented as semiring provenance and
-   compiled into a fast query plan;
-2. Compact Closure stores arbitrary ordered provenance versions as one shared
-   template plus exactly one record per effective slot change;
-3. Materialized VSC shares exact `ADD` and `MUL` subcircuits without a
-   staircase assumption and returns a directly traversable root per region.
-
-## Research Direction
-
-The repositioned paper is:
-
-**TESSERA: An Exact Provenance Index for Parametric Counterfactual Queries over
-Piecewise-Affine Structural Causal Models**
-
-The implementation path now follows one closure semantics with two layouts:
-
-1. route Linear compilation through Closure as its one-version case;
-2. emit tree leaf changes as exact slot-environment deltas;
-3. lift ExactLine activation changes to exact slot deltas without path expansion;
-4. add compact columnar histories and byte-accurate layout accounting;
-5. add algebraic LCF/min-cut optimization only at suitable additive frontiers;
-6. implement FLIP/AGG and evaluate mixed SCM workloads.
+The previous prototype (linear SCMs, versioned closures, global-grid MCPST)
+is preserved at the git tag `v1-prototype`.

@@ -1,0 +1,8 @@
+workload,index,M,faces,grid_cells,tree_weight,walk_cost,pft_nodes,pft_entries,records,bytes,iip_records,iip_bytes,build_s
+ablation c_e=4,"path, rho-MST",64,81,81,632.0,632.0,695,0,1082,7756,5490,42696,0.006520591035950929
+ablation c_e=4,"path, c-MST",64,81,81,320.0,320.0,695,0,1082,7756,5490,42696,0.005753926991019398
+ablation c_e=4,"path, random spanning tree",64,81,81,929.0,929.0,992,0,1379,10132,5490,42696,0.00628950004465878
+ablation c_e=4,"node, best walk",64,81,81,320.0,320.0,201,320,908,7644,5490,42696,0.00636403396492824
+ablation c_e=4,"node, walk of random tree",64,81,81,516.0,516.0,280,516,1183,10628,5490,42696,0.006756766000762582
+ablation c_e=4,hybrid (MST plans),64,81,81,632.0,480.0,201,320,908,7644,5490,42696,0.0074352269875817
+ablation c_e=4,"hybrid, random tree",64,81,81,929.0,774.0,280,516,1183,10628,5490,42696,0.008051725046243519

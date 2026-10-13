@@ -171,6 +171,26 @@ def main() -> None:
                                        ("max_abs_error", "max |error|")]))
         out.append("")
 
+    r5 = load("r5_highdim.csv")
+    if r5:
+        r5.sort(key=lambda r: (str(r["dataset"]), str(r["model"]), int(r["d"])))
+        out += ["## R5. Hundreds of features: d = 2, 8, 16 interventions", ""]
+        out.append("Star SCM `every feature -> Y` fitted with DoWhy-GCM on OpenML datasets with hundreds of "
+                   "continuous features; the intervened features are the ones the ensemble splits on most. "
+                   "`effective trees` counts trees that still split on an intervened feature after binding the "
+                   "unit; all other trees collapse to one constant piece. Index chosen by `autotune` "
+                   "(pieces <= 16). Single-threaded throughout.")
+        out.append("")
+        out.append(markdown_table(r5, [("dataset", "dataset"), ("features", "features"), ("model", "model"),
+                                       ("d", "d"), ("effective_trees", "effective trees"), ("trees", "trees"),
+                                       ("N_boxes", "boxes N"), ("index_records", "index records"),
+                                       ("mean_pieces", "pieces"), ("index_us", "index us"),
+                                       ("predict_us", "predict us"), ("dowhy_fresh_us", "DoWhy fresh us"),
+                                       ("dowhy_cached_us", "DoWhy cached us"), ("x_vs_dowhy_fresh", "x vs fresh"),
+                                       ("x_vs_dowhy_cached", "x vs cached"), ("x_vs_predict", "x vs predict"),
+                                       ("build_s", "build s"), ("max_abs_error", "max |error|")]))
+        out.append("")
+
     (RESULTS / "RESULTS.md").write_text("\n".join(out), encoding="utf-8")
     print(f"wrote {RESULTS / 'RESULTS.md'}")
 

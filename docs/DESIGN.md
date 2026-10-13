@@ -70,8 +70,9 @@ edges it covers with `(slot, item below, item above)`. These labels are the
 change sets `Delta_e`; no `K x M` signature matrix is built. Grid cells joined
 by an unlabelled edge have equal signatures, so the connected components of
 the unlabelled-edge graph are exactly the faces of the non-Cartesian overlay.
-Labelled edges between faces form the face adjacency graph. On sklearn GBDTs
-the exact overlay has 1.5-3.6x fewer faces than the full threshold grid.
+Labelled edges between faces form the face adjacency graph. On the six
+California-housing models at d = 2 the exact overlay has 2.0-6.9x fewer faces
+than the full threshold grid (`results/RESULTS.md`, R3).
 
 ### 2.2 Persistent factor tree
 

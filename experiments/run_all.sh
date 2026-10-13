@@ -12,4 +12,10 @@ QUICK=${1:-}
 $PY synthetic.py $QUICK
 $PY real_models.py --data-home "$DATA" $QUICK
 $PY dowhy_e2e.py --data-home "$DATA" $QUICK
+$PY dowhy_e2e.py --data-home "$DATA" --dims 6,8 --suffix _d68 $QUICK
+for ds in topo_2_1:422 yprop_4_1:416; do
+  for m in sklearn-GBR sklearn-HGB XGBoost-hist LightGBM; do
+    $PY highdim.py --dataset "$ds" --model "$m" --data-home "$DATA"
+  done
+done
 $PY report.py
