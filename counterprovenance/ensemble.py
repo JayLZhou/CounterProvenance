@@ -54,13 +54,17 @@ class TreeEnsemble:
     input_dtype: np.dtype
     n_features: int
     source: str
+    zero_threshold: float = 0.0  # inputs with |x| <= this are read as 0 (LightGBM)
 
     @property
     def tree_count(self) -> int:
         return len(self.trees)
 
     def cast(self, X: np.ndarray) -> np.ndarray:
-        return np.asarray(X, dtype=self.input_dtype).astype(np.float64)
+        out = np.asarray(X, dtype=self.input_dtype).astype(np.float64)
+        if self.zero_threshold > 0.0:
+            out = np.where(np.abs(out) <= self.zero_threshold, 0.0, out)
+        return out
 
     def leaves(self, X: np.ndarray) -> np.ndarray:
         """Node index of the selected leaf, shape (n, M)."""
@@ -224,7 +228,10 @@ def from_lightgbm(model) -> TreeEnsemble:
             for t in trees
         ]
     n_features = int(dump["max_feature_idx"]) + 1
-    return TreeEnsemble(tuple(trees), 0.0, np.dtype(np.float64), n_features, "lightgbm")
+    # LightGBM drops |x| <= kZeroThreshold (1e-35f) from every input row, i.e.
+    # reads such values as exact zeros before comparing with thresholds
+    return TreeEnsemble(tuple(trees), 0.0, np.dtype(np.float64), n_features, "lightgbm",
+                        zero_threshold=float(np.float32(1e-35)))
 
 
 def from_model(model) -> TreeEnsemble:

@@ -22,13 +22,20 @@ from .ensemble import BoundEnsemble, TreeEnsemble
 
 
 def make_cast(ensemble: TreeEnsemble):
-    """Round intervention values to the model's input precision (plain floats)."""
+    """Read intervention values the way the model does (plain floats): round to
+    the input precision, and map |x| <= zero_threshold to 0 (LightGBM)."""
     if ensemble.input_dtype == np.float32:
         def cast(t):
             return array("f", t.tolist() if isinstance(t, np.ndarray) else t).tolist()
     else:
         def cast(t):
             return t.tolist() if isinstance(t, np.ndarray) else [float(v) for v in t]
+    zt = ensemble.zero_threshold
+    if zt > 0.0:
+        rounded = cast
+
+        def cast(t):
+            return [0.0 if -zt <= v <= zt else v for v in rounded(t)]
     return cast
 
 

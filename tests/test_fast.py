@@ -172,6 +172,35 @@ class WideTreeTests(unittest.TestCase):
             np.testing.assert_allclose(fast.batch(T), [bound.value(t) for t in T], rtol=1e-12, atol=1e-12)
 
 
+class LightGBMZeroTests(unittest.TestCase):
+    def test_values_near_zero_are_read_as_zero(self) -> None:
+        try:
+            import lightgbm as lgb
+        except ImportError:
+            self.skipTest("lightgbm not installed")
+        from counterprovenance import from_model
+
+        rng = np.random.default_rng(41)
+        X = rng.choice([0.0, -1.0, 1.0, 2.0], size=(3000, 4)) * rng.uniform(0.5, 1.5, size=(3000, 4))
+        X[rng.uniform(size=X.shape) < 0.4] = 0.0
+        y = X[:, 0] - 2 * (X[:, 1] == 0) + X[:, 2] * X[:, 3] + rng.normal(0, 0.05, 3000)
+        model = lgb.LGBMRegressor(n_estimators=40, num_leaves=15, verbose=-1, n_jobs=1).fit(X, y)
+        ensemble = from_model(model)
+        zt = float(np.float32(1e-35))
+        tiny = [0.0, -0.0, zt, -zt, np.nextafter(zt, 1), -np.nextafter(zt, 1), 1e-36, -1e-36, 1e-30, -1e-30]
+        rows = np.array([[a, b, 1.0, 0.5] for a in tiny for b in tiny])
+        np.testing.assert_allclose(ensemble.predict(rows), model.predict(rows), rtol=0, atol=1e-9)
+        bound = bind(ensemble, rows[0], [0, 1])
+        index = ProvenanceIndex(bound)
+        for r in rows:
+            self.assertAlmostEqual(index.query(r[:2]).value, float(model.predict(r[None, :])[0]), places=9)
+        if accel.HAVE_NUMBA:
+            fast = accel.NumbaIndex(index)
+            loop = accel.NumbaLoop(ensemble, rows[0], [0, 1])
+            np.testing.assert_allclose(fast.batch(rows[:, :2]), model.predict(rows), rtol=0, atol=1e-9)
+            np.testing.assert_allclose(loop.batch(rows[:, :2]), model.predict(rows), rtol=0, atol=1e-9)
+
+
 class RealModelTests(unittest.TestCase):
     def test_xgboost_deep_trees(self) -> None:
         try:

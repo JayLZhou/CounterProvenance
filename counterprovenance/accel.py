@@ -58,10 +58,13 @@ if HAVE_NUMBA:
         f32 = il[14]
         for i in range(g):
             work[d + i] = 0
+        zt = fl[1]
         for k in range(d):
             v = t[k]
             if f32 == 1:
                 v = np.float64(np.float32(v))
+            if -zt <= v <= zt:
+                v = 0.0
             lo = 0
             hi = il[o_thlen + k]
             base = o_th + k * width
@@ -113,10 +116,13 @@ if HAVE_NUMBA:
         o_unit = il[11]
         for i in range(p):
             x[i] = fl[o_unit + i]
+        zt = fl[1]
         for k in range(na):
             v = t[k]
             if f32 == 1:
                 v = np.float64(np.float32(v))
+            if -zt <= v <= zt:
+                v = 0.0
             x[il[o_axes + k]] = v
         total = fl[0]
         for m in range(M):
@@ -186,8 +192,9 @@ class NumbaIndex:
         for k, vals in enumerate(index._bvals):
             bvals[k, : len(vals)] = vals
         f32 = int(bound.ensemble.input_dtype == np.float32)
+        zt = bound.ensemble.zero_threshold if bound.ensemble.zero_threshold > 0 else -1.0
         fl, (_, o_th, o_tab, o_bv) = _pack([
-            np.array([index._const]), th.ravel(), np.concatenate(tables) if tables else np.zeros(0), bvals.ravel(),
+            np.array([index._const, zt]), th.ravel(), np.concatenate(tables) if tables else np.zeros(0), bvals.ravel(),
         ])
         header = np.zeros(15, dtype=np.int64)
         ints, (_, o_thlen, o_offs, o_ub, o_contrib, o_db) = _pack([
@@ -247,13 +254,14 @@ class NumbaLoop:
         f32 = int(ensemble.input_dtype == np.float32)
         header = np.zeros(12, dtype=np.int64)
         ints, (_, o_feat, o_left, o_right, o_axes) = _pack([header, feat.ravel(), left.ravel(), right.ravel(), axes_arr])
-        o_thr = 1
+        o_thr = 2
         o_val = o_thr + thr.size
         o_unit = o_val + val.size
         ints = ints.astype(np.int64)
         ints[:12] = [M, n, len(unit_arr), len(axes_arr), f32, o_feat, o_left, o_right, o_axes, o_thr, o_val, o_unit]
         self.ints = ints
-        self.floats = np.concatenate([np.array([const]), thr.ravel(), val.ravel(), unit_arr]).astype(np.float64)
+        zt = ensemble.zero_threshold if ensemble.zero_threshold > 0 else -1.0
+        self.floats = np.concatenate([np.array([const, zt]), thr.ravel(), val.ravel(), unit_arr]).astype(np.float64)
         self.x = np.zeros(len(unit_arr))
         self.leaves = np.zeros(M, dtype=np.int64)
 
