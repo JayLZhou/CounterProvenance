@@ -24,8 +24,12 @@ from .ensemble import BoundEnsemble, TreeEnsemble
 def make_cast(ensemble: TreeEnsemble):
     """Round intervention values to the model's input precision (plain floats)."""
     if ensemble.input_dtype == np.float32:
-        return lambda t: array("f", t).tolist()
-    return lambda t: [float(v) for v in t]
+        def cast(t):
+            return array("f", t.tolist() if isinstance(t, np.ndarray) else t).tolist()
+    else:
+        def cast(t):
+            return t.tolist() if isinstance(t, np.ndarray) else [float(v) for v in t]
+    return cast
 
 
 def _lists(tree):

@@ -25,25 +25,8 @@ from collections import Counter
 
 import numpy as np
 
-from common import environment, model_zoo, per_call_seconds, value_tolerance, write_csv
+from common import environment, load_openml, model_zoo, per_call_seconds, value_tolerance, write_csv
 from counterprovenance import autotune, bind, from_model
-
-
-def load_openml(data_id: int, data_home: str | None, max_rows: int):
-    import pandas as pd
-    from sklearn.datasets import fetch_openml
-
-    ds = fetch_openml(data_id=data_id, as_frame=True, data_home=data_home, parser="auto")
-    frame = ds.data.select_dtypes(include=[np.number]).astype(float)
-    frame = frame.loc[:, frame.nunique() > 1]
-    frame = frame.fillna(frame.median())
-    y = pd.to_numeric(ds.target, errors="coerce").astype(float)
-    keep = ~y.isna()
-    frame, y = frame[keep], y[keep]
-    if len(frame) > max_rows:
-        frame, y = frame.iloc[:max_rows], y.iloc[:max_rows]
-    frame.columns = [f"f{i:04d}" for i in range(frame.shape[1])]  # DoWhy-safe, sortable names
-    return frame.reset_index(drop=True), y.to_numpy()
 
 
 def main() -> None:

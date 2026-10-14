@@ -91,8 +91,107 @@ def california(data_home: str | None):
     return ds.data.astype(np.float64), ds.target.astype(np.float64), list(ds.feature_names)
 
 
+def load_openml(data_id: int, data_home: str | None, max_rows: int):
+    """Numeric features of an OpenML regression dataset (sklearn's fetcher)."""
+    import pandas as pd
+    from sklearn.datasets import fetch_openml
+
+    ds = fetch_openml(data_id=data_id, as_frame=True, data_home=data_home, parser="auto")
+    frame = ds.data.select_dtypes(include=[np.number]).astype(float)
+    y = pd.to_numeric(ds.target, errors="coerce").astype(float)
+    return _clean(frame, y, max_rows)
+
+
+def _clean(frame, y, max_rows: int):
+    frame = frame.loc[:, frame.nunique() > 1]
+    frame = frame.fillna(frame.median())
+    keep = ~y.isna()
+    frame, y = frame[keep], y[keep]
+    if len(frame) > max_rows:
+        frame, y = frame.iloc[:max_rows], y.iloc[:max_rows]
+    frame.columns = [f"f{i:04d}" for i in range(frame.shape[1])]  # DoWhy-safe, sortable names
+    return frame.reset_index(drop=True), np.asarray(y, dtype=float)
+
+
+def load_openml_parquet(data_id: int, target: str, data_home: str | None, max_rows: int):
+    """OpenML datasets whose ARFF checksum fails with sklearn: read the parquet
+    file the OpenML API points to (cached under ``data_home/pq``)."""
+    import json
+    import urllib.request
+
+    import pandas as pd
+
+    path = Path(data_home or ".") / "pq" / f"{data_id}.pq"
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        url = f"https://www.openml.org/api/v1/json/data/{data_id}"
+        desc = json.load(urllib.request.urlopen(url, timeout=60))["data_set_description"]
+        urllib.request.urlretrieve(desc["parquet_url"], path)
+    df = pd.read_parquet(path)
+    if target == "auto-NPWD":  # Mars Express: 33 power lines; keep the one with the largest variance
+        lines = [c for c in df.columns if c.startswith("NPWD")]
+        target = max(lines, key=lambda c: df[c].var())
+        df = df.drop(columns=[c for c in lines if c != target] + ["ut_ms"])
+    y = pd.to_numeric(df.pop(target), errors="coerce").astype(float)
+    return _clean(df.select_dtypes(include=[np.number]).astype(float), y, max_rows)
+
+
+DATASETS = {
+    "cal": ("California housing", None),
+    "yprop": ("OpenML yprop_4_1", 416),
+    "topo": ("OpenML topo_2_1", 422),
+    "uji": ("OpenML ujiindoorloc_latitude", (46293, "LATITUDE")),
+    "mars": ("OpenML ThermalPowerConsumptionMarsExpress60", (45716, "auto-NPWD")),
+}
+
+
+def load_dataset(name: str, data_home: str | None, max_rows: int = 20_000):
+    """``(X, y, title)`` with numeric features only."""
+    title, source = DATASETS[name]
+    if source is None:
+        X, y, _ = california(data_home)
+        return X, y, title
+    if isinstance(source, tuple):
+        frame, y = load_openml_parquet(source[0], source[1], data_home, max_rows)
+    else:
+        frame, y = load_openml(source, data_home, max_rows)
+    return frame.to_numpy(dtype=float), y, title
+
+
+def paper_zoo(n: int = 1000) -> dict[str, Callable[[], object]]:
+    """Models with each library's usual capacity (single-threaded)."""
+    from sklearn.ensemble import GradientBoostingRegressor, HistGradientBoostingRegressor, RandomForestRegressor
+
+    zoo: dict[str, Callable[[], object]] = {
+        "sklearn-GBR": lambda: GradientBoostingRegressor(n_estimators=n, max_depth=3, learning_rate=0.05, random_state=0),
+        "sklearn-HGB": lambda: HistGradientBoostingRegressor(
+            max_iter=n, learning_rate=0.05, max_leaf_nodes=31, early_stopping=False, random_state=0
+        ),
+        "sklearn-RF": lambda: RandomForestRegressor(
+            n_estimators=max(50, n // 4), max_depth=10, max_features=0.33, random_state=0, n_jobs=1
+        ),
+    }
+    try:
+        import xgboost as xgb
+
+        zoo["XGBoost"] = lambda: xgb.XGBRegressor(
+            n_estimators=n, max_depth=6, learning_rate=0.05, tree_method="hist", random_state=0, n_jobs=1
+        )
+    except ImportError:
+        pass
+    try:
+        import lightgbm as lgb
+
+        zoo["LightGBM"] = lambda: lgb.LGBMRegressor(
+            n_estimators=n, num_leaves=31, learning_rate=0.05, random_state=0, verbose=-1, n_jobs=1
+        )
+    except ImportError:
+        pass
+    return zoo
+
+
 def model_zoo(quick: bool = False) -> dict[str, Callable[[], object]]:
-    """Name -> unfitted model factory (identity-link regressors)."""
+    """Name -> unfitted model factory (identity-link regressors), 300 trees."""
     n = 60 if quick else 300
     zoo: dict[str, Callable[[], object]] = {}
     from sklearn.ensemble import (

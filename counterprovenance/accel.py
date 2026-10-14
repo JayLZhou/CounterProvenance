@@ -1,6 +1,7 @@
 """Compiled (numba) versions of the compiled query and of the online loop.
 
-Both sides use the same compiler, so the comparison measures the algorithms:
+Both sides use the same compiler and the same calling convention (a few flat
+arrays per call), so the comparison measures the algorithms:
 :class:`NumbaIndex` runs the packed lookup (``d`` binary searches, one table
 read per group) and the leaf bitmasks of a compiled
 :class:`~counterprovenance.index.ProvenanceIndex`; :class:`NumbaLoop` walks the
@@ -31,84 +32,123 @@ _DB = np.zeros(64, dtype=np.int64)
 for _i in range(64):
     _DB[((((1 << _i) * _DEBRUIJN) & _MASK64) >> 58)] = _i
 
+# int header of NumbaIndex.ints
+_D, _W, _G, _K, _NB, _C, _O_THLEN, _O_OFFS, _O_UB, _O_CONTRIB, _O_DB, _O_TH, _O_TAB, _O_BV, _F32 = range(15)
+# int header of NumbaLoop.ints
+_M, _N, _P, _NA, _LF32, _O_FEAT, _O_LEFT, _O_RIGHT, _O_AXES, _O_THR, _O_VAL, _O_UNIT = range(12)
+
 if HAVE_NUMBA:
 
     @njit(cache=True)
-    def _index_query(th, th_len, contrib, tables, offs, ub, bm, bvals, const, f32, t, slabs, cells, leaves, db):
-        d = th.shape[0]
-        g = offs.shape[0]
+    def _index_query(il, fl, bm, t, work):
+        d = il[0]
+        width = il[1]
+        g = il[2]
+        K = il[3]
+        nb = il[4]
+        C = il[5]
+        o_thlen = il[6]
+        o_offs = il[7]
+        o_ub = il[8]
+        o_contrib = il[9]
+        o_db = il[10]
+        o_th = il[11]
+        o_tab = il[12]
+        o_bv = il[13]
+        f32 = il[14]
         for i in range(g):
-            cells[i] = 0
+            work[d + i] = 0
         for k in range(d):
             v = t[k]
-            if f32:
+            if f32 == 1:
                 v = np.float64(np.float32(v))
             lo = 0
-            hi = th_len[k]
+            hi = il[o_thlen + k]
+            base = o_th + k * width
             while lo < hi:
                 mid = (lo + hi) >> 1
-                if th[k, mid] < v:
+                if fl[base + mid] < v:
                     lo = mid + 1
                 else:
                     hi = mid
-            slabs[k] = lo
+            work[k] = lo
             if g > 0:
-                row = contrib[k, lo]
+                cb = o_contrib + (k * C + lo) * g
                 for i in range(g):
-                    cells[i] += row[i]
-        total = const
+                    work[d + i] += il[cb + i]
+        total = fl[0]
         for i in range(g):
-            total += tables[offs[i] + cells[i]]
-        nb = ub.shape[0]
-        for j in range(bvals.shape[0]):
-            m = bm[0, slabs[ub[0]], j]
+            total += fl[o_tab + il[o_offs + i] + work[d + i]]
+        for j in range(K):
+            m = bm[work[il[o_ub]] * K + j]
             for u in range(1, nb):
-                m &= bm[u, slabs[ub[u]], j]
+                m &= bm[(u * C + work[il[o_ub + u]]) * K + j]
             if m == 0:  # another 64-leaf field of the same tree holds the leaf
-                leaves[j] = 0
+                work[d + g + j] = 0
                 continue
             low = m & (~m + np.uint64(1))
-            leaf = db[(low * np.uint64(_DEBRUIJN)) >> np.uint64(58)] + 1
-            leaves[j] = leaf
-            total += bvals[j, leaf]
+            leaf = il[o_db + np.int64((low * np.uint64(_DEBRUIJN)) >> np.uint64(58))] + 1
+            work[d + g + j] = leaf
+            total += fl[o_bv + j * 65 + leaf]
         return total
 
     @njit(cache=True)
-    def _index_batch(th, th_len, contrib, tables, offs, ub, bm, bvals, const, f32, T, out, slabs, cells, leaves, db):
+    def _index_batch(il, fl, bm, T, out, work):
         for q in range(T.shape[0]):
-            out[q] = _index_query(th, th_len, contrib, tables, offs, ub, bm, bvals, const, f32, T[q],
-                                  slabs, cells, leaves, db)
+            out[q] = _index_query(il, fl, bm, T[q], work)
 
     @njit(cache=True)
-    def _walk(feat, thr, left, right, val, unit, axes, f32, const, t, x, leaves):
-        for i in range(unit.shape[0]):
-            x[i] = unit[i]
-        for k in range(axes.shape[0]):
+    def _walk(il, fl, t, x, leaves):
+        M = il[0]
+        n = il[1]
+        p = il[2]
+        na = il[3]
+        f32 = il[4]
+        o_feat = il[5]
+        o_left = il[6]
+        o_right = il[7]
+        o_axes = il[8]
+        o_thr = il[9]
+        o_val = il[10]
+        o_unit = il[11]
+        for i in range(p):
+            x[i] = fl[o_unit + i]
+        for k in range(na):
             v = t[k]
-            if f32:
+            if f32 == 1:
                 v = np.float64(np.float32(v))
-            x[axes[k]] = v
-        total = const
-        for m in range(feat.shape[0]):
+            x[il[o_axes + k]] = v
+        total = fl[0]
+        for m in range(M):
+            base = m * n
             node = 0
-            while feat[m, node] >= 0:
-                if x[feat[m, node]] <= thr[m, node]:
-                    node = left[m, node]
+            while il[o_feat + base + node] >= 0:
+                if x[il[o_feat + base + node]] <= fl[o_thr + base + node]:
+                    node = il[o_left + base + node]
                 else:
-                    node = right[m, node]
+                    node = il[o_right + base + node]
             leaves[m] = node
-            total += val[m, node]
+            total += fl[o_val + base + node]
         return total
 
     @njit(cache=True)
-    def _walk_batch(feat, thr, left, right, val, unit, axes, f32, const, T, out, x, leaves):
+    def _walk_batch(il, fl, T, out, x, leaves):
         for q in range(T.shape[0]):
-            out[q] = _walk(feat, thr, left, right, val, unit, axes, f32, const, T[q], x, leaves)
+            out[q] = _walk(il, fl, T[q], x, leaves)
 
 
 def _require() -> None:
     if not HAVE_NUMBA:
         raise ImportError("numba is required for counterprovenance.accel")
+
+
+def _pack(parts):
+    """Concatenate arrays; return (flat array, start offset of every part)."""
+    offsets, pos = [], 0
+    for p in parts:
+        offsets.append(pos)
+        pos += len(p)
+    return np.concatenate(parts) if parts else np.zeros(0), offsets
 
 
 class NumbaIndex:
@@ -122,50 +162,55 @@ class NumbaIndex:
         bound, slabs = index.bound, index.slabs
         d = bound.d
         counts = slabs.counts
+        C = max(counts)
         width = max(1, max(len(t) for t in slabs.thresholds))
-        self.th = np.full((d, width), np.inf)
-        self.th_len = np.zeros(d, dtype=np.int64)
+        th = np.full((d, width), np.inf)
+        th_len = np.zeros(d, dtype=np.int64)
         for a, t in enumerate(slabs.thresholds):
-            self.th[a, : len(t)] = t
-            self.th_len[a] = len(t)
+            th[a, : len(t)] = t
+            th_len[a] = len(t)
         g = len(index._tables)
-        self.contrib = np.zeros((d, max(counts), g), dtype=np.int64)
+        contrib = np.zeros((d, C, g), dtype=np.int64)
         for gi, a, c in index._contrib:
-            self.contrib[a, : len(c), gi] = c
-        parts = [np.frombuffer(t, dtype=np.float64) for t in index._tables]
-        self.tables = np.concatenate(parts) if parts else np.zeros(1)
-        self.offs = np.zeros(g, dtype=np.int64)
+            contrib[a, : len(c), gi] = c
+        tables = [np.frombuffer(t, dtype=np.float64) for t in index._tables]
+        offs = np.zeros(g, dtype=np.int64)
         if g:
-            self.offs[1:] = np.cumsum([len(p) for p in parts])[:-1]
+            offs[1:] = np.cumsum([len(t) for t in tables])[:-1]
         K = len(index._bvals)
         used = sorted(index._bmasks)
-        self.ub = np.array(used, dtype=np.int64)
-        self.bm = np.zeros((max(1, len(used)), max(counts), K), dtype=np.uint64)
+        bm = np.zeros((max(1, len(used)), C, K), dtype=np.uint64)
         for u, a in enumerate(used):
-            self.bm[u, : counts[a], :] = index._bmasks[a]
-        self.bvals = np.zeros((K, 65))
+            bm[u, : counts[a], :] = index._bmasks[a]
+        bvals = np.zeros((K, 65))
         for k, vals in enumerate(index._bvals):
-            self.bvals[k, : len(vals)] = vals
-        self.const = float(index._const)
-        self.f32 = bound.ensemble.input_dtype == np.float32
-        self.slabs = np.zeros(d, dtype=np.int64)
-        self.cells = np.zeros(g, dtype=np.int64)
-        self.leaves = np.zeros(K, dtype=np.int64)
-        self._args = (self.th, self.th_len, self.contrib, self.tables, self.offs, self.ub, self.bm, self.bvals,
-                      self.const, self.f32)
+            bvals[k, : len(vals)] = vals
+        f32 = int(bound.ensemble.input_dtype == np.float32)
+        fl, (_, o_th, o_tab, o_bv) = _pack([
+            np.array([index._const]), th.ravel(), np.concatenate(tables) if tables else np.zeros(0), bvals.ravel(),
+        ])
+        header = np.zeros(15, dtype=np.int64)
+        ints, (_, o_thlen, o_offs, o_ub, o_contrib, o_db) = _pack([
+            header, th_len, offs, np.array(used, dtype=np.int64), contrib.ravel(), _DB,
+        ])
+        ints = ints.astype(np.int64)
+        ints[: 15] = [d, width, g, K, len(used), C, o_thlen, o_offs, o_ub, o_contrib, o_db, o_th, o_tab, o_bv, f32]
+        self.ints, self.floats, self.bm = ints, fl.astype(np.float64), bm.ravel()
+        self.work = np.zeros(d + g + K, dtype=np.int64)
+        self.d, self.g, self.K = d, g, K
 
     def query(self, t: np.ndarray) -> float:
         """``t``: float64 array of the intervention values."""
-        return _index_query(*self._args, t, self.slabs, self.cells, self.leaves, _DB)
+        return _index_query(self.ints, self.floats, self.bm, t, self.work)
 
     def query_full(self, t: np.ndarray) -> tuple[float, np.ndarray, np.ndarray]:
         value = self.query(t)
-        return value, self.cells.copy(), self.leaves.copy()
+        d, g = self.d, self.g
+        return value, self.work[d: d + g].copy(), self.work[d + g:].copy()
 
     def batch(self, T: np.ndarray) -> np.ndarray:
         out = np.empty(len(T))
-        _index_batch(*self._args, np.ascontiguousarray(T, dtype=np.float64), out, self.slabs, self.cells,
-                     self.leaves, _DB)
+        _index_batch(self.ints, self.floats, self.bm, np.ascontiguousarray(T, dtype=np.float64), out, self.work)
         return out
 
 
@@ -184,32 +229,38 @@ class NumbaLoop:
             const = math.fsum([bound.offset] + [b.value for b in bound.boxes if b.tree not in keep])
         n = max(1, max((len(ensemble.trees[m].feature) for m in trees), default=1))
         M = len(trees)
-        self.feat = np.full((M, n), -1, dtype=np.int64)
-        self.thr = np.zeros((M, n))
-        self.left = np.zeros((M, n), dtype=np.int64)
-        self.right = np.zeros((M, n), dtype=np.int64)
-        self.val = np.zeros((M, n))
+        feat = np.full((M, n), -1, dtype=np.int64)
+        thr = np.zeros((M, n))
+        left = np.zeros((M, n), dtype=np.int64)
+        right = np.zeros((M, n), dtype=np.int64)
+        val = np.zeros((M, n))
         for i, m in enumerate(trees):
             tr = ensemble.trees[m]
             k = len(tr.feature)
-            self.feat[i, :k] = tr.feature
-            self.thr[i, :k] = tr.threshold
-            self.left[i, :k] = tr.left
-            self.right[i, :k] = tr.right
-            self.val[i, :k] = tr.value
-        self.unit = ensemble.cast(np.asarray(unit, dtype=float).reshape(1, -1))[0].astype(np.float64)
-        self.axes = np.asarray(axes, dtype=np.int64)
-        self.f32 = ensemble.input_dtype == np.float32
-        self.const = float(const)
-        self.x = np.zeros(len(self.unit))
+            feat[i, :k] = tr.feature
+            thr[i, :k] = tr.threshold
+            left[i, :k] = tr.left
+            right[i, :k] = tr.right
+            val[i, :k] = tr.value
+        unit_arr = ensemble.cast(np.asarray(unit, dtype=float).reshape(1, -1))[0].astype(np.float64)
+        axes_arr = np.asarray(axes, dtype=np.int64)
+        f32 = int(ensemble.input_dtype == np.float32)
+        header = np.zeros(12, dtype=np.int64)
+        ints, (_, o_feat, o_left, o_right, o_axes) = _pack([header, feat.ravel(), left.ravel(), right.ravel(), axes_arr])
+        o_thr = 1
+        o_val = o_thr + thr.size
+        o_unit = o_val + val.size
+        ints = ints.astype(np.int64)
+        ints[:12] = [M, n, len(unit_arr), len(axes_arr), f32, o_feat, o_left, o_right, o_axes, o_thr, o_val, o_unit]
+        self.ints = ints
+        self.floats = np.concatenate([np.array([const]), thr.ravel(), val.ravel(), unit_arr]).astype(np.float64)
+        self.x = np.zeros(len(unit_arr))
         self.leaves = np.zeros(M, dtype=np.int64)
-        self._args = (self.feat, self.thr, self.left, self.right, self.val, self.unit, self.axes, self.f32,
-                      self.const)
 
     def query(self, t: np.ndarray) -> float:
-        return _walk(*self._args, t, self.x, self.leaves)
+        return _walk(self.ints, self.floats, t, self.x, self.leaves)
 
     def batch(self, T: np.ndarray) -> np.ndarray:
         out = np.empty(len(T))
-        _walk_batch(*self._args, np.ascontiguousarray(T, dtype=np.float64), out, self.x, self.leaves)
+        _walk_batch(self.ints, self.floats, np.ascontiguousarray(T, dtype=np.float64), out, self.x, self.leaves)
         return out

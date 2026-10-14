@@ -51,6 +51,7 @@ from typing import Iterable, Sequence
 
 import numpy as np
 
+from .baselines import make_cast
 from .cellindex import CellIndex, Piece
 from .ensemble import BoundEnsemble, Slabs
 from .grouping import greedy_groups, tree_profiles
@@ -119,6 +120,9 @@ class LazyAnswer:
     def pieces(self) -> list:
         idx = self._index
         out: list = []
+        for leaf in idx._const_leaves:
+            if not leaf.cells.face_empty[0]:
+                out.append(Piece(leaf.cells, 0))
         for leaf, cell in zip(idx._fast_leaves, self._cells):
             cells = leaf.cells
             face = int(cells.overlay.face_of_cell[cell])
@@ -242,10 +246,7 @@ class ProvenanceIndex:
         self._segment_nodes = 0
         self._leaves: list[_Leaf] = []
         self._leaf_depths: Counter = Counter()
-        if bound.ensemble.input_dtype == np.float32:
-            self._cast = lambda t: array("f", t).tolist()
-        else:
-            self._cast = lambda t: [float(v) for v in t]
+        self._cast = make_cast(bound.ensemble)
         self.deep: list = []
         groups = self._groups(grouping)
         if group_budget is not None:
@@ -258,6 +259,7 @@ class ProvenanceIndex:
         self._build_bitmasks()
         self._fast = compile and all(r is None or isinstance(r, _Leaf) for r in self.roots)
         self._fast_leaves: list[_Leaf] = []
+        self._const_leaves: list[_Leaf] = []
         self._tables: list = []
         self._table_cells = self._pack_words = 0
         if self._fast:
@@ -337,7 +339,10 @@ class ProvenanceIndex:
 
     # -- compiled query ----------------------------------------------------
     def _compile(self) -> None:
-        leaves = [r for r in self.roots if r is not None]
+        present = [r for r in self.roots if r is not None]
+        # groups without intervention axes (constant trees) fold into the constant
+        self._const_leaves = [leaf for leaf in present if not leaf.axes]
+        leaves = [leaf for leaf in present if leaf.axes]
         self._fast_leaves = leaves
         d, counts = self.bound.d, self.slabs.counts
         th = [list(map(float, t)) for t in self.slabs.thresholds]
@@ -366,7 +371,7 @@ class ProvenanceIndex:
         self._groups_of_axis = groups_of_axis
         self._nbytes = 4 * len(leaves)
         self._pack_words = sum(counts[a] for a, _, _ in self._paxes) * len(leaves)
-        self._const = self.bound.offset
+        self._const = math.fsum([self.bound.offset] + [float(leaf.cells.face_value[0]) for leaf in self._const_leaves])
 
     def _query_fast(self, t: Sequence[float]) -> LazyAnswer:
         x = self._cast(t)
