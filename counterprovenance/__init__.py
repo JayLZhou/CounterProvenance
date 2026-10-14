@@ -6,7 +6,7 @@ Typical use::
 
     ensemble = from_model(fitted_xgboost_or_lightgbm_or_sklearn_model)
     bound = bind(ensemble, unit_row, axes=[0, 3], noise=abducted_noise)
-    index = ProvenanceIndex(bound)            # or autotune(bound, sample_points)
+    index = ProvenanceIndex(bound)            # greedy groups, compiled query
     answer = index.query([t0, t3])            # do(X0 = t0, X3 = t3)
     answer.value                              # exact counterfactual value
     answer.labels()                           # exact provenance: (tree, leaf) multiset
@@ -27,7 +27,19 @@ from .ensemble import (
     from_sklearn_hgb,
     from_xgboost,
 )
-from .index import Answer, IndexStats, ProvenanceIndex, TuneResult, autotune
+from .baselines import IncrementalLoop, OnlineLoop
+from .grouping import Group, TreeProfile, greedy_groups, nested_groups, tree_profiles
+from .index import (
+    Answer,
+    AtomPiece,
+    IndexStats,
+    LazyAnswer,
+    ProvenanceIndex,
+    QuerySession,
+    TuneResult,
+    autotune,
+    tune_budget,
+)
 from .overlay import FaceEdge, Overlay
 from .persistence import INACTIVE, PersistentFactorTree, ancestor_union_size
 from .plan import (
@@ -45,6 +57,17 @@ from .semiring import CircuitArena
 
 __all__ = [
     "Answer",
+    "AtomPiece",
+    "Group",
+    "IncrementalLoop",
+    "LazyAnswer",
+    "OnlineLoop",
+    "QuerySession",
+    "TreeProfile",
+    "greedy_groups",
+    "nested_groups",
+    "tree_profiles",
+    "tune_budget",
     "BoundEnsemble",
     "CellIndex",
     "CellStats",
