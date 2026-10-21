@@ -1,0 +1,8 @@
+{'host': '3haoji-A100', 'python': '3.11.15', 'platform': 'Linux-5.15.0-91-generic-x86_64-with-glibc2.31', 'numpy': '2.4.6', 'scipy': '1.15.3', 'sklearn': '1.9.0', 'xgboost': '3.2.0', 'lightgbm': '4.7.0', 'dowhy': '0.14'}
+OpenML ujiindoorloc_latitude: (20000, 525)
+XGBoost (1000 trees) fitted in 29.2s
+uji   XGBoost      d= 1 trees=1000/1000 groups=   1 bitmask=   0 rec=      6,019 build=   0.1s | py   1.92 vs loop   736.8 (384.5x) | nb  0.060 vs  84.93 (1404.7x) | lib  703.3 vs nb-call  0.81 | slider  1.83 vs  973.3
+uji   XGBoost      d= 2 trees=1000/1000 groups=   1 bitmask=   0 rec=     11,773 build=   0.3s | py   2.36 vs loop   739.4 (312.9x) | nb  0.091 vs  83.58 (919.2x) | lib  715.9 vs nb-call  0.87 | slider  1.47 vs  541.0
+uji   XGBoost      d= 4 trees=1000/1000 groups=   1 bitmask=   0 rec=     89,295 build=  40.0s | py   2.55 vs loop   841.4 (330.2x) | nb  0.110 vs  85.33 (774.5x) | lib  696.5 vs nb-call  0.86 | slider  1.33 vs  905.0
+uji   XGBoost      d= 8 trees=1000/1000 groups= 914 bitmask=   0 rec=  4,298,717 build=  13.8s | py  83.57 vs loop   779.4 (  9.3x) | nb 10.490 vs  81.02 (  7.7x) | lib  687.4 vs nb-call 11.83 | slider 45.18 vs  851.5
+uji   XGBoost      d=16 trees=1000/1000 groups= 969 bitmask=   1 rec=1,993,964,411 build=15375.8s | py 113.55 vs loop   731.9 (  6.4x) | nb 18.412 vs  82.66 (  4.5x) | lib  639.5 vs nb-call 21.33 | slider 41.03 vs  919.3

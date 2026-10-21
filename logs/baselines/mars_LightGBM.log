@@ -1,0 +1,14 @@
+{'host': '3haoji-A100', 'python': '3.11.15', 'platform': 'Linux-5.15.0-91-generic-x86_64-with-glibc2.31', 'numpy': '2.4.6', 'scipy': '1.15.3', 'sklearn': '1.9.0', 'xgboost': '3.2.0', 'lightgbm': '4.7.0', 'dowhy': '0.14'}
+OpenML ThermalPowerConsumptionMarsExpress60: (20000, 484)
+LightGBM fitted in 31.1s
+[02:06:00] /project/src/compiler/ast/split.cc:35: Parallel compilation enabled; member trees will be divided into 32 translation units.
+mars  LightGBM     d= 1 ours(this run) call   0.79 batch   0.060 | treelite call   82.19 batch  26.711 | qs batch  48.623 qsb batch   5.238 | loop batch  71.732
+mars  LightGBM     d= 2 ours(this run) call   0.76 batch   0.092 | treelite call   77.92 batch  24.987 | qs batch  48.421 qsb batch   6.812 | loop batch  71.162
+mars  LightGBM     d= 4 ours(this run) call   1.09 batch   0.245 | treelite call   77.70 batch  26.418 | qs batch  52.117 qsb batch   8.838 | loop batch  71.683
+mars  LightGBM     d= 8 ours(this run) call   1.19 batch   0.496 | treelite call   75.30 batch  24.996 | qs batch  50.786 qsb batch  11.728 | loop batch  73.116
+mars  LightGBM     d=16 ours(this run) call   2.77 batch   1.987 | treelite call   79.78 batch  27.219 | qs batch  61.916 qsb batch  20.291 | loop batch  74.470
+mars LightGBM     d= 1 DoWhy    104801us cached     43403us err 1.1e-17
+mars LightGBM     d= 2 DoWhy    103490us cached     42965us err 5.6e-16
+mars LightGBM     d= 4 DoWhy     98290us cached     47782us err 1.1e-16
+mars LightGBM     d= 8 DoWhy    102374us cached     42714us err 1.4e-16
+mars LightGBM     d=16 DoWhy    102057us cached     43195us err 2.2e-16

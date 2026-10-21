@@ -1,0 +1,14 @@
+{'host': '3haoji-A100', 'python': '3.11.15', 'platform': 'Linux-5.15.0-91-generic-x86_64-with-glibc2.31', 'numpy': '2.4.6', 'scipy': '1.15.3', 'sklearn': '1.9.0', 'xgboost': '3.2.0', 'lightgbm': '4.7.0', 'dowhy': '0.14'}
+OpenML ThermalPowerConsumptionMarsExpress60: (20000, 484)
+XGBoost fitted in 68.1s
+[02:06:37] /project/src/compiler/ast/split.cc:35: Parallel compilation enabled; member trees will be divided into 32 translation units.
+mars  XGBoost      d= 1 ours(this run) call   0.69 batch   0.062 | treelite call  117.43 batch  53.342 | qs batch  72.572 qsb batch   6.922 | loop batch 108.314
+mars  XGBoost      d= 2 ours(this run) call   0.73 batch   0.090 | treelite call  117.61 batch  52.754 | qs batch  70.530 qsb batch   8.233 | loop batch 102.998
+mars  XGBoost      d= 4 ours(this run) call   0.83 batch   0.168 | treelite call  115.48 batch  53.368 | qs batch  70.649 qsb batch  12.281 | loop batch 104.792
+mars  XGBoost      d= 8 ours(this run) call   1.05 batch   0.424 | treelite call  116.80 batch  55.138 | qs batch  74.068 qsb batch  19.142 | loop batch  99.587
+mars  XGBoost      d=16 ours(this run) call   3.38 batch   2.532 | treelite call  120.51 batch  58.172 | qs batch  77.778 qsb batch  25.679 | loop batch  99.718
+mars XGBoost      d= 1 DoWhy     90950us cached     43608us err 4.3e-08
+mars XGBoost      d= 2 DoWhy     95816us cached     40708us err 1.7e-07
+mars XGBoost      d= 4 DoWhy     96408us cached     41161us err 1.4e-07
+mars XGBoost      d= 8 DoWhy     97257us cached     40117us err 2.5e-07
+mars XGBoost      d=16 DoWhy     97242us cached     40193us err 2.3e-07

@@ -1,0 +1,8 @@
+{'host': '3haoji-A100', 'python': '3.11.15', 'platform': 'Linux-5.15.0-91-generic-x86_64-with-glibc2.31', 'numpy': '2.4.6', 'scipy': '1.15.3', 'sklearn': '1.9.0', 'xgboost': '3.2.0', 'lightgbm': '4.7.0', 'dowhy': '0.14'}
+OpenML yprop_4_1: (8885, 212)
+sklearn-HGB (1000 trees) fitted in 16.4s
+yprop sklearn-HGB  d= 1 trees= 126/1000 groups=   2 bitmask=   0 rec=      3,121 build=   0.0s | py   1.73 vs loop   526.5 (303.7x) | nb  0.081 vs  57.70 (714.0x) | lib 9234.7 vs nb-call  0.83 | slider  1.46 vs   80.5
+yprop sklearn-HGB  d= 2 trees= 245/1000 groups=   2 bitmask=   0 rec=     66,914 build=   0.9s | py   2.09 vs loop   557.4 (267.0x) | nb  0.132 vs  58.17 (442.2x) | lib 9396.7 vs nb-call  0.88 | slider  1.53 vs  110.0
+yprop sklearn-HGB  d= 4 trees= 509/1000 groups=  10 bitmask=   0 rec=  4,655,380 build=  37.3s | py   3.65 vs loop   645.6 (177.0x) | nb  0.291 vs  69.52 (238.8x) | lib 9581.7 vs nb-call  1.04 | slider  2.83 vs  218.2
+yprop sklearn-HGB  d= 8 trees= 661/1000 groups= 100 bitmask=   0 rec=  4,062,526 build=  10.8s | py  16.02 vs loop   667.7 ( 41.7x) | nb  1.456 vs  71.20 ( 48.9x) | lib 9542.6 vs nb-call  2.32 | slider 11.55 vs  281.2
+yprop sklearn-HGB  d=16 trees= 790/1000 groups= 573 bitmask=   0 rec= 12,095,205 build=  29.7s | py  90.56 vs loop   680.4 (  7.5x) | nb 11.347 vs  80.26 (  7.1x) | lib 9699.2 vs nb-call 14.03 | slider 59.60 vs  358.9

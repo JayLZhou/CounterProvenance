@@ -1,0 +1,8 @@
+{'host': '3haoji-A100', 'python': '3.11.15', 'platform': 'Linux-5.15.0-91-generic-x86_64-with-glibc2.31', 'numpy': '2.4.6', 'scipy': '1.15.3', 'sklearn': '1.9.0', 'xgboost': '3.2.0', 'lightgbm': '4.7.0', 'dowhy': '0.14'}
+OpenML yprop_4_1: (8885, 212)
+sklearn-GBR (1000 trees) fitted in 44.7s
+yprop sklearn-GBR  d= 1 trees=  99/1000 groups=   2 bitmask=   0 rec=      2,737 build=   0.0s | py   2.01 vs loop   306.4 (152.5x) | nb  0.072 vs  21.87 (301.7x) | lib  643.8 vs nb-call  0.83 | slider  1.51 vs   38.1
+yprop sklearn-GBR  d= 2 trees= 156/1000 groups=   2 bitmask=   0 rec=     12,563 build=   0.1s | py   2.23 vs loop   333.9 (149.8x) | nb  0.095 vs  21.89 (231.4x) | lib  646.5 vs nb-call  0.85 | slider  1.52 vs   41.0
+yprop sklearn-GBR  d= 4 trees= 290/1000 groups=   3 bitmask=   0 rec=    821,992 build=  21.8s | py   2.93 vs loop   351.2 (119.8x) | nb  0.196 vs  22.37 (114.1x) | lib  645.8 vs nb-call  0.92 | slider  1.64 vs   54.2
+yprop sklearn-GBR  d= 8 trees= 459/1000 groups=   7 bitmask=   0 rec=  6,068,408 build= 128.9s | py   3.91 vs loop   345.3 ( 88.3x) | nb  0.343 vs  20.78 ( 60.6x) | lib  590.3 vs nb-call  1.03 | slider  1.88 vs   63.1
+yprop sklearn-GBR  d=16 trees= 629/1000 groups=  27 bitmask=   0 rec=  4,135,854 build=  31.6s | py   8.49 vs loop   359.1 ( 42.3x) | nb  0.888 vs  21.48 ( 24.2x) | lib  590.8 vs nb-call  1.55 | slider  3.22 vs   81.6

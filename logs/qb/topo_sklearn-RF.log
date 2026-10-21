@@ -1,0 +1,8 @@
+{'host': '3haoji-A100', 'python': '3.11.15', 'platform': 'Linux-5.15.0-91-generic-x86_64-with-glibc2.31', 'numpy': '2.4.6', 'scipy': '1.15.3', 'sklearn': '1.9.0', 'xgboost': '3.2.0', 'lightgbm': '4.7.0', 'dowhy': '0.14'}
+OpenML topo_2_1: (8885, 261)
+sklearn-RF (1000 trees) fitted in 62.8s
+topo  sklearn-RF   d= 1 trees= 112/250 groups=   2 bitmask=   0 rec=      1,255 build=   0.0s | py   2.03 vs loop   210.0 (103.3x) | nb  0.067 vs  25.89 (389.1x) | lib 18678.3 vs nb-call  0.81 | slider  1.46 vs  115.0
+topo  sklearn-RF   d= 2 trees= 121/250 groups=   2 bitmask=   0 rec=     11,716 build=   0.1s | py  16.09 vs loop   192.1 ( 11.9x) | nb  0.092 vs  25.30 (274.7x) | lib 18651.9 vs nb-call  0.86 | slider  1.56 vs   90.8
+topo  sklearn-RF   d= 4 trees= 147/250 groups=   3 bitmask=   0 rec=    804,707 build=   9.8s | py   3.15 vs loop   209.5 ( 66.4x) | nb  0.188 vs  27.27 (145.0x) | lib 17720.9 vs nb-call  0.93 | slider  1.63 vs   82.5
+topo  sklearn-RF   d= 8 trees= 196/250 groups=  12 bitmask=   0 rec=  3,883,801 build=  28.0s | py   4.63 vs loop   216.9 ( 46.9x) | nb  0.484 vs  27.13 ( 56.0x) | lib 17611.9 vs nb-call  1.04 | slider  2.34 vs  104.3
+topo  sklearn-RF   d=16 trees= 229/250 groups=  46 bitmask=   0 rec=  3,999,041 build=  11.3s | py  11.62 vs loop   228.2 ( 19.6x) | nb  1.240 vs  26.63 ( 21.5x) | lib 17372.8 vs nb-call  2.05 | slider  5.61 vs  118.4

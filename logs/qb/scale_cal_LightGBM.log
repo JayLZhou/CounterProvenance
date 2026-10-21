@@ -1,0 +1,11 @@
+{'host': '3haoji-A100', 'python': '3.11.15', 'platform': 'Linux-5.15.0-91-generic-x86_64-with-glibc2.31', 'numpy': '2.4.6', 'scipy': '1.15.3', 'sklearn': '1.9.0', 'xgboost': '3.2.0', 'lightgbm': '4.7.0', 'dowhy': '0.14'}
+California housing: (20640, 8)
+LightGBM (100 trees) fitted in 0.2s
+cal   LightGBM     d= 2 trees=  79/100 groups=   2 bitmask=   0 rec=     44,281 build=   0.3s | py   2.23 vs loop    42.2 ( 18.9x) | nb  0.109 vs   5.33 ( 48.9x) | lib   31.2 vs nb-call  0.76 | slider  1.58 vs   40.5
+cal   LightGBM     d= 8 trees= 100/100 groups= 100 bitmask=   0 rec=  8,032,516 build=   7.8s | py  15.68 vs loop    35.6 (  2.3x) | nb  1.184 vs   4.87 (  4.1x) | lib   30.2 vs nb-call  2.21 | slider  9.40 vs   47.9
+LightGBM (300 trees) fitted in 0.4s
+cal   LightGBM     d= 2 trees= 210/300 groups=   2 bitmask=   0 rec=    130,934 build=   1.1s | py   2.04 vs loop   120.6 ( 59.2x) | nb  0.120 vs  15.57 (130.3x) | lib   45.9 vs nb-call  0.88 | slider  1.62 vs  102.7
+cal   LightGBM     d= 8 trees= 300/300 groups= 300 bitmask=   0 rec= 54,253,116 build=  50.3s | py  49.58 vs loop   119.9 (  2.4x) | nb  5.763 vs  15.22 (  2.6x) | lib   46.4 vs nb-call  7.80 | slider 38.90 vs  160.8
+LightGBM (3000 trees) fitted in 3.3s
+cal   LightGBM     d= 2 trees=1265/3000 groups=   2 bitmask=   0 rec=    506,752 build=   5.7s | py   2.27 vs loop  1353.1 (596.5x) | nb  0.126 vs 188.98 (1503.1x) | lib  263.9 vs nb-call  0.77 | slider  1.59 vs  686.4
+cal   LightGBM     d= 8 trees=3000/3000 groups=3000 bitmask=   0 rec=717,065,434 build= 650.7s | py 823.88 vs loop  1634.1 (  2.0x) | nb 93.523 vs 213.36 (  2.3x) | lib  302.3 vs nb-call 101.71 | slider 589.10 vs 2275.5

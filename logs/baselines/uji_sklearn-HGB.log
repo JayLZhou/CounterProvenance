@@ -1,0 +1,14 @@
+{'host': '3haoji-A100', 'python': '3.11.15', 'platform': 'Linux-5.15.0-91-generic-x86_64-with-glibc2.31', 'numpy': '2.4.6', 'scipy': '1.15.3', 'sklearn': '1.9.0', 'xgboost': '3.2.0', 'lightgbm': '4.7.0', 'dowhy': '0.14'}
+OpenML ujiindoorloc_latitude: (20000, 525)
+sklearn-HGB fitted in 69.3s
+[02:06:35] /project/src/compiler/ast/split.cc:35: Parallel compilation enabled; member trees will be divided into 32 translation units.
+uji   sklearn-HGB  d= 1 ours(this run) call   0.75 batch   0.060 | treelite call   95.06 batch  46.400 | qs batch  69.827 qsb batch   8.704 | loop batch  68.436
+uji   sklearn-HGB  d= 2 ours(this run) call   0.75 batch   0.088 | treelite call  102.74 batch  50.843 | qs batch  69.744 qsb batch   9.533 | loop batch  73.076
+uji   sklearn-HGB  d= 4 ours(this run) call   0.82 batch   0.163 | treelite call  108.76 batch  49.255 | qs batch  80.154 qsb batch  11.729 | loop batch  69.035
+uji   sklearn-HGB  d= 8 ours(this run) call   1.12 batch   0.416 | treelite call  102.10 batch  48.265 | qs batch  71.973 qsb batch  14.473 | loop batch  76.326
+uji   sklearn-HGB  d=16 ours(this run) call   2.41 batch   1.710 | treelite call  102.86 batch  49.959 | qs batch  72.102 qsb batch  17.512 | loop batch  75.554
+uji sklearn-HGB  d= 1 DoWhy    124681us cached     57772us err 0.0e+00
+uji sklearn-HGB  d= 2 DoWhy    127855us cached     57823us err 0.0e+00
+uji sklearn-HGB  d= 4 DoWhy    125766us cached     56453us err 0.0e+00
+uji sklearn-HGB  d= 8 DoWhy    125131us cached     56774us err 0.0e+00
+uji sklearn-HGB  d=16 DoWhy    124525us cached     56710us err 0.0e+00

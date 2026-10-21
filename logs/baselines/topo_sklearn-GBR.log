@@ -1,0 +1,14 @@
+{'host': '3haoji-A100', 'python': '3.11.15', 'platform': 'Linux-5.15.0-91-generic-x86_64-with-glibc2.31', 'numpy': '2.4.6', 'scipy': '1.15.3', 'sklearn': '1.9.0', 'xgboost': '3.2.0', 'lightgbm': '4.7.0', 'dowhy': '0.14'}
+OpenML topo_2_1: (8885, 261)
+sklearn-GBR fitted in 318.0s
+[02:10:42] /project/src/compiler/ast/split.cc:35: Parallel compilation enabled; member trees will be divided into 32 translation units.
+topo  sklearn-GBR  d= 1 ours(this run) call   0.64 batch   0.054 | treelite call   46.52 batch  13.661 | qs batch   9.959 qsb batch   3.676 | loop batch  23.784
+topo  sklearn-GBR  d= 2 ours(this run) call   0.66 batch   0.072 | treelite call   46.67 batch  13.623 | qs batch  10.074 qsb batch   3.873 | loop batch  24.067
+topo  sklearn-GBR  d= 4 ours(this run) call   0.70 batch   0.121 | treelite call   47.27 batch  13.777 | qs batch  10.080 qsb batch   4.156 | loop batch  23.831
+topo  sklearn-GBR  d= 8 ours(this run) call   0.87 batch   0.268 | treelite call   47.58 batch  13.963 | qs batch  10.170 qsb batch   4.659 | loop batch  24.143
+topo  sklearn-GBR  d=16 ours(this run) call   1.23 batch   0.608 | treelite call   48.35 batch  14.292 | qs batch  10.033 qsb batch   5.432 | loop batch  24.444
+topo sklearn-GBR  d= 1 DoWhy     49706us cached     23820us err 0.0e+00
+topo sklearn-GBR  d= 2 DoWhy     49512us cached     23288us err 0.0e+00
+topo sklearn-GBR  d= 4 DoWhy     49293us cached     23809us err 0.0e+00
+topo sklearn-GBR  d= 8 DoWhy     49373us cached     23327us err 0.0e+00
+topo sklearn-GBR  d=16 DoWhy     49567us cached     23386us err 0.0e+00

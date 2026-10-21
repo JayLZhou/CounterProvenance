@@ -1,0 +1,14 @@
+{'host': '3haoji-A100', 'python': '3.11.15', 'platform': 'Linux-5.15.0-91-generic-x86_64-with-glibc2.31', 'numpy': '2.4.6', 'scipy': '1.15.3', 'sklearn': '1.9.0', 'xgboost': '3.2.0', 'lightgbm': '4.7.0', 'dowhy': '0.14'}
+OpenML yprop_4_1: (8885, 212)
+LightGBM fitted in 2.0s
+[02:05:26] /project/src/compiler/ast/split.cc:35: Parallel compilation enabled; member trees will be divided into 32 translation units.
+yprop LightGBM     d= 1 ours(this run) call   0.70 batch   0.063 | treelite call   81.66 batch  32.323 | qs batch  27.656 qsb batch   6.428 | loop batch  60.663
+yprop LightGBM     d= 2 ours(this run) call   0.88 batch   0.112 | treelite call   86.12 batch  34.338 | qs batch  30.311 qsb batch   9.655 | loop batch  62.286
+yprop LightGBM     d= 4 ours(this run) call   1.03 batch   0.279 | treelite call   90.64 batch  37.343 | qs batch  33.966 qsb batch  17.044 | loop batch  66.783
+yprop LightGBM     d= 8 ours(this run) call   2.24 batch   1.348 | treelite call   94.45 batch  39.277 | qs batch  34.930 qsb batch  21.939 | loop batch  73.355
+yprop LightGBM     d=16 ours(this run) call  12.59 batch  11.065 | treelite call   99.77 batch  43.774 | qs batch  33.551 qsb batch  27.790 | loop batch  77.675
+yprop LightGBM     d= 1 DoWhy     41540us cached     21424us err 0.0e+00
+yprop LightGBM     d= 2 DoWhy     42533us cached     21821us err 0.0e+00
+yprop LightGBM     d= 4 DoWhy     46066us cached     17750us err 0.0e+00
+yprop LightGBM     d= 8 DoWhy     42821us cached     21805us err 0.0e+00
+yprop LightGBM     d=16 DoWhy     44657us cached     17748us err 0.0e+00

@@ -1,0 +1,14 @@
+{'host': '3haoji-A100', 'python': '3.11.15', 'platform': 'Linux-5.15.0-91-generic-x86_64-with-glibc2.31', 'numpy': '2.4.6', 'scipy': '1.15.3', 'sklearn': '1.9.0', 'xgboost': '3.2.0', 'lightgbm': '4.7.0', 'dowhy': '0.14'}
+OpenML ujiindoorloc_latitude: (20000, 525)
+XGBoost fitted in 26.7s
+[02:05:53] /project/src/compiler/ast/split.cc:35: Parallel compilation enabled; member trees will be divided into 32 translation units.
+uji   XGBoost      d= 1 ours(this run) call   0.67 batch   0.049 | treelite call  122.49 batch  61.503 | qs batch 127.268 qsb batch   7.317 | loop batch  90.488
+uji   XGBoost      d= 2 ours(this run) call   0.72 batch   0.074 | treelite call  118.50 batch  59.616 | qs batch 122.157 qsb batch  11.313 | loop batch  85.839
+uji   XGBoost      d= 4 ours(this run) call   0.72 batch   0.094 | treelite call  119.89 batch  62.490 | qs batch 123.266 qsb batch  20.530 | loop batch  85.431
+uji   XGBoost      d= 8 ours(this run) call  11.24 batch   9.596 | treelite call  119.65 batch  61.570 | qs batch 115.048 qsb batch  35.691 | loop batch  87.161
+uji   XGBoost      d=16 ours(qbench) call  21.33 batch  18.412 | treelite call  123.73 batch  61.971 | qs batch 115.694 qsb batch  58.815 | loop batch  84.211
+uji XGBoost      d= 1 DoWhy    115845us cached     50737us err 4.1e-05
+uji XGBoost      d= 2 DoWhy    114679us cached     49798us err 4.2e-05
+uji XGBoost      d= 4 DoWhy    113399us cached     50118us err 4.2e-05
+uji XGBoost      d= 8 DoWhy    113864us cached     45759us err 4.3e-05
+uji XGBoost      d=16 DoWhy    107527us cached     49670us err 4.2e-05

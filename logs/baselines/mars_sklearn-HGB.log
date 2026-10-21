@@ -1,0 +1,14 @@
+{'host': '3haoji-A100', 'python': '3.11.15', 'platform': 'Linux-5.15.0-91-generic-x86_64-with-glibc2.31', 'numpy': '2.4.6', 'scipy': '1.15.3', 'sklearn': '1.9.0', 'xgboost': '3.2.0', 'lightgbm': '4.7.0', 'dowhy': '0.14'}
+OpenML ThermalPowerConsumptionMarsExpress60: (20000, 484)
+sklearn-HGB fitted in 63.1s
+[02:06:31] /project/src/compiler/ast/split.cc:35: Parallel compilation enabled; member trees will be divided into 32 translation units.
+mars  sklearn-HGB  d= 1 ours(this run) call   0.71 batch   0.061 | treelite call   90.94 batch  37.682 | qs batch  50.236 qsb batch   5.543 | loop batch  67.952
+mars  sklearn-HGB  d= 2 ours(this run) call   0.74 batch   0.093 | treelite call   89.91 batch  37.036 | qs batch  52.628 qsb batch   6.816 | loop batch  67.707
+mars  sklearn-HGB  d= 4 ours(this run) call   0.89 batch   0.170 | treelite call   91.20 batch  37.729 | qs batch  50.372 qsb batch   9.244 | loop batch  71.216
+mars  sklearn-HGB  d= 8 ours(this run) call   1.10 batch   0.484 | treelite call   95.53 batch  40.665 | qs batch  54.175 qsb batch  12.636 | loop batch  74.129
+mars  sklearn-HGB  d=16 ours(this run) call   2.60 batch   1.873 | treelite call   92.68 batch  39.119 | qs batch  53.469 qsb batch  18.174 | loop batch  75.736
+mars sklearn-HGB  d= 1 DoWhy    114235us cached     52384us err 3.8e-17
+mars sklearn-HGB  d= 2 DoWhy    117549us cached     53104us err 4.4e-16
+mars sklearn-HGB  d= 4 DoWhy    111359us cached     53184us err 8.3e-16
+mars sklearn-HGB  d= 8 DoWhy    118077us cached     54010us err 5.8e-16
+mars sklearn-HGB  d=16 DoWhy    116647us cached     49694us err 2.2e-16

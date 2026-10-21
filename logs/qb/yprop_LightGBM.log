@@ -1,0 +1,8 @@
+{'host': '3haoji-A100', 'python': '3.11.15', 'platform': 'Linux-5.15.0-91-generic-x86_64-with-glibc2.31', 'numpy': '2.4.6', 'scipy': '1.15.3', 'sklearn': '1.9.0', 'xgboost': '3.2.0', 'lightgbm': '4.7.0', 'dowhy': '0.14'}
+OpenML yprop_4_1: (8885, 212)
+LightGBM (1000 trees) fitted in 1.9s
+yprop LightGBM     d= 1 trees= 438/1000 groups=   2 bitmask=   0 rec=      4,972 build=   0.0s | py   2.37 vs loop   486.7 (205.1x) | nb  0.082 vs  57.35 (698.0x) | lib  124.2 vs nb-call  0.86 | slider  1.65 vs  234.1
+yprop LightGBM     d= 2 trees= 511/1000 groups=   2 bitmask=   0 rec=     63,593 build=   0.8s | py   3.19 vs loop   526.5 (165.2x) | nb  0.115 vs  58.72 (511.4x) | lib  127.4 vs nb-call  0.79 | slider  1.65 vs  196.3
+yprop LightGBM     d= 4 trees= 591/1000 groups=  11 bitmask=   0 rec=  3,818,636 build=  26.5s | py   3.49 vs loop   574.0 (164.6x) | nb  0.259 vs  61.64 (238.0x) | lib  137.2 vs nb-call  0.92 | slider  2.72 vs  213.6
+yprop LightGBM     d= 8 trees= 738/1000 groups= 110 bitmask=   0 rec=  4,299,291 build=  11.2s | py  14.19 vs loop   580.3 ( 40.9x) | nb  1.309 vs  64.44 ( 49.2x) | lib  134.0 vs nb-call  2.37 | slider 10.54 vs  250.2
+yprop LightGBM     d=16 trees= 817/1000 groups= 564 bitmask=   0 rec= 12,587,282 build=  27.7s | py  77.18 vs loop   582.1 (  7.5x) | nb  9.303 vs  71.64 (  7.7x) | lib  142.1 vs nb-call 10.99 | slider 50.11 vs  318.9

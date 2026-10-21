@@ -1,0 +1,14 @@
+{'host': '3haoji-A100', 'python': '3.11.15', 'platform': 'Linux-5.15.0-91-generic-x86_64-with-glibc2.31', 'numpy': '2.4.6', 'scipy': '1.15.3', 'sklearn': '1.9.0', 'xgboost': '3.2.0', 'lightgbm': '4.7.0', 'dowhy': '0.14'}
+OpenML yprop_4_1: (8885, 212)
+XGBoost fitted in 4.2s
+[02:05:28] /project/src/compiler/ast/split.cc:35: Parallel compilation enabled; member trees will be divided into 32 translation units.
+yprop XGBoost      d= 1 ours(this run) call   0.68 batch   0.049 | treelite call   75.99 batch  19.438 | qs batch  23.993 qsb batch   5.107 | loop batch  62.048
+yprop XGBoost      d= 2 ours(this run) call   0.95 batch   0.095 | treelite call   83.54 batch  21.561 | qs batch  25.485 qsb batch   7.017 | loop batch  70.988
+yprop XGBoost      d= 4 ours(this run) call   1.00 batch   0.227 | treelite call   79.38 batch  22.361 | qs batch  25.622 qsb batch  11.282 | loop batch  63.620
+yprop XGBoost      d= 8 ours(this run) call   1.46 batch   0.682 | treelite call   84.23 batch  24.933 | qs batch  28.959 qsb batch  15.243 | loop batch  70.917
+yprop XGBoost      d=16 ours(this run) call   6.14 batch   4.993 | treelite call   84.77 batch  28.923 | qs batch  26.663 qsb batch  22.263 | loop batch  71.877
+yprop XGBoost      d= 1 DoWhy     47391us cached     19758us err 6.8e-07
+yprop XGBoost      d= 2 DoWhy     48026us cached     19055us err 6.8e-07
+yprop XGBoost      d= 4 DoWhy     44220us cached     22228us err 9.6e-07
+yprop XGBoost      d= 8 DoWhy     47564us cached     19234us err 1.2e-06
+yprop XGBoost      d=16 DoWhy     43943us cached     22068us err 1.1e-06

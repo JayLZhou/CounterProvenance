@@ -1,0 +1,12 @@
+{'host': '3haoji-A100', 'python': '3.11.15', 'platform': 'Linux-5.15.0-91-generic-x86_64-with-glibc2.31', 'numpy': '2.4.6', 'scipy': '1.15.3', 'sklearn': '1.9.0', 'xgboost': '3.2.0', 'lightgbm': '4.7.0', 'dowhy': '0.14'}
+California housing: (20640, 8)
+sklearn-GBR fitted in 33.0s
+[02:05:56] /project/src/compiler/ast/split.cc:35: Parallel compilation enabled; member trees will be divided into 32 translation units.
+cal   sklearn-GBR  d= 1 ours(this run) call   0.72 batch   0.068 | treelite call   46.22 batch  10.842 | qs batch  15.576 qsb batch   5.604 | loop batch  44.788
+cal   sklearn-GBR  d= 2 ours(this run) call   1.00 batch   0.139 | treelite call   54.12 batch  14.439 | qs batch  16.174 qsb batch   8.482 | loop batch  28.825
+cal   sklearn-GBR  d= 4 ours(this run) call   1.00 batch   0.340 | treelite call   48.97 batch  14.868 | qs batch  14.019 qsb batch  11.101 | loop batch  29.593
+cal   sklearn-GBR  d= 8 ours(this run) call   3.14 batch   2.130 | treelite call   50.94 batch  16.481 | qs batch  14.493 qsb batch  14.386 | loop batch  27.527
+cal sklearn-GBR  d= 1 DoWhy      3877us cached      1961us err 1.4e-15
+cal sklearn-GBR  d= 2 DoWhy      3747us cached      1848us err 1.7e-15
+cal sklearn-GBR  d= 4 DoWhy      3908us cached      1948us err 1.9e-15
+cal sklearn-GBR  d= 8 DoWhy      3837us cached      1925us err 2.2e-15

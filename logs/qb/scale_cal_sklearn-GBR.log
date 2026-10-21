@@ -1,0 +1,11 @@
+{'host': '3haoji-A100', 'python': '3.11.15', 'platform': 'Linux-5.15.0-91-generic-x86_64-with-glibc2.31', 'numpy': '2.4.6', 'scipy': '1.15.3', 'sklearn': '1.9.0', 'xgboost': '3.2.0', 'lightgbm': '4.7.0', 'dowhy': '0.14'}
+California housing: (20640, 8)
+sklearn-GBR (100 trees) fitted in 3.6s
+cal   sklearn-GBR  d= 2 trees=  97/100 groups=   2 bitmask=   0 rec=     20,882 build=   0.4s | py   2.27 vs loop    29.5 ( 13.0x) | nb  0.129 vs   3.12 ( 24.1x) | lib  233.6 vs nb-call  0.92 | slider  1.54 vs   25.1
+cal   sklearn-GBR  d= 8 trees= 100/100 groups=  12 bitmask=   0 rec=  2,623,942 build=  15.7s | py   4.82 vs loop    30.2 (  6.3x) | nb  0.404 vs   3.07 (  7.6x) | lib  233.7 vs nb-call  1.14 | slider  2.74 vs   25.7
+sklearn-GBR (300 trees) fitted in 11.2s
+cal   sklearn-GBR  d= 2 trees= 202/300 groups=   2 bitmask=   0 rec=     42,566 build=   0.6s | py   2.29 vs loop    87.5 ( 38.1x) | nb  0.124 vs   8.96 ( 72.3x) | lib  309.7 vs nb-call  0.88 | slider  1.59 vs   70.2
+cal   sklearn-GBR  d= 8 trees= 300/300 groups=  42 bitmask=   0 rec=  3,922,131 build=  18.2s | py  10.55 vs loop    86.1 (  8.2x) | nb  0.761 vs   9.27 ( 12.2x) | lib  326.9 vs nb-call  1.54 | slider  5.62 vs   79.8
+sklearn-GBR (3000 trees) fitted in 114.2s
+cal   sklearn-GBR  d= 2 trees=1329/3000 groups=   2 bitmask=   0 rec=    741,387 build=   9.0s | py   2.41 vs loop  1179.9 (488.8x) | nb  0.160 vs 111.01 (693.6x) | lib 1391.1 vs nb-call  0.89 | slider  1.77 vs  577.6
+cal   sklearn-GBR  d= 8 trees=3000/3000 groups= 711 bitmask=   0 rec=  8,121,596 build=  26.1s | py  91.23 vs loop  1110.9 ( 12.2x) | nb 10.497 vs 102.37 (  9.8x) | lib 1412.9 vs nb-call 12.32 | slider 79.27 vs 1027.0

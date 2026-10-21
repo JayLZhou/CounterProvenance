@@ -1,0 +1,12 @@
+{'host': '3haoji-A100', 'python': '3.11.15', 'platform': 'Linux-5.15.0-91-generic-x86_64-with-glibc2.31', 'numpy': '2.4.6', 'scipy': '1.15.3', 'sklearn': '1.9.0', 'xgboost': '3.2.0', 'lightgbm': '4.7.0', 'dowhy': '0.14'}
+California housing: (20640, 8)
+LightGBM fitted in 1.2s
+[02:05:25] /project/src/compiler/ast/split.cc:35: Parallel compilation enabled; member trees will be divided into 32 translation units.
+cal   LightGBM     d= 1 ours(this run) call   1.16 batch   0.070 | treelite call   71.53 batch  18.353 | qs batch  54.452 qsb batch  10.932 | loop batch  51.306
+cal   LightGBM     d= 2 ours(this run) call   0.87 batch   0.137 | treelite call   76.42 batch  21.378 | qs batch  49.734 qsb batch  17.889 | loop batch  59.834
+cal   LightGBM     d= 4 ours(this run) call   2.16 batch   1.288 | treelite call   70.27 batch  23.463 | qs batch  49.272 qsb batch  30.702 | loop batch  64.289
+cal   LightGBM     d= 8 ours(this run) call  23.01 batch  20.658 | treelite call   76.64 batch  29.529 | qs batch  59.322 qsb batch  57.305 | loop batch  64.072
+cal LightGBM     d= 1 DoWhy      3419us cached      1681us err 2.8e-15
+cal LightGBM     d= 2 DoWhy      3370us cached      1659us err 2.2e-15
+cal LightGBM     d= 4 DoWhy      3428us cached      1681us err 1.5e-15
+cal LightGBM     d= 8 DoWhy      3451us cached      1704us err 7.8e-16

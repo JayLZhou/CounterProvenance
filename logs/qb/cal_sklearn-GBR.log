@@ -1,0 +1,7 @@
+{'host': '3haoji-A100', 'python': '3.11.15', 'platform': 'Linux-5.15.0-91-generic-x86_64-with-glibc2.31', 'numpy': '2.4.6', 'scipy': '1.15.3', 'sklearn': '1.9.0', 'xgboost': '3.2.0', 'lightgbm': '4.7.0', 'dowhy': '0.14'}
+California housing: (20640, 8)
+sklearn-GBR (1000 trees) fitted in 37.8s
+cal   sklearn-GBR  d= 1 trees= 498/1000 groups=   2 bitmask=   0 rec=      4,429 build=   0.0s | py   2.03 vs loop   315.3 (155.2x) | nb  0.082 vs  31.83 (389.6x) | lib  636.5 vs nb-call  0.87 | slider  1.68 vs  190.3
+cal   sklearn-GBR  d= 2 trees= 574/1000 groups=   2 bitmask=   0 rec=    232,051 build=   3.0s | py   2.61 vs loop   371.2 (142.0x) | nb  0.145 vs  32.47 (224.4x) | lib  640.6 vs nb-call  0.91 | slider  1.65 vs  225.8
+cal   sklearn-GBR  d= 4 trees= 952/1000 groups=  17 bitmask=   0 rec=  5,605,778 build=  57.2s | py   5.15 vs loop   364.9 ( 70.9x) | nb  0.358 vs  32.74 ( 91.5x) | lib  630.5 vs nb-call  1.25 | slider  3.73 vs  323.4
+cal   sklearn-GBR  d= 8 trees=1000/1000 groups= 169 bitmask=   0 rec=  4,658,094 build=  14.4s | py  26.42 vs loop   339.0 ( 12.8x) | nb  2.337 vs  29.21 ( 12.5x) | lib  624.1 vs nb-call  4.15 | slider 17.62 vs  334.1

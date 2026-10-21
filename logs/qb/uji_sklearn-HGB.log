@@ -1,0 +1,8 @@
+{'host': '3haoji-A100', 'python': '3.11.15', 'platform': 'Linux-5.15.0-91-generic-x86_64-with-glibc2.31', 'numpy': '2.4.6', 'scipy': '1.15.3', 'sklearn': '1.9.0', 'xgboost': '3.2.0', 'lightgbm': '4.7.0', 'dowhy': '0.14'}
+OpenML ujiindoorloc_latitude: (20000, 525)
+sklearn-HGB (1000 trees) fitted in 75.6s
+uji   sklearn-HGB  d= 1 trees= 418/1000 groups=   2 bitmask=   0 rec=      4,781 build=   0.0s | py   1.81 vs loop   726.5 (401.4x) | nb  0.073 vs  81.58 (1124.9x) | lib 10008.2 vs nb-call  0.83 | slider  1.59 vs  386.7
+uji   sklearn-HGB  d= 2 trees= 602/1000 groups=   2 bitmask=   0 rec=     81,706 build=   1.3s | py   2.03 vs loop   778.9 (383.8x) | nb  0.110 vs  88.24 (801.0x) | lib 10176.7 vs nb-call  0.96 | slider  1.53 vs  409.6
+uji   sklearn-HGB  d= 4 trees= 642/1000 groups=   4 bitmask=   0 rec=  2,306,426 build=  26.2s | py   2.68 vs loop   867.8 (323.3x) | nb  0.195 vs  85.89 (440.0x) | lib 9960.1 vs nb-call  1.01 | slider  1.77 vs  293.7
+uji   sklearn-HGB  d= 8 trees= 704/1000 groups=  24 bitmask=   0 rec=  3,959,129 build=  23.2s | py   5.50 vs loop   834.8 (151.8x) | nb  0.476 vs  79.51 (166.9x) | lib 9773.5 vs nb-call  1.21 | slider  3.21 vs  224.7
+uji   sklearn-HGB  d=16 trees= 818/1000 groups= 104 bitmask=   0 rec=  4,152,548 build=  12.0s | py  15.71 vs loop   781.9 ( 49.8x) | nb  1.949 vs  75.74 ( 38.9x) | lib 9443.7 vs nb-call  2.76 | slider  8.67 vs  260.5

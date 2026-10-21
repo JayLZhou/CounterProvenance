@@ -1,0 +1,12 @@
+{'host': '3haoji-A100', 'python': '3.11.15', 'platform': 'Linux-5.15.0-91-generic-x86_64-with-glibc2.31', 'numpy': '2.4.6', 'scipy': '1.15.3', 'sklearn': '1.9.0', 'xgboost': '3.2.0', 'lightgbm': '4.7.0', 'dowhy': '0.14'}
+California housing: (20640, 8)
+sklearn-RF fitted in 4.3s
+[02:05:28] /project/src/compiler/ast/split.cc:35: Parallel compilation enabled; member trees will be divided into 32 translation units.
+cal   sklearn-RF   d= 1 ours(this run) call   0.69 batch   0.100 | treelite call   63.33 batch  17.176 | qs batch 271.825 qsb batch  48.937 | loop batch  34.661
+cal   sklearn-RF   d= 2 ours(this run) call   0.69 batch   0.148 | treelite call   74.24 batch  25.952 | qs batch 256.563 qsb batch 100.626 | loop batch  36.456
+cal   sklearn-RF   d= 4 ours(this run) call   4.50 batch   3.196 | treelite call   86.80 batch  38.128 | qs batch 301.328 qsb batch 188.473 | loop batch  45.971
+cal   sklearn-RF   d= 8 ours(this run) call  79.21 batch  73.840 | treelite call   94.95 batch  44.346 | qs batch 343.411 qsb batch 350.230 | loop batch  44.267
+cal sklearn-RF   d= 1 DoWhy     32381us cached     16283us err 1.6e-15
+cal sklearn-RF   d= 2 DoWhy     32474us cached     16140us err 1.7e-15
+cal sklearn-RF   d= 4 DoWhy     32449us cached     16102us err 1.7e-15
+cal sklearn-RF   d= 8 DoWhy     32591us cached     16396us err 3.6e-15

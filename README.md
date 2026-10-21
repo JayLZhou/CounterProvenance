@@ -184,3 +184,10 @@ docs/archive/     design documents of the v1 prototype
 
 The previous prototype (linear SCMs, versioned closures, global-grid MCPST)
 is preserved at the git tag `v1-prototype`.
+
+## Data, results, and logs
+
+- `data/` - cached datasets used by the experiments (California housing from scikit-learn; OpenML 416, 422, 46293, 45716), so that runs work without network access.
+- `results/` - every CSV of the paper: `qbench_*` (index vs online loop, numba, libraries), `baselines_*` (Treelite, QuickScorer, QuickScorer-B; `experiments/baselines_all.py`), `baselines_dowhy_*` (DoWhy-GCM, 1,000-tree models), and the earlier `e*`/`r*` studies.
+- `logs/` - raw stdout of the runs on the experiment server.
+- `prototypes/` - the review prototypes and notes behind the design (node copying, K-free index, hybrid plans, unified index).

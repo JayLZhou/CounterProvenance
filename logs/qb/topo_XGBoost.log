@@ -1,0 +1,8 @@
+{'host': '3haoji-A100', 'python': '3.11.15', 'platform': 'Linux-5.15.0-91-generic-x86_64-with-glibc2.31', 'numpy': '2.4.6', 'scipy': '1.15.3', 'sklearn': '1.9.0', 'xgboost': '3.2.0', 'lightgbm': '4.7.0', 'dowhy': '0.14'}
+OpenML topo_2_1: (8885, 261)
+XGBoost (1000 trees) fitted in 52.1s
+topo  XGBoost      d= 1 trees=  25/1000 groups=   2 bitmask=   0 rec=      2,196 build=   0.0s | py   4.31 vs loop   751.5 (174.3x) | nb  0.059 vs 104.23 (1769.6x) | lib  817.1 vs nb-call  0.86 | slider  1.53 vs   15.8
+topo  XGBoost      d= 2 trees=  70/1000 groups=   2 bitmask=   0 rec=      5,121 build=   0.3s | py   2.35 vs loop   801.0 (340.4x) | nb  0.089 vs 105.52 (1183.0x) | lib  798.3 vs nb-call  0.89 | slider  1.70 vs   29.0
+topo  XGBoost      d= 4 trees= 163/1000 groups=   2 bitmask=   0 rec=  2,591,967 build=  67.7s | py   2.68 vs loop   852.0 (317.6x) | nb  0.148 vs 100.98 (683.4x) | lib  745.0 vs nb-call  0.87 | slider  1.37 vs   40.8
+topo  XGBoost      d= 8 trees= 352/1000 groups=   8 bitmask=   0 rec=  5,037,534 build=  56.6s | py   4.11 vs loop   779.5 (189.5x) | nb  0.375 vs 109.56 (291.8x) | lib  785.7 vs nb-call  1.04 | slider  1.91 vs   70.2
+topo  XGBoost      d=16 trees= 546/1000 groups=  55 bitmask=   0 rec=  3,546,740 build=  12.2s | py  11.54 vs loop   808.6 ( 70.1x) | nb  1.456 vs 107.87 ( 74.1x) | lib  721.7 vs nb-call  2.24 | slider  5.30 vs  135.0

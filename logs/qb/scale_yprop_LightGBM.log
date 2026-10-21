@@ -1,0 +1,14 @@
+{'host': '3haoji-A100', 'python': '3.11.15', 'platform': 'Linux-5.15.0-91-generic-x86_64-with-glibc2.31', 'numpy': '2.4.6', 'scipy': '1.15.3', 'sklearn': '1.9.0', 'xgboost': '3.2.0', 'lightgbm': '4.7.0', 'dowhy': '0.14'}
+OpenML yprop_4_1: (8885, 212)
+LightGBM (100 trees) fitted in 0.3s
+yprop LightGBM     d= 2 trees=  56/100 groups=   2 bitmask=   0 rec=      2,666 build=   0.0s | py   1.90 vs loop    42.4 ( 22.3x) | nb  0.077 vs   3.72 ( 48.4x) | lib   29.8 vs nb-call  0.76 | slider  1.52 vs   18.6
+yprop LightGBM     d= 8 trees=  85/100 groups=   9 bitmask=   0 rec=  3,007,381 build=  14.7s | py   4.64 vs loop    44.1 (  9.5x) | nb  0.297 vs   4.86 ( 16.4x) | lib   31.9 vs nb-call  0.98 | slider  2.14 vs   25.8
+yprop LightGBM     d=16 trees=  93/100 groups=  40 bitmask=   0 rec=  3,963,629 build=   8.6s | py   8.66 vs loop    43.9 (  5.1x) | nb  1.064 vs   5.80 (  5.5x) | lib   31.3 vs nb-call  1.90 | slider  4.08 vs   30.0
+LightGBM (300 trees) fitted in 0.6s
+yprop LightGBM     d= 2 trees= 125/300 groups=   2 bitmask=   0 rec=      8,711 build=   0.1s | py   1.96 vs loop   117.6 ( 59.9x) | nb  0.089 vs  10.48 (117.5x) | lib   45.9 vs nb-call  0.77 | slider  1.52 vs   43.5
+yprop LightGBM     d= 8 trees= 211/300 groups=  22 bitmask=   0 rec=  3,475,349 build=  12.2s | py   5.25 vs loop   121.2 ( 23.1x) | nb  0.416 vs  11.65 ( 28.0x) | lib   47.9 vs nb-call  1.19 | slider  3.16 vs   56.5
+yprop LightGBM     d=16 trees= 248/300 groups= 118 bitmask=   0 rec=  4,087,495 build=   7.0s | py  18.09 vs loop   130.2 (  7.2x) | nb  2.338 vs  14.43 (  6.2x) | lib   47.8 vs nb-call  2.95 | slider  9.89 vs   75.4
+LightGBM (3000 trees) fitted in 5.4s
+yprop LightGBM     d= 2 trees= 870/3000 groups=   2 bitmask=   0 rec=    479,152 build=   5.0s | py   2.19 vs loop  1831.1 (836.1x) | nb  0.138 vs 228.49 (1655.8x) | lib  314.2 vs nb-call  0.92 | slider  1.58 vs  510.9
+yprop LightGBM     d= 8 trees=2196/3000 groups= 574 bitmask=   0 rec=  5,205,981 build=  17.0s | py  65.09 vs loop  1997.6 ( 30.7x) | nb  6.582 vs 223.23 ( 33.9x) | lib  313.4 vs nb-call  8.83 | slider 50.51 vs 1041.1
+yprop LightGBM     d=16 trees=2501/3000 groups=1784 bitmask=   0 rec= 39,148,500 build=  85.1s | py 238.56 vs loop  1934.4 (  8.1x) | nb 34.886 vs 236.15 (  6.8x) | lib  329.1 vs nb-call 41.32 | slider 172.92 vs 1210.0

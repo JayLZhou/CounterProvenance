@@ -1,0 +1,86 @@
+host=3haoji-A100 python=3.11.15
+[GBR d=4] N=1520 groups(axis-support)=15
+   kfree_persistent                                 records=   44,583 pieces mean/max=  50.6/65   query=  43.1us max_err=4.9e-15
+   unified g=all given (15 groups, 516 leaves)      records=   80,106 pieces mean/max=  35.4/41   query=  46.6us max_err=7.1e-15
+   unified g=all bycount (15 groups, 524 leaves)    records=   67,827 pieces mean/max=  35.3/41   query=  56.4us max_err=7.1e-15
+   unified g=16 given (15 groups, 516 leaves)       records=   80,106 pieces mean/max=  35.4/41   query=  57.4us max_err=7.1e-15
+   unified g=16 bycount (15 groups, 524 leaves)     records=   67,827 pieces mean/max=  35.3/41   query=  56.7us max_err=7.1e-15
+   unified g=8 given (8 groups, 616 leaves)         records=   84,257 pieces mean/max=  30.1/34   query=  50.2us max_err=5.3e-15
+   unified g=8 bycount (8 groups, 609 leaves)       records=   71,849 pieces mean/max=  30.1/35   query=  51.1us max_err=5.3e-15
+   unified g=4 given (4 groups, 1009 leaves)        records=   62,069 pieces mean/max=  39.2/44   query=  58.9us max_err=4.9e-15
+   unified g=4 bycount (4 groups, 839 leaves)       records=   61,491 pieces mean/max=  32.9/38   query=  45.9us max_err=4.4e-15
+   unified g=2 given (2 groups, 926 leaves)         records=   70,459 pieces mean/max=  28.9/35   query=  44.1us max_err=4.4e-15
+   unified g=2 bycount (2 groups, 1030 leaves)      records=   86,147 pieces mean/max=  29.6/36   query=  47.8us max_err=5.3e-15
+   unified g=1 given (1 groups, 1024 leaves)        records=   84,555 pieces mean/max=  27.2/34   query=  48.5us max_err=4.9e-15
+   unified g=1 bycount (1 groups, 1024 leaves)      records=   84,555 pieces mean/max=  27.2/34   query=  40.0us max_err=4.9e-15
+[GBR d=6] N=2032 groups(axis-support)=50
+   kfree_persistent                                 records=  126,915 pieces mean/max= 105.7/124  query= 122.1us max_err=8.9e-15
+   unified g=all given (50 groups, 1155 leaves)     records=  114,495 pieces mean/max= 119.0/133  query= 174.7us max_err=8.0e-15
+   unified g=all bycount (50 groups, 1333 leaves)   records=  113,887 pieces mean/max= 121.0/138  query= 212.7us max_err=8.0e-15
+   unified g=16 given (16 groups, 1430 leaves)      records=  134,003 pieces mean/max=  95.4/110  query= 160.1us max_err=6.2e-15
+   unified g=16 bycount (16 groups, 1667 leaves)    records=  139,229 pieces mean/max=  94.8/110  query= 160.8us max_err=8.0e-15
+   unified g=8 given (8 groups, 1537 leaves)        records=  162,503 pieces mean/max=  81.2/91   query= 140.0us max_err=8.0e-15
+   unified g=8 bycount (8 groups, 1975 leaves)      records=  180,305 pieces mean/max=  84.1/97   query= 149.7us max_err=8.0e-15
+   unified g=4 given (4 groups, 1479 leaves)        records=  210,938 pieces mean/max=  64.5/75   query= 117.8us max_err=7.1e-15
+   unified g=4 bycount (4 groups, 2444 leaves)      records=  214,007 pieces mean/max=  77.0/91   query= 140.5us max_err=8.9e-15
+   unified g=2 given (2 groups, 1781 leaves)        records=  250,117 pieces mean/max=  65.0/73   query= 112.2us max_err=7.1e-15
+   unified g=2 bycount (2 groups, 2824 leaves)      records=  261,302 pieces mean/max=  67.3/77   query= 125.5us max_err=7.1e-15
+   unified g=1 given (1 groups, 1977 leaves)        records=  271,830 pieces mean/max=  57.4/67   query= 105.0us max_err=7.1e-15
+   unified g=1 bycount (1 groups, 2711 leaves)      records=  321,195 pieces mean/max=  54.6/70   query=  98.8us max_err=8.0e-15
+[GBR d=8] N=2376 groups(axis-support)=106
+   kfree_persistent                                 records=  216,548 pieces mean/max= 137.6/157  query= 208.6us max_err=8.0e-15
+   unified g=all given (106 groups, 1163 leaves)    records=  163,880 pieces mean/max= 181.5/193  query= 273.3us max_err=7.1e-15
+   unified g=all bycount (106 groups, 1441 leaves)  records=  137,425 pieces mean/max= 188.4/199  query= 332.4us max_err=8.0e-15
+   unified g=16 given (16 groups, 2113 leaves)      records=  193,911 pieces mean/max= 149.4/163  query= 271.7us max_err=8.9e-15
+   unified g=16 bycount (16 groups, 2530 leaves)    records=  190,831 pieces mean/max= 145.8/157  query= 262.9us max_err=8.0e-15
+   unified g=8 given (8 groups, 2407 leaves)        records=  250,433 pieces mean/max= 135.2/155  query= 249.4us max_err=6.2e-15
+   unified g=8 bycount (8 groups, 2710 leaves)      records=  304,154 pieces mean/max= 118.5/131  query= 230.2us max_err=7.1e-15
+   unified g=4 given (4 groups, 2499 leaves)        records=  353,164 pieces mean/max= 113.1/128  query= 218.2us max_err=7.1e-15
+   unified g=4 bycount (4 groups, 3023 leaves)      records=  401,880 pieces mean/max= 100.4/113  query= 207.9us max_err=7.1e-15
+   unified g=2 given (2 groups, 2870 leaves)        records=  421,214 pieces mean/max= 106.2/117  query= 207.7us max_err=7.1e-15
+   unified g=2 bycount (2 groups, 3929 leaves)      records=  475,435 pieces mean/max= 101.2/119  query= 209.9us max_err=7.1e-15
+   unified g=1 given (1 groups, 3100 leaves)        records=  466,326 pieces mean/max=  88.8/100  query= 177.5us max_err=6.2e-15
+   unified g=1 bycount (1 groups, 4547 leaves)      records=  506,016 pieces mean/max=  88.5/101  query= 181.6us max_err=5.3e-15
+[HGB d=4] N=1533 groups(axis-support)=15
+   kfree_persistent                                 records=   34,699 pieces mean/max=  51.8/61   query=  47.1us max_err=1.1e-14
+   unified g=all given (15 groups, 453 leaves)      records=   61,295 pieces mean/max=  39.4/43   query=  50.9us max_err=1.1e-14
+   unified g=all bycount (15 groups, 501 leaves)    records=   63,696 pieces mean/max=  37.3/41   query=  58.7us max_err=1.1e-14
+   unified g=16 given (15 groups, 453 leaves)       records=   61,295 pieces mean/max=  39.4/43   query=  62.2us max_err=1.1e-14
+   unified g=16 bycount (15 groups, 501 leaves)     records=   63,696 pieces mean/max=  37.3/41   query=  57.6us max_err=1.1e-14
+   unified g=8 given (8 groups, 494 leaves)         records=   67,066 pieces mean/max=  33.2/37   query=  58.3us max_err=1.1e-14
+   unified g=8 bycount (8 groups, 576 leaves)       records=   58,764 pieces mean/max=  34.1/39   query=  55.3us max_err=1.1e-14
+   unified g=4 given (4 groups, 398 leaves)         records=   82,593 pieces mean/max=  21.2/25   query=  39.1us max_err=1.1e-14
+   unified g=4 bycount (4 groups, 549 leaves)       records=   75,086 pieces mean/max=  26.4/30   query=  49.9us max_err=1.1e-14
+   unified g=2 given (2 groups, 672 leaves)         records=   52,831 pieces mean/max=  27.4/34   query=  45.8us max_err=1.1e-14
+   unified g=2 bycount (2 groups, 753 leaves)       records=   74,385 pieces mean/max=  26.5/32   query=  41.9us max_err=1.1e-14
+   unified g=1 given (1 groups, 616 leaves)         records=   81,121 pieces mean/max=  24.0/27   query=  43.5us max_err=1.1e-14
+   unified g=1 bycount (1 groups, 883 leaves)       records=   84,776 pieces mean/max=  27.0/31   query=  42.1us max_err=1.2e-14
+[HGB d=6] N=2040 groups(axis-support)=50
+   kfree_persistent                                 records=  102,704 pieces mean/max= 110.7/129  query= 129.8us max_err=1.1e-14
+   unified g=all given (50 groups, 882 leaves)      records=  118,418 pieces mean/max= 115.5/124  query= 161.6us max_err=8.9e-15
+   unified g=all bycount (50 groups, 1104 leaves)   records=  110,213 pieces mean/max= 122.4/137  query= 194.7us max_err=9.8e-15
+   unified g=16 given (16 groups, 1100 leaves)      records=  133,779 pieces mean/max=  91.5/100  query= 158.6us max_err=1.1e-14
+   unified g=16 bycount (16 groups, 1415 leaves)    records=  127,916 pieces mean/max=  96.5/108  query= 168.5us max_err=1.1e-14
+   unified g=8 given (8 groups, 1196 leaves)        records=  184,996 pieces mean/max=  75.7/85   query= 136.4us max_err=1.1e-14
+   unified g=8 bycount (8 groups, 1533 leaves)      records=  173,262 pieces mean/max=  74.3/88   query= 133.5us max_err=1.1e-14
+   unified g=4 given (4 groups, 1394 leaves)        records=  231,866 pieces mean/max=  69.0/80   query= 126.4us max_err=1.1e-14
+   unified g=4 bycount (4 groups, 1565 leaves)      records=  206,289 pieces mean/max=  60.9/71   query= 107.8us max_err=8.9e-15
+   unified g=2 given (2 groups, 1505 leaves)        records=  272,380 pieces mean/max=  59.5/70   query= 103.7us max_err=9.8e-15
+   unified g=2 bycount (2 groups, 1631 leaves)      records=  288,829 pieces mean/max=  53.9/68   query= 100.5us max_err=1.1e-14
+   unified g=1 given (1 groups, 1642 leaves)        records=  271,411 pieces mean/max=  55.4/64   query= 100.3us max_err=9.8e-15
+   unified g=1 bycount (1 groups, 2251 leaves)      records=  264,987 pieces mean/max=  48.8/59   query=  91.3us max_err=9.8e-15
+[HGB d=8] N=2358 groups(axis-support)=101
+   kfree_persistent                                 records=  169,922 pieces mean/max= 140.4/161  query= 211.5us max_err=1.4e-14
+   unified g=all given (101 groups, 866 leaves)     records=  182,870 pieces mean/max= 168.0/178  query= 254.4us max_err=1.4e-14
+   unified g=all bycount (101 groups, 1045 leaves)  records=  190,823 pieces mean/max= 172.7/184  query= 310.5us max_err=1.4e-14
+   unified g=16 given (16 groups, 1643 leaves)      records=  220,576 pieces mean/max= 138.4/153  query= 274.0us max_err=1.4e-14
+   unified g=16 bycount (16 groups, 2346 leaves)    records=  183,343 pieces mean/max= 146.2/164  query= 277.7us max_err=1.3e-14
+   unified g=8 given (8 groups, 1766 leaves)        records=  245,123 pieces mean/max= 126.0/141  query= 230.5us max_err=1.4e-14
+   unified g=8 bycount (8 groups, 2442 leaves)      records=  268,293 pieces mean/max= 117.7/139  query= 234.1us max_err=1.4e-14
+   unified g=4 given (4 groups, 1882 leaves)        records=  381,755 pieces mean/max= 106.0/125  query= 201.4us max_err=1.4e-14
+   unified g=4 bycount (4 groups, 2600 leaves)      records=  353,858 pieces mean/max= 103.4/119  query= 217.0us max_err=1.4e-14
+   unified g=2 given (2 groups, 2246 leaves)        records=  443,752 pieces mean/max=  94.5/109  query= 184.1us max_err=1.3e-14
+   unified g=2 bycount (2 groups, 3121 leaves)      records=  345,704 pieces mean/max=  86.7/101  query= 181.6us max_err=1.2e-14
+   unified g=1 given (1 groups, 2631 leaves)        records=  436,576 pieces mean/max=  85.2/100  query= 167.4us max_err=1.3e-14
+   unified g=1 bycount (1 groups, 3833 leaves)      records=  486,441 pieces mean/max=  75.5/93   query= 157.4us max_err=1.2e-14
+RUN_DONE_EXIT=0

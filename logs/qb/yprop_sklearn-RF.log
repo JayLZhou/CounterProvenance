@@ -1,0 +1,8 @@
+{'host': '3haoji-A100', 'python': '3.11.15', 'platform': 'Linux-5.15.0-91-generic-x86_64-with-glibc2.31', 'numpy': '2.4.6', 'scipy': '1.15.3', 'sklearn': '1.9.0', 'xgboost': '3.2.0', 'lightgbm': '4.7.0', 'dowhy': '0.14'}
+OpenML yprop_4_1: (8885, 212)
+sklearn-RF (1000 trees) fitted in 8.9s
+yprop sklearn-RF   d= 1 trees= 198/250 groups=   2 bitmask=   0 rec=      2,598 build=   0.0s | py   2.69 vs loop   192.0 ( 71.3x) | nb  0.082 vs  21.47 (260.9x) | lib 18678.0 vs nb-call  0.84 | slider  1.55 vs  216.4
+yprop sklearn-RF   d= 2 trees= 242/250 groups=   2 bitmask=   0 rec=    396,534 build=   4.4s | py   2.53 vs loop   227.3 ( 90.0x) | nb  0.137 vs  26.87 (196.4x) | lib 18881.6 vs nb-call  0.88 | slider  1.80 vs  258.1
+yprop sklearn-RF   d= 4 trees= 246/250 groups=  15 bitmask=   0 rec=  3,514,669 build=  13.7s | py   4.86 vs loop   247.1 ( 50.8x) | nb  0.355 vs  26.29 ( 74.1x) | lib 18962.9 vs nb-call  1.08 | slider  3.82 vs  230.7
+yprop sklearn-RF   d= 8 trees= 249/250 groups= 122 bitmask=   0 rec=  4,278,574 build=   8.6s | py  16.88 vs loop   236.5 ( 14.0x) | nb  1.640 vs  28.77 ( 17.5x) | lib 19474.7 vs nb-call  2.65 | slider 13.04 vs  247.7
+yprop sklearn-RF   d=16 trees= 250/250 groups=  54 bitmask= 196 rec=108,229,811 build= 661.2s | py  48.19 vs loop   247.1 (  5.1x) | nb 12.665 vs  30.88 (  2.4x) | lib 15511.0 vs nb-call 14.44 | slider 30.71 vs  339.0

@@ -1,0 +1,8 @@
+{'host': '3haoji-A100', 'python': '3.11.15', 'platform': 'Linux-5.15.0-91-generic-x86_64-with-glibc2.31', 'numpy': '2.4.6', 'scipy': '1.15.3', 'sklearn': '1.9.0', 'xgboost': '3.2.0', 'lightgbm': '4.7.0', 'dowhy': '0.14'}
+OpenML ujiindoorloc_latitude: (20000, 525)
+LightGBM (1000 trees) fitted in 4.0s
+uji   LightGBM     d= 1 trees= 438/1000 groups=   2 bitmask=   0 rec=      4,804 build=   0.0s | py   2.10 vs loop   576.4 (275.1x) | nb  0.068 vs  64.88 (956.4x) | lib  138.2 vs nb-call  0.70 | slider  1.68 vs  318.3
+uji   LightGBM     d= 2 trees= 591/1000 groups=   2 bitmask=   0 rec=     86,742 build=   1.0s | py   2.06 vs loop   628.0 (304.3x) | nb  0.088 vs  65.49 (748.4x) | lib  135.8 vs nb-call  0.73 | slider  1.55 vs  319.7
+uji   LightGBM     d= 4 trees= 620/1000 groups=   3 bitmask=   0 rec=  6,011,652 build=  80.2s | py   2.93 vs loop   698.9 (238.9x) | nb  0.151 vs  68.17 (452.7x) | lib  132.1 vs nb-call  0.81 | slider  1.66 vs  229.7
+uji   LightGBM     d= 8 trees= 664/1000 groups=  22 bitmask=   0 rec=  4,560,008 build=  24.0s | py   5.03 vs loop   689.1 (137.1x) | nb  0.382 vs  68.44 (178.9x) | lib  147.5 vs nb-call  0.99 | slider  3.18 vs  186.9
+uji   LightGBM     d=16 trees= 765/1000 groups= 102 bitmask=   0 rec=  4,103,635 build=   9.2s | py  13.61 vs loop   693.7 ( 51.0x) | nb  1.690 vs  68.90 ( 40.8x) | lib  145.8 vs nb-call  2.53 | slider  7.45 vs  216.3

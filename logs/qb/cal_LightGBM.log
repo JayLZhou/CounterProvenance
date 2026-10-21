@@ -1,0 +1,7 @@
+{'host': '3haoji-A100', 'python': '3.11.15', 'platform': 'Linux-5.15.0-91-generic-x86_64-with-glibc2.31', 'numpy': '2.4.6', 'scipy': '1.15.3', 'sklearn': '1.9.0', 'xgboost': '3.2.0', 'lightgbm': '4.7.0', 'dowhy': '0.14'}
+California housing: (20640, 8)
+LightGBM (1000 trees) fitted in 1.2s
+cal   LightGBM     d= 1 trees= 452/1000 groups=   2 bitmask=   0 rec=      5,775 build=   0.1s | py   1.86 vs loop   434.7 (233.6x) | nb  0.071 vs  48.48 (679.3x) | lib  119.9 vs nb-call  0.72 | slider  1.69 vs  257.9
+cal   LightGBM     d= 2 trees= 506/1000 groups=   2 bitmask=   0 rec=    329,858 build=   3.6s | py   2.16 vs loop   495.6 (229.6x) | nb  0.126 vs  51.69 (410.6x) | lib  117.1 vs nb-call  0.94 | slider  1.58 vs  279.4
+cal   LightGBM     d= 4 trees= 859/1000 groups= 166 bitmask=   0 rec=  4,356,965 build=  10.0s | py  23.28 vs loop   537.6 ( 23.1x) | nb  1.316 vs  59.94 ( 45.6x) | lib  122.5 vs nb-call  3.09 | slider 19.47 vs  490.7
+cal   LightGBM     d= 8 trees=1000/1000 groups=1000 bitmask=   0 rec=231,587,342 build= 200.6s | py 190.00 vs loop   532.4 (  2.8x) | nb 20.286 vs  61.44 (  3.0x) | lib  121.4 vs nb-call 26.02 | slider 131.78 vs  765.8

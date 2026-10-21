@@ -1,0 +1,12 @@
+{'host': '3haoji-A100', 'python': '3.11.15', 'platform': 'Linux-5.15.0-91-generic-x86_64-with-glibc2.31', 'numpy': '2.4.6', 'scipy': '1.15.3', 'sklearn': '1.9.0', 'xgboost': '3.2.0', 'lightgbm': '4.7.0', 'dowhy': '0.14'}
+California housing: (20640, 8)
+XGBoost fitted in 2.7s
+[02:05:27] /project/src/compiler/ast/split.cc:35: Parallel compilation enabled; member trees will be divided into 32 translation units.
+cal   XGBoost      d= 1 ours(this run) call   0.71 batch   0.071 | treelite call  126.15 batch  60.624 | qs batch  95.670 qsb batch  17.458 | loop batch 121.177
+cal   XGBoost      d= 2 ours(this run) call   0.79 batch   0.121 | treelite call  135.62 batch  70.657 | qs batch  99.103 qsb batch  31.429 | loop batch 103.243
+cal   XGBoost      d= 4 ours(this run) call   5.20 batch   3.474 | treelite call  133.54 batch  71.431 | qs batch  94.579 qsb batch  56.346 | loop batch 104.463
+cal   XGBoost      d= 8 ours(qbench) call  28.69 batch  25.426 | treelite call  148.69 batch  84.497 | qs batch 104.175 qsb batch 103.926 | loop batch 100.661
+cal XGBoost      d= 1 DoWhy      3967us cached      1908us err 1.2e-06
+cal XGBoost      d= 2 DoWhy      4078us cached      1863us err 2.6e-06
+cal XGBoost      d= 4 DoWhy      4002us cached      1896us err 2.2e-06
+cal XGBoost      d= 8 DoWhy      4041us cached      2003us err 2.1e-06

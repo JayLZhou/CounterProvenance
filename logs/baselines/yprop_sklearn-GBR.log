@@ -1,0 +1,14 @@
+{'host': '3haoji-A100', 'python': '3.11.15', 'platform': 'Linux-5.15.0-91-generic-x86_64-with-glibc2.31', 'numpy': '2.4.6', 'scipy': '1.15.3', 'sklearn': '1.9.0', 'xgboost': '3.2.0', 'lightgbm': '4.7.0', 'dowhy': '0.14'}
+OpenML yprop_4_1: (8885, 212)
+sklearn-GBR fitted in 38.5s
+[02:06:02] /project/src/compiler/ast/split.cc:35: Parallel compilation enabled; member trees will be divided into 32 translation units.
+yprop sklearn-GBR  d= 1 ours(this run) call   1.04 batch   0.083 | treelite call   53.28 batch  17.437 | qs batch   7.944 qsb batch   4.245 | loop batch  27.385
+yprop sklearn-GBR  d= 2 ours(this run) call   0.73 batch   0.087 | treelite call   51.15 batch  16.874 | qs batch   7.411 qsb batch   4.614 | loop batch  19.625
+yprop sklearn-GBR  d= 4 ours(this run) call   0.82 batch   0.168 | treelite call   53.17 batch  17.326 | qs batch   7.862 qsb batch   5.414 | loop batch  19.587
+yprop sklearn-GBR  d= 8 ours(this run) call   0.95 batch   0.324 | treelite call   48.24 batch  16.457 | qs batch   7.494 qsb batch   5.701 | loop batch  20.163
+yprop sklearn-GBR  d=16 ours(this run) call   1.50 batch   0.800 | treelite call   49.92 batch  17.221 | qs batch   8.289 qsb batch   6.667 | loop batch  19.201
+yprop sklearn-GBR  d= 1 DoWhy     42697us cached     21196us err 0.0e+00
+yprop sklearn-GBR  d= 2 DoWhy     40116us cached     20620us err 0.0e+00
+yprop sklearn-GBR  d= 4 DoWhy     43642us cached     17352us err 0.0e+00
+yprop sklearn-GBR  d= 8 DoWhy     44754us cached     17504us err 0.0e+00
+yprop sklearn-GBR  d=16 DoWhy     44327us cached     17444us err 1.1e-16

@@ -1,0 +1,8 @@
+{'host': '3haoji-A100', 'python': '3.11.15', 'platform': 'Linux-5.15.0-91-generic-x86_64-with-glibc2.31', 'numpy': '2.4.6', 'scipy': '1.15.3', 'sklearn': '1.9.0', 'xgboost': '3.2.0', 'lightgbm': '4.7.0', 'dowhy': '0.14'}
+OpenML ThermalPowerConsumptionMarsExpress60: (20000, 484)
+XGBoost (1000 trees) fitted in 77.8s
+mars  XGBoost      d= 1 trees=  86/1000 groups=   2 bitmask=   0 rec=      2,576 build=   0.0s | py   2.48 vs loop   739.4 (298.1x) | nb  0.064 vs 111.40 (1752.5x) | lib  744.7 vs nb-call  0.75 | slider  1.37 vs   49.6
+mars  XGBoost      d= 2 trees= 177/1000 groups=   2 bitmask=   0 rec=     14,068 build=   0.1s | py   2.04 vs loop   735.5 (361.1x) | nb  0.093 vs 112.05 (1204.8x) | lib  733.1 vs nb-call  0.82 | slider  1.42 vs   60.8
+mars  XGBoost      d= 4 trees= 344/1000 groups=   3 bitmask=   0 rec=  4,337,919 build=  81.5s | py   2.63 vs loop   821.7 (312.4x) | nb  0.183 vs 107.37 (587.2x) | lib  700.3 vs nb-call  0.85 | slider  1.85 vs  106.4
+mars  XGBoost      d= 8 trees= 503/1000 groups=  18 bitmask=   0 rec=  4,798,427 build=  34.1s | py   4.42 vs loop   825.0 (186.5x) | nb  0.426 vs 103.46 (242.8x) | lib  693.0 vs nb-call  1.21 | slider  2.91 vs  145.6
+mars  XGBoost      d=16 trees= 693/1000 groups= 136 bitmask=   0 rec=  4,247,265 build=   7.9s | py  17.65 vs loop   829.8 ( 47.0x) | nb  2.416 vs 103.88 ( 43.0x) | lib  693.3 vs nb-call  3.89 | slider 10.17 vs  224.5
