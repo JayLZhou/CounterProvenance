@@ -40,7 +40,7 @@ _M, _N, _P, _NA, _LF32, _O_FEAT, _O_LEFT, _O_RIGHT, _O_AXES, _O_THR, _O_VAL, _O_
 if HAVE_NUMBA:
 
     @njit(cache=True)
-    def _index_query(il, fl, bm, t, work):
+    def _index_query(il, fl, bm, t, work, mw):
         d = il[0]
         width = il[1]
         g = il[2]
@@ -82,10 +82,17 @@ if HAVE_NUMBA:
         total = fl[0]
         for i in range(g):
             total += fl[o_tab + il[o_offs + i] + work[d + i]]
-        for j in range(K):
-            m = bm[work[il[o_ub]] * K + j]
+        if K > 0:
+            # AND the slab rows of the used axes, one contiguous row at a time
+            row = work[il[o_ub]] * K
+            for j in range(K):
+                mw[j] = bm[row + j]
             for u in range(1, nb):
-                m &= bm[(u * C + work[il[o_ub + u]]) * K + j]
+                row = (u * C + work[il[o_ub + u]]) * K
+                for j in range(K):
+                    mw[j] &= bm[row + j]
+        for j in range(K):
+            m = mw[j]
             if m == 0:  # another 64-leaf field of the same tree holds the leaf
                 work[d + g + j] = 0
                 continue
@@ -96,9 +103,9 @@ if HAVE_NUMBA:
         return total
 
     @njit(cache=True)
-    def _index_batch(il, fl, bm, T, out, work):
+    def _index_batch(il, fl, bm, T, out, work, mw):
         for q in range(T.shape[0]):
-            out[q] = _index_query(il, fl, bm, T[q], work)
+            out[q] = _index_query(il, fl, bm, T[q], work, mw)
 
     @njit(cache=True)
     def _walk(il, fl, t, x, leaves):
@@ -204,11 +211,12 @@ class NumbaIndex:
         ints[: 15] = [d, width, g, K, len(used), C, o_thlen, o_offs, o_ub, o_contrib, o_db, o_th, o_tab, o_bv, f32]
         self.ints, self.floats, self.bm = ints, fl.astype(np.float64), bm.ravel()
         self.work = np.zeros(d + g + K, dtype=np.int64)
+        self.mwork = np.zeros(max(1, K), dtype=np.uint64)
         self.d, self.g, self.K = d, g, K
 
     def query(self, t: np.ndarray) -> float:
         """``t``: float64 array of the intervention values."""
-        return _index_query(self.ints, self.floats, self.bm, t, self.work)
+        return _index_query(self.ints, self.floats, self.bm, t, self.work, self.mwork)
 
     def query_full(self, t: np.ndarray) -> tuple[float, np.ndarray, np.ndarray]:
         value = self.query(t)
@@ -217,7 +225,8 @@ class NumbaIndex:
 
     def batch(self, T: np.ndarray) -> np.ndarray:
         out = np.empty(len(T))
-        _index_batch(self.ints, self.floats, self.bm, np.ascontiguousarray(T, dtype=np.float64), out, self.work)
+        _index_batch(self.ints, self.floats, self.bm, np.ascontiguousarray(T, dtype=np.float64), out, self.work,
+                     self.mwork)
         return out
 
 
