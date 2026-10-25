@@ -1,0 +1,3 @@
+dataset,family,trees,d,treatments,mechanisms,fit_s,mediators,build_s,boxes,groups,max_rel_err,ours_us,online_us,status
+zurich_delays,LGBM,1000,1,weekday,1,5.712412991560996,0,0.2957197530195117,6284,2,2.8310687127941492e-14,1.9428133964538574,657.0051587186754,ok
+zurich_delays,LGBM,1000,2,weekday|vehicle_type,1,5.712412991560996,0,1.4892722498625517,16873,1,2.8199664825478976e-14,2.6097451336681843,704.742930829525,ok
