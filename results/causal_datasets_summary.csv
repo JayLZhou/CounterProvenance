@@ -1,0 +1,21 @@
+name,kind,rows,nodes,edges,target,target_ancestors,note
+gov_census,published,204309,17,105,salary,16,fairadapt 1.0.0; the 6 bidirected sex<->demographic edges (both ends roots) are dropped
+adult,published,45222,7,17,income,6,feature graph (11 edges) + all features -> income
+law_school,published,21791,5,6,ZFYA,2,the latent knowledge K of the paper is absorbed into the noise terms
+light_tunnel,published,10000,38,57,vis_3,9,experiment uniform_reference (observational); target = node with most ancestors
+compas,published,6172,5,9,two_year_recid,4,ProPublica filters; feature graph + features -> Y
+sachs,published,853,11,17,Akt,5,853 observational cells; target Akt (most ancestors)
+postgres,partial,1506270,20,91,runtime,13,factorial experiment: treatments and covariates -> outcomes; edges among outcomes unknown; one row per subject x treatment combination x trial
+networking,partial,415840,9,20,elapsed,4,factorial experiment: treatments and covariates -> outcomes; edges among outcomes unknown; one row per subject x treatment combination x trial
+jdk,partial,37840,13,40,total_unit_test_time,8,factorial experiment: treatments and covariates -> outcomes; edges among outcomes unknown; one row per subject x treatment combination x trial
+abalone,partial,4177,8,7,whole_weight,1,star graph out of rings: only d=1 interventions reach Y
+concrete,partial,1030,9,8,strength,8,star graph: edges among the components unknown
+ozone,partial,989,4,3,ozone,3,star graph
+higgs,pc,11000000,29,71,Target,12,"PC fisherz alpha=0.01 depth=3 on 10000 rows (1s), target forbidden to cause features; no consistent extension; remaining edges follow a topological order; 1 conflicting orientations demoted; 0 edges into the target flipped"
+airlines,pc,10000000,10,12,DepDelay,7,"PC fisherz alpha=0.01 depth=3 on 10000 rows (0s), target forbidden to cause features; consistent extension (Dor-Tarsi); 0 edges into the target flipped"
+methane,pc,9199930,28,67,MM264,15,"PC fisherz alpha=0.01 depth=3 on 10000 rows (3s), target forbidden to cause features; no consistent extension; remaining edges follow a topological order; 2 conflicting orientations demoted; 0 edges into the target flipped"
+zurich_delays,pc,5465575,12,17,delay,3,"PC fisherz alpha=0.01 depth=3 on 10000 rows (0s), target forbidden to cause features; consistent extension (Dor-Tarsi); 0 edges into the target flipped"
+acs_income,pc,1664500,12,25,PINCP,8,"PC fisherz alpha=0.01 depth=3 on 10000 rows (0s), target forbidden to cause features; consistent extension (Dor-Tarsi); 0 edges into the target flipped"
+mslr,pc,1200192,137,244,relevance,16,"PC fisherz alpha=0.01 depth=3 on 10000 rows (195s), target forbidden to cause features; no consistent extension; remaining edges follow a topological order; 5 conflicting orientations demoted; 0 edges into the target flipped"
+baf,pc,1000000,31,110,fraud_bool,13,"PC fisherz alpha=0.01 depth=3 on 10000 rows (19s), target forbidden to cause features; no consistent extension; remaining edges follow a topological order; 3 conflicting orientations demoted; 0 edges into the target flipped"
+year,pc,515345,91,453,year,80,"PC fisherz alpha=0.01 depth=3 on 10000 rows (764s), target forbidden to cause features; no consistent extension; remaining edges follow a topological order; 39 conflicting orientations demoted; 0 edges into the target flipped"
