@@ -17,8 +17,11 @@ query is answered by
 
 A value is computed as ``u + (f(pa') - f(pa))`` (see :mod:`counterprovenance.scm`).
 
-Every answer is checked against propagation with the libraries' own
-``predict`` (``ScmOnline``).  Queries are timed single-threaded.
+Every answer is checked against the pure-Python propagation, which sums the
+leaves exactly; that propagation is in turn checked against the libraries' own
+``predict`` (``ScmOnline``), exactly for the float64 libraries and recorded as
+``err_lib`` for XGBoost, whose ``predict`` accumulates in single precision.
+Queries are timed single-threaded.
 Output: ``results/scm_full_<tag>.csv``.
 """
 
@@ -186,8 +189,21 @@ def main() -> None:
                 pts.append(p)
             Q = np.ascontiguousarray(pts, dtype=np.float64)
             n = len(Q)
-            truth = np.array([ref.query(t) for t in Q])
-            tol = 5e-5 if args.family == "XGB" else 1e-9
+            py = ScmOnlinePy(scm, unit, T, outcome)
+            truth = np.array([py.query(t)[0] for t in Q])
+            lib = np.array([ref.query(t) for t in Q])
+            row["err_lib"] = float(np.max(np.abs(lib - truth) / np.maximum(1.0, np.abs(truth))))
+            if args.family != "XGB" and row["err_lib"] > 1e-9:
+                raise AssertionError(f"{args.dataset} {args.family} d={d}: library differs by {row['err_lib']}")
+            tol = 1e-9
+            # answers of library-level evaluators (Treelite, DoWhy) count as wrong beyond the
+            # library's own rounding: float64, or float32 accumulation for XGBoost
+            if args.family == "XGB":
+                ens = scm.ensembles[outcome]
+                scale = abs(ens.base) + sum(float(np.abs(tr.value).max()) for tr in ens.trees)
+                lib_tol = np.full(n, 4 * np.sqrt(len(ens.trees)) * 2.0 ** -24 * scale)
+            else:
+                lib_tol = 1e-9 * np.maximum(1.0, np.abs(lib))
 
             def check(name, got):
                 err = float(np.max(np.abs(np.asarray(got) - truth[: len(got)]) / np.maximum(1.0, np.abs(truth[: len(got)]))))
@@ -195,9 +211,7 @@ def main() -> None:
                 if err > tol:
                     raise AssertionError(f"{args.dataset} {args.family} d={d}: {name} differs by {err}")
 
-            py = ScmOnlinePy(scm, unit, T, outcome)
             check("ours_py", [index.query(t).value for t in Q])
-            check("online_py", [py.query(t)[0] for t in Q])
             row["ours_py_us"] = per_call_seconds(lambda: [index.query(t) for t in Q], n) * 1e6
             row["online_py_us"] = per_call_seconds(lambda: [py.query(t) for t in Q], n) * 1e6
             if accel.HAVE_NUMBA:
@@ -211,16 +225,14 @@ def main() -> None:
             if compiled:
                 tl = ScmTreelite(scm, compiled, unit, T, outcome)
                 got = [tl.query(t) for t in Q]
-                rel = np.abs(np.asarray(got) - truth) / np.maximum(1.0, np.abs(truth))
-                row["treelite_wrong"] = int((rel > max(tol, 1e-6)).sum())
+                row["treelite_wrong"] = int((np.abs(np.asarray(got) - lib) > lib_tol).sum())
                 row["treelite_us"] = per_call_seconds(lambda: [tl.query(t) for t in Q], n) * 1e6
             k = min(args.dowhy_queries, n)
             ivs = [{name: (lambda _v, value=float(t[j]): value) for j, name in enumerate(T)} for t in Q[:k]]
             got = [float(gcm.counterfactual_samples(cg, iv, observed_data=unit_row)[outcome].iloc[0]) for iv in ivs]
             # DoWhy abducts N = u - f(pa) and adds it back, so rounding can move an observed mediator
             # across a threshold of its child: count such answers instead of failing
-            rel = np.abs(np.asarray(got) - truth[:k]) / np.maximum(1.0, np.abs(truth[:k]))
-            row["dowhy_wrong"] = int((rel > max(tol, 1e-6)).sum())
+            row["dowhy_wrong"] = int((np.abs(np.asarray(got) - lib[:k]) > lib_tol[:k]).sum())
             row["dowhy_us"] = per_call_seconds(
                 lambda: [gcm.counterfactual_samples(cg, iv, observed_data=unit_row) for iv in ivs], k, repeats=1) * 1e6
             row["status"] = "ok"

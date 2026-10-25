@@ -121,8 +121,14 @@ class FittedSCM:
         return float(self.models[node].predict(row)[0])
 
     def abduct(self, unit: dict[str, float], nodes: Sequence[str]) -> dict[str, float]:
-        """Noise of ``unit`` for every node in ``nodes`` that has a mechanism."""
-        return {n: float(unit[n]) - self.predict(n, unit) for n in nodes if n in self.models}
+        """Noise of ``unit`` for every node in ``nodes`` that has a mechanism, against the trees
+        summed exactly (XGBoost's own ``predict`` accumulates in single precision)."""
+        out = {}
+        for n in nodes:
+            if n in self.models:
+                row = np.array([[unit[p] for p in self.parents[n]]], dtype=float)
+                out[n] = float(unit[n]) - float(self.ensembles[n].predict(row)[0])
+        return out
 
     def observed_leaf_values(self, node: str, unit: dict[str, float]) -> np.ndarray:
         """Value of the leaf the unit reaches in every tree of ``node``'s mechanism."""
