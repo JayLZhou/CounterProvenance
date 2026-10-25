@@ -118,8 +118,13 @@ class FittedSCM:
         return {n: float(unit[n]) - self.predict(n, unit) for n in nodes if n in self.models}
 
 
+def _fit_one(factory, X, y):
+    return factory().fit(X, y)
+
+
 def fit_scm(data, edges: Sequence[tuple[str, str]], outcome: str, treatments: Sequence[str],
-            factory: Callable[[], object], max_rows: int | None = None, seed: int = 0) -> FittedSCM:
+            factory: Callable[[], object], max_rows: int | None = None, seed: int = 0,
+            n_jobs: int = 1) -> FittedSCM:
     """Fit a mechanism for the outcome and for every mediator between ``treatments`` and it.
 
     ``data`` is a pandas DataFrame whose columns include every graph node.
@@ -133,13 +138,15 @@ def fit_scm(data, edges: Sequence[tuple[str, str]], outcome: str, treatments: Se
     needed = [n for n in topological(parents) if n in keep]
     if max_rows is not None and len(data) > max_rows:
         data = data.sample(n=max_rows, random_state=seed)
-    models = {}
-    for node in needed:
-        ps = parents[node]
-        if not ps:
-            continue
-        models[node] = factory().fit(data[ps].to_numpy(dtype=float), data[node].to_numpy(dtype=float))
-    return FittedSCM(parents, models)
+    jobs = [n for n in needed if parents[n]]
+    args = [(data[parents[n]].to_numpy(dtype=float), data[n].to_numpy(dtype=float)) for n in jobs]
+    if n_jobs > 1 and len(jobs) > 1:
+        from joblib import Parallel, delayed
+
+        fitted = Parallel(n_jobs=min(n_jobs, len(jobs)))(delayed(_fit_one)(factory, X, y) for X, y in args)
+    else:
+        fitted = [_fit_one(factory, X, y) for X, y in args]
+    return FittedSCM(parents, dict(zip(jobs, fitted)))
 
 
 def relevant_nodes(parents: dict[str, list[str]], treatments: Sequence[str], outcome: str) -> list[str]:

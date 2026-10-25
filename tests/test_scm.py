@@ -87,3 +87,25 @@ def test_star_graph_matches_single_model_binding(family):
     rng = np.random.default_rng(2)
     for t in _queries(df, ["A", "B"], b2, rng):
         assert abs(b1.value(t) - b2.value(t)) <= 1e-12 * max(1.0, abs(b2.value(t)))
+
+
+@pytest.mark.parametrize("family", list(_factories()))
+def test_dag_baselines_equal_propagation(family):
+    from counterprovenance.scm_baselines import ScmNumba, ScmOnlinePy
+
+    df = _data()
+    treatments = ["A", "B"]
+    scm = fit_scm(df, EDGES, "Y", treatments, _factories()[family])
+    rng = np.random.default_rng(3)
+    unit = df.iloc[int(rng.integers(len(df)))].to_dict()
+    bound = bind_scm(scm, unit, treatments, "Y")
+    ref = ScmOnline(scm, unit, treatments, "Y")
+    py = ScmOnlinePy(scm, unit, treatments, "Y")
+    nb = ScmNumba(scm, unit, treatments, "Y")
+    tol = 5e-5 if family == "xgb" else 1e-9
+    pts = _queries(df, treatments, bound, rng)
+    batch = nb.batch(np.asarray(pts))
+    for t, b in zip(pts, batch):
+        r = ref.query(t)
+        for got in (py.query(t)[0], nb.query(np.asarray(t)), b):
+            assert abs(got - r) <= tol * max(1.0, abs(r)), (family, t, got, r)
