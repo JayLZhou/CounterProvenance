@@ -109,3 +109,32 @@ def test_dag_baselines_equal_propagation(family):
         r = ref.query(t)
         for got in (py.query(t)[0], nb.query(np.asarray(t)), b):
             assert abs(got - r) <= tol * max(1.0, abs(r)), (family, t, got, r)
+
+
+@pytest.mark.parametrize("family", list(_factories()))
+def test_observed_mediator_on_threshold(family):
+    """Integer mediators sit on their children's thresholds; the factual cell must give them back exactly."""
+    from counterprovenance.scm_baselines import ScmNumba, ScmOnlinePy
+
+    rng = np.random.default_rng(4)
+    n = 3000
+    A, B, C, D = (rng.normal(size=n) for _ in range(4))
+    Z = np.round(2 * A + C)
+    W = np.round(Z * B)
+    Y = Z + np.abs(W) + 0.5 * A * D + 0.1 * rng.normal(size=n)
+    df = pd.DataFrame(dict(A=A, B=B, C=C, D=D, Z=Z, W=W, Y=Y))
+    treatments = ["A"]
+    scm = fit_scm(df, EDGES, "Y", treatments, _factories()[family])
+    tol = 5e-5 if family == "xgb" else 1e-9
+    for i in range(0, 200, 10):
+        unit = df.iloc[i].to_dict()
+        bound = bind_scm(scm, unit, treatments, "Y")
+        index = ProvenanceIndex(bound)
+        ref = ScmOnline(scm, unit, treatments, "Y")
+        py = ScmOnlinePy(scm, unit, treatments, "Y")
+        nb = ScmNumba(scm, unit, treatments, "Y")
+        t = np.array([unit["A"]])
+        r = ref.query(t)
+        assert r == pytest.approx(unit["Y"], abs=1e-9 * max(1.0, abs(unit["Y"])))
+        for got in (index.query(t).value, py.query(t)[0], nb.query(t)):
+            assert abs(got - r) <= tol * max(1.0, abs(r)), (family, i, got, r)

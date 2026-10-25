@@ -7,6 +7,13 @@ noise, the non-descendants of ``T`` keep their observed values, and every
 mediator ``Z`` (a descendant of ``T`` and an ancestor of ``Y``) becomes a
 piecewise-constant function ``Z(t)`` over the intervention space.
 
+A counterfactual value is computed as ``u_X + (f_X(pa') - f_X(pa))``, which is
+``f_X(pa') + N_X`` in exact arithmetic but equals the observed ``u_X`` exactly
+whenever ``pa'`` reaches the same leaves as the observed parents
+(consistency).  Observed values often lie on split thresholds of the children
+(XGBoost cuts are data values, and integer columns are common), and the
+rounding of ``(u_X - f_X(pa)) + f_X(pa')`` would otherwise move them across.
+
 :func:`bind_scm` compiles the outcome's trees into leaf boxes over ``t``,
 exactly as :func:`~counterprovenance.ensemble.bind` does for a single model:
 a test on an intervened variable splits the current box, a test on a non-
@@ -117,6 +124,12 @@ class FittedSCM:
         """Noise of ``unit`` for every node in ``nodes`` that has a mechanism."""
         return {n: float(unit[n]) - self.predict(n, unit) for n in nodes if n in self.models}
 
+    def observed_leaf_values(self, node: str, unit: dict[str, float]) -> np.ndarray:
+        """Value of the leaf the unit reaches in every tree of ``node``'s mechanism."""
+        ens = self.ensembles[node]
+        leaves = ens.leaves(np.array([[unit[p] for p in self.parents[node]]], dtype=float))[0]
+        return np.array([tree.value[leaf] for tree, leaf in zip(ens.trees, leaves)], dtype=np.float64)
+
 
 def _fit_one(factory, X, y):
     return factory().fit(X, y)
@@ -173,14 +186,14 @@ class ScmOnline:
         self.outcome = outcome
         self.order = relevant_nodes(scm.parents, treatments, outcome)
         self.unit = dict(unit)
-        self.noise = scm.abduct(unit, self.order)
+        self.observed = {n: scm.predict(n, unit) for n in self.order}
 
     def query(self, t: Sequence[float]) -> float:
         values = dict(self.unit)
         for name, v in zip(self.treatments, t):
             values[name] = float(v)
         for node in self.order:
-            values[node] = self.scm.predict(node, values) + self.noise[node]
+            values[node] = float(self.unit[node]) + (self.scm.predict(node, values) - self.observed[node])
         return values[self.outcome]
 
 
@@ -262,9 +275,10 @@ def _compile_trees(ens: TreeEnsemble, inputs: list[tuple[str, object]], d: int, 
     return boxes
 
 
-def _as_map(bound_boxes: list[LeafBox], offset: float, d: int, cast: Callable[[np.ndarray], np.ndarray],
-            max_cells: int) -> _Map:
-    """Dense values of ``offset + sum of box values`` on the grid of the boxes' own cuts."""
+def _as_map(bound_boxes: list[LeafBox], observed: float, observed_leaf: np.ndarray, d: int,
+            cast: Callable[[np.ndarray], np.ndarray], max_cells: int) -> _Map:
+    """Dense values of ``observed + sum of (box value - observed leaf value of its tree)`` on the
+    grid of the boxes' own cuts; a cell whose boxes are the observed leaves gets ``observed``."""
     shim = BoundEnsemble.__new__(BoundEnsemble)
     shim.boxes = bound_boxes
     shim.axes = tuple(range(d))
@@ -274,8 +288,8 @@ def _as_map(bound_boxes: list[LeafBox], offset: float, d: int, cast: Callable[[n
         raise Infeasible(f"mediator grid of {cells:,} cells exceeds {max_cells:,}")
     acc = np.zeros(slabs.counts)
     for box, rng in zip(bound_boxes, slabs.ranges):
-        acc[tuple(slice(s, e) for s, e in rng)] += box.value
-    return _Map([list(t) for t in slabs.thresholds], cast(acc + offset))
+        acc[tuple(slice(s, e) for s, e in rng)] += box.value - observed_leaf[box.tree]
+    return _Map([list(t) for t in slabs.thresholds], cast(observed + acc))
 
 
 def bind_scm(scm: FittedSCM, unit: dict[str, float], treatments: Sequence[str], outcome: str,
@@ -285,7 +299,6 @@ def bind_scm(scm: FittedSCM, unit: dict[str, float], treatments: Sequence[str], 
     d = len(treatments)
     axis = {name: a for a, name in enumerate(treatments)}
     order = relevant_nodes(scm.parents, treatments, outcome)
-    noise = scm.abduct(unit, order)
     maps: dict[str, _Map] = {}
     out_ens = scm.ensembles[outcome]
     for node in order:
@@ -301,10 +314,12 @@ def bind_scm(scm: FittedSCM, unit: dict[str, float], treatments: Sequence[str], 
         boxes = _compile_trees(ens, inputs, d, max_boxes)
         if node == outcome:
             row = np.array([unit[p] for p in scm.parents[node]], dtype=float)
-            return BoundEnsemble(out_ens, row, tuple(range(d)), boxes, out_ens.base + noise[node])
+            return BoundEnsemble(out_ens, row, tuple(range(d)), boxes,
+                                 out_ens.base + scm.abduct(unit, [node])[node])
         # the mediator's value is read by its children through their own input casts; all
         # mechanisms of one SCM come from one model family, so the outcome's cast applies
-        maps[node] = _as_map(boxes, ens.base + noise[node], d, out_ens.cast, max_cells)
+        maps[node] = _as_map(boxes, float(unit[node]), scm.observed_leaf_values(node, unit), d, out_ens.cast,
+                             max_cells)
     raise AssertionError("outcome not reached")
 
 
