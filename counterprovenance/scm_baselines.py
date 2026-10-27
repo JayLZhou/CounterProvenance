@@ -256,3 +256,48 @@ class ScmIncremental(ScmNumba):
         t_idx, mech, tree_off, feat, thr, left, right, val, obs, cvals = self.args
         return _incremental(t, t_idx, mech, tree_off, feat, thr, left, right, val, obs, cvals, self.x, self.cur,
                             *self.inc, self.changed, self.stamp, self.step)
+
+
+class ScmThreeStepPy:
+    """Pure-Python counterfactual by the textbook three steps on every query, caching nothing:
+    abduction walks every mechanism on the paths at the unit's observed parents, the action sets
+    ``T``, and prediction walks them again at the counterfactual parents.  Same arithmetic as
+    :class:`ScmOnlinePy` (``u + fsum`` of leaf differences), so both return the same floats."""
+
+    def __init__(self, scm: FittedSCM, unit: dict[str, float], treatments: Sequence[str], outcome: str) -> None:
+        self.treatments = list(treatments)
+        self.outcome = outcome
+        order = relevant_nodes(scm.parents, treatments, outcome)
+        self.unit = {k: float(v) for k, v in unit.items()}
+        self.mechs = []
+        for node in order:
+            ens = scm.ensembles[node]
+            trees = [(t.feature.tolist(), t.threshold.tolist(), t.left.tolist(), t.right.tolist(), t.value.tolist())
+                     for t in ens.trees]
+            self.mechs.append((node, list(scm.parents[node]), make_cast(ens), trees))
+
+    @staticmethod
+    def _leaves(x, trees):
+        out = []
+        for feature, threshold, left, right, value in trees:
+            n = 0
+            while feature[n] >= 0:
+                n = left[n] if x[feature[n]] <= threshold[n] else right[n]
+            out.append(n)
+        return out
+
+    def query(self, t: Sequence[float]) -> tuple[float, list[int]]:
+        unit = self.unit
+        # abduction: the leaves (hence f(pa)) of every mechanism at the observed parents
+        observed = [self._leaves(cast([unit[p] for p in parents]), trees)
+                    for _, parents, cast, trees in self.mechs]
+        # action
+        values = dict(unit)
+        for name, v in zip(self.treatments, t):
+            values[name] = float(v)
+        # prediction: X = u_X + (f(pa') - f(pa)), in topological order
+        leaves: list[int] = []
+        for (node, parents, cast, trees), obs in zip(self.mechs, observed):
+            leaves = self._leaves(cast([values[p] for p in parents]), trees)
+            values[node] = unit[node] + math.fsum(tr[4][n] - tr[4][o] for tr, n, o in zip(trees, leaves, obs))
+        return values[self.outcome], leaves

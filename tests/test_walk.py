@@ -101,3 +101,18 @@ def test_session_equals_fresh_queries(tau):
         assert session.walked < len(steps)
     if tau == 1e9:
         assert session.queried == 0
+
+
+@pytest.mark.parametrize("family", list(_factories()))
+def test_three_step_baseline_equals_cached(family):
+    from counterprovenance.scm_baselines import ScmOnlinePy, ScmThreeStepPy
+
+    df = _data()
+    treatments = ["A", "B"]
+    scm = fit_scm(df, EDGES, "Y", treatments, _factories()[family])
+    rng = np.random.default_rng(8)
+    unit = df.iloc[int(rng.integers(len(df)))].to_dict()
+    bound = bind_scm(scm, unit, treatments, "Y")
+    cached, three = ScmOnlinePy(scm, unit, treatments, "Y"), ScmThreeStepPy(scm, unit, treatments, "Y")
+    for t in _steps(df, treatments, bound, rng, n=60):
+        assert three.query(t)[0] == cached.query(t)[0]

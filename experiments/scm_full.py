@@ -6,9 +6,11 @@ gets a tree-ensemble mechanism (fitted once, multi-threaded, on at most
 ``--train-rows`` rows).  For every ``d`` and every unit (``--units`` random
 units), the treatments are ``d`` ancestors of the outcome (those the outcome's
 mechanism splits on most first), the index is built through the DAG, and each
-query is answered by Tessera (``ProvenanceIndex.query``, pure Python with numpy) and by
-DoWhy-GCM over the same DAG and the same fitted models (``--dowhy-queries``), both on
-``--queries`` queries.  ``--extra-baselines`` also times pure-Python propagation
+query is answered by Tessera (``ProvenanceIndex.query``, pure Python with numpy), by the
+textbook three-step counterfactual in pure Python that caches nothing (``ScmThreeStepPy``:
+abduction, action and prediction on every query), by ChiRho (``chirho_baseline.ScmChiRho``,
+when ``chirho`` is importable) and by DoWhy-GCM over the same DAG and the same fitted models,
+all on ``--queries`` queries (``--dowhy-queries`` for the two libraries).  ``--extra-baselines`` also times pure-Python propagation
 (``ScmOnlinePy``), numba (``NumbaIndex`` vs ``ScmNumba``) and Treelite; they are not
 reported in the paper.
 
@@ -37,8 +39,17 @@ import pandas as pd
 from common import RESULTS, per_call_seconds, per_query_us, write_csv
 from counterprovenance import ProvenanceIndex, accel
 from counterprovenance.scm import Infeasible, ScmOnline, ancestors, bind_scm, fit_scm, parents_of, relevant_nodes
-from counterprovenance.scm_baselines import ScmNumba, ScmOnlinePy
+from counterprovenance.scm_baselines import ScmNumba, ScmOnlinePy, ScmThreeStepPy
 from scm_bench import choose_treatments, zoo
+
+try:
+    from chirho_baseline import ScmChiRho
+
+    import chirho  # noqa: F401
+
+    HAVE_CHIRHO = True
+except ImportError:
+    HAVE_CHIRHO = False
 
 
 def treelite_mechanisms(scm, nodes, workdir, threads):
@@ -228,6 +239,10 @@ def main() -> None:
             check("ours_py", [index.query(t).value for t in Q])
             row["ours_py_us"] = per_call_seconds(lambda: [index.query(t) for t in Q], n) * 1e6
             lat["ours_py"] = per_query_us(index.query, Q)
+            three = ScmThreeStepPy(scm, unit, T, outcome)
+            check("three_step", [three.query(t)[0] for t in Q])
+            row["three_step_us"] = per_call_seconds(lambda: [three.query(t) for t in Q], n, repeats=1) * 1e6
+            lat["three_step"] = per_query_us(three.query, Q)
             if args.extra_baselines:
                 row["online_py_us"] = per_call_seconds(lambda: [py.query(t) for t in Q], n) * 1e6
                 lat["online_py"] = per_query_us(py.query, Q)
@@ -248,6 +263,12 @@ def main() -> None:
                 row["treelite_us"] = per_call_seconds(lambda: [tl.query(t) for t in Q], n) * 1e6
                 lat["treelite"] = per_query_us(tl.query, Q)
             k = min(args.dowhy_queries, n)
+            if HAVE_CHIRHO:
+                ch = ScmChiRho(scm, unit, T, outcome)
+                got = [ch.query(t) for t in Q[:k]]
+                row["chirho_wrong"] = int((np.abs(np.asarray(got) - lib[:k]) > lib_tol[:k]).sum())
+                lat["chirho"] = per_query_us(ch.query, Q[:k])
+                row["chirho_us"] = float(lat["chirho"].mean())
             ivs = [{name: (lambda _v, value=float(t[j]): value) for j, name in enumerate(T)} for t in Q[:k]]
             got = [float(gcm.counterfactual_samples(cg, iv, observed_data=unit_row)[outcome].iloc[0]) for iv in ivs]
             # DoWhy abducts N = u - f(pa) and adds it back, so rounding can move an observed mediator
@@ -266,8 +287,9 @@ def main() -> None:
             rows.append(row)
             write_csv(f"scm_full_{tag}.csv", rows)
             print(f"  unit {u} d={d:2d} med={row['mediators']:3d} boxes={row['boxes']:>9,} groups={row['groups']:5d} "
-                  f"build={row['build_s']:6.1f}s | ours {row['ours_py_us']:7.1f}us | dowhy {row['dowhy_us']:9.0f}us "
-                  f"({row['dowhy_us'] / row['ours_py_us']:,.0f}x)", flush=True)
+                  f"build={row['build_s']:6.1f}s | ours {row['ours_py_us']:7.1f}us | three-step "
+                  f"{row['three_step_us']:8.0f}us | chirho {row.get('chirho_us', float('nan')):9.0f}us | dowhy "
+                  f"{row['dowhy_us']:9.0f}us", flush=True)
     tl_dir.cleanup()
 
 
