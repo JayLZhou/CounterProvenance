@@ -1,19 +1,16 @@
 #!/usr/bin/env python3
-"""Full benchmark of counterfactual queries on the 20 causal datasets.
+"""Full benchmark of counterfactual queries on the causal datasets.
 
 For one dataset and one model family, every non-root ancestor of the outcome
 gets a tree-ensemble mechanism (fitted once, multi-threaded, on at most
 ``--train-rows`` rows).  For every ``d`` and every unit (``--units`` random
 units), the treatments are ``d`` ancestors of the outcome (those the outcome's
 mechanism splits on most first), the index is built through the DAG, and each
-query is answered by
-
-* pure Python: ours (``ProvenanceIndex.query``) vs ``ScmOnlinePy`` (tree walks
-  through every mechanism on the paths, recording the leaves);
-* numba, one call per query: ours (``NumbaIndex``) vs ``ScmNumba``;
-* Treelite (tl2cgen, gcc -O3): every mechanism compiled to a shared library and
-  called in topological order, one call per mechanism and query;
-* DoWhy-GCM over the same DAG and the same fitted models (``--dowhy-queries``).
+query is answered by Tessera (``ProvenanceIndex.query``, pure Python with numpy) and by
+DoWhy-GCM over the same DAG and the same fitted models (``--dowhy-queries``), both on
+``--queries`` queries.  ``--extra-baselines`` also times pure-Python propagation
+(``ScmOnlinePy``), numba (``NumbaIndex`` vs ``ScmNumba``) and Treelite; they are not
+reported in the paper.
 
 A value is computed as ``u + (f(pa') - f(pa))`` (see :mod:`counterprovenance.scm`).
 
@@ -133,7 +130,8 @@ def main() -> None:
     ap.add_argument("--threads", type=int, default=1, help="threads per model fit (fitting only)")
     ap.add_argument("--fit-jobs", type=int, default=4, help="mechanisms fitted in parallel (fitting only)")
     ap.add_argument("--max-boxes", type=int, default=50_000_000)
-    ap.add_argument("--no-treelite", action="store_true")
+    ap.add_argument("--extra-baselines", action="store_true",
+                    help="also time pure-Python propagation, numba and Treelite (not reported in the paper)")
     ap.add_argument("--tag", default="")
     args = ap.parse_args()
     tag = args.tag or f"{args.dataset}_{args.family}"
@@ -158,7 +156,7 @@ def main() -> None:
         needed |= set(relevant_nodes(scm.parents, choose_treatments(scm, outcome, d), outcome))
     tl_dir = tempfile.TemporaryDirectory()
     compiled = {}
-    if not args.no_treelite:
+    if args.extra_baselines:
         start = time.perf_counter()
         compiled = treelite_mechanisms(scm, sorted(needed), tl_dir.name, args.threads)
         print(f"  treelite: {len(compiled)} mechanisms compiled in {time.perf_counter() - start:.0f}s", flush=True)
@@ -229,10 +227,11 @@ def main() -> None:
             lat = {}
             check("ours_py", [index.query(t).value for t in Q])
             row["ours_py_us"] = per_call_seconds(lambda: [index.query(t) for t in Q], n) * 1e6
-            row["online_py_us"] = per_call_seconds(lambda: [py.query(t) for t in Q], n) * 1e6
             lat["ours_py"] = per_query_us(index.query, Q)
-            lat["online_py"] = per_query_us(py.query, Q)
-            if accel.HAVE_NUMBA:
+            if args.extra_baselines:
+                row["online_py_us"] = per_call_seconds(lambda: [py.query(t) for t in Q], n) * 1e6
+                lat["online_py"] = per_query_us(py.query, Q)
+            if args.extra_baselines and accel.HAVE_NUMBA:
                 nb_ours = accel.NumbaIndex(index)
                 nb_onl = ScmNumba(scm, unit, T, outcome)
                 nb_ours.query(Q[0]), nb_onl.query(Q[0])
@@ -267,9 +266,8 @@ def main() -> None:
             rows.append(row)
             write_csv(f"scm_full_{tag}.csv", rows)
             print(f"  unit {u} d={d:2d} med={row['mediators']:3d} boxes={row['boxes']:>9,} groups={row['groups']:5d} "
-                  f"build={row['build_s']:6.1f}s | py {row['ours_py_us']:7.1f} vs {row['online_py_us']:9.1f} | "
-                  f"nb {row.get('ours_nb_us', float('nan')):6.2f} vs {row.get('online_nb_us', float('nan')):8.1f} | "
-                  f"tl {row.get('treelite_us', float('nan')):8.1f} | dowhy {row['dowhy_us']:9.0f}", flush=True)
+                  f"build={row['build_s']:6.1f}s | ours {row['ours_py_us']:7.1f}us | dowhy {row['dowhy_us']:9.0f}us "
+                  f"({row['dowhy_us'] / row['ours_py_us']:,.0f}x)", flush=True)
     tl_dir.cleanup()
 
 

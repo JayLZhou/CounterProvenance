@@ -331,6 +331,25 @@ class ProvenanceIndex:
             self._baxes.append((a, th[a], rows))
         self._bmasks = masks
         self._bitmask_words = sum(counts[a] for a in used) * len(fields)
+        # vectorised read of the leaves: per axis the (slabs, fields) array, and the leaf values
+        # as one array indexed by field * 65 + bit_length (bit_length 0 reads the dummy 0.0)
+        self._bnp = [(th[a], masks[a]) for a in used]
+        flat = np.zeros((len(fields), 65))
+        for k, vals in enumerate(self._bvals):
+            flat[k, :len(vals)] = vals
+        self._bflat = flat.ravel()
+        self._bbase = np.arange(len(fields), dtype=np.int64) * 65
+
+    def _bitmask_np(self, x: Sequence[float]) -> tuple[np.ndarray, float]:
+        """Leaf of every field (``bit_length`` of the remaining bit, as the ``frexp`` exponent)
+        and the sum of their values, with one numpy AND per axis."""
+        it = iter(self._bnp)
+        th, M = next(it)
+        m = M[bisect_left(th, x[self._baxes[0][0]])].copy()
+        for (a, _, _), (th, M) in zip(self._baxes[1:], it):
+            m &= M[bisect_left(th, x[a])]
+        leaves = np.frexp(m.astype(np.float64))[1]
+        return leaves, float(self._bflat[self._bbase + leaves].sum())
 
     def _bitmask_leaves(self, x: Sequence[float]) -> list[int]:
         it = iter(self._baxes)
@@ -383,8 +402,8 @@ class ProvenanceIndex:
             packed += rows[bisect_left(th, x[a])]
         cells = memoryview(packed.to_bytes(self._nbytes, "little")).cast("I")
         if self._baxes:
-            leaves = self._bitmask_leaves(x)
-            value = math.fsum(chain((self._const,), map(getitem, self._tables, cells), map(getitem, self._bvals, leaves)))
+            leaves, deep = self._bitmask_np(x)
+            value = math.fsum(chain((self._const, deep), map(getitem, self._tables, cells)))
         else:
             leaves = ()
             value = math.fsum(chain((self._const,), map(getitem, self._tables, cells)))
