@@ -230,25 +230,43 @@ class ProvenanceIndex:
         max_leaf_cells: int = 20_000_000,
         compile: bool = True,
         one_cells: int = 2_000_000,
+        min_group_trees: int = 1,
+        cost_lookup: float = 0.15,
+        cost_masks_fixed: float = 8.0,
+        cost_word: float = 0.02,
     ) -> None:
         """``grouping``: ``"auto"`` (one cell graph for the whole forest when the slab grid of all
-        axes has at most ``one_cells`` cells, otherwise every varying tree on its own, located by leaf
-        bitmasks), ``"greedy"`` (merge groups under a total table budget ``budget``; trees whose own
+        axes has at most ``one_cells`` cells; otherwise the greedy cell graphs or leaf bitmasks for
+        every tree, whichever is cheaper per query under the cost model ``cost_lookup`` per table
+        read, ``cost_masks_fixed`` + ``cost_word`` per mask word, in microseconds), ``"greedy"`` (merge groups under a total table budget ``budget``; trees whose own
         table exceeds ``grid_cap`` or ``mask_ratio`` times their leaf boxes use leaf bitmasks),
         ``"support"`` (one group per axis support) or ``"none"``."""
         t0 = time.perf_counter()
         self.bound = bound
         self.slabs = Slabs(bound)
+        self.choice = None
         if grouping == "auto":
             grid = math.prod(self.slabs.counts)
             if grid <= one_cells:
-                grouping, max_leaf_cells = "none", max(max_leaf_cells, grid)
+                grouping, max_leaf_cells, self.choice = "none", max(max_leaf_cells, grid), "one"
             else:
-                grouping, mask_ratio, grid_cap = "greedy", 0.0, 0
+                # greedy cell graphs, or leaf masks for every tree: whichever the cost model says is
+                # cheaper per query (decided from the grouping alone, before any table is built)
+                grouping = "greedy"
+                profiles = tree_profiles(bound, self.slabs)
+                groups, deep = greedy_groups(profiles, budget, grid_cap, mask_ratio=mask_ratio)
+                words = lambda ps: sum((len(p.items) + 63) // 64 for p in ps)
+                cost_tables = cost_lookup * len(groups) + (cost_masks_fixed + cost_word * words(deep) if deep else 0.0)
+                cost_masks = cost_masks_fixed + cost_word * words(profiles)
+                if cost_masks < cost_tables:
+                    mask_ratio, grid_cap, self.choice = 0.0, 0, "masks"
+                else:
+                    self.choice = "tables"
         self.tau = tau
         self.budget = budget
         self.grid_cap = grid_cap
         self.mask_ratio = mask_ratio
+        self.min_group_trees = min_group_trees
         self.layout = layout
         self.exact = exact
         self.alpha = alpha
@@ -300,6 +318,12 @@ class ProvenanceIndex:
         profiles = tree_profiles(self.bound, self.slabs)
         table_groups, deep = greedy_groups(profiles, self.budget, self.grid_cap,
                                              mask_ratio=self.mask_ratio)
+        # a cell graph must pay for its lookup: a group with fewer than min_group_trees trees costs
+        # more to read than the leaf masks of its trees, so its trees use leaf masks instead
+        by_tree = {p.tree: p for p in profiles}
+        small = [g for g in table_groups if len(g.trees) < self.min_group_trees]
+        table_groups = [g for g in table_groups if len(g.trees) >= self.min_group_trees]
+        deep = deep + [by_tree[m] for g in small for m in g.trees]
         out = [(tuple(sorted(g.axes)), sorted(g.items)) for g in table_groups]
         self.deep = deep
         varying = {p.tree for p in profiles}

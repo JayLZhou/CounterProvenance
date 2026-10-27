@@ -510,14 +510,14 @@ def pc_save(out, args, name, df, target, source):
 # large public tables (millions to over a hundred million rows), raw files in <out>/_raw/<name>
 # ---------------------------------------------------------------------------
 def nyc_taxi_frame(raw: Path) -> tuple[pd.DataFrame, str, str]:
-    """NYC TLC yellow-taxi trips 2019-2020; target: tip amount.  ``total_amount`` (a sum that includes the
-    tip) and free-text columns are dropped; trips with non-positive fare or distance, or a duration outside
+    """NYC TLC yellow-taxi trips 2019-2020; target: the total amount charged (fare, surcharges, taxes, tolls
+    and tip).  Free-text columns are dropped; trips with non-positive fare or distance, or a duration outside
     1-180 minutes, are removed."""
     import pyarrow.parquet as pq
 
     cols = ["tpep_pickup_datetime", "tpep_dropoff_datetime", "passenger_count", "trip_distance", "RatecodeID",
             "PULocationID", "DOLocationID", "payment_type", "fare_amount", "extra", "mta_tax", "tip_amount",
-            "tolls_amount", "improvement_surcharge", "congestion_surcharge"]
+            "tolls_amount", "improvement_surcharge", "congestion_surcharge", "total_amount"]
     parts = []
     for f in sorted(raw.glob("yellow_tripdata_*.parquet")):
         t = pq.read_table(f, columns=[c for c in cols if c in pq.read_schema(f).names]).to_pandas()
@@ -529,23 +529,35 @@ def nyc_taxi_frame(raw: Path) -> tuple[pd.DataFrame, str, str]:
     df = pd.concat(parts, ignore_index=True)
     df = df.dropna()
     df = df[(df.fare_amount > 0) & (df.trip_distance > 0) & (df.trip_distance < 200) & (df.duration_min >= 1)
-            & (df.duration_min <= 180) & (df.tip_amount >= 0)]
-    return df.reset_index(drop=True), "tip_amount", "NYC TLC yellow taxi trips 2019-2020"
+            & (df.duration_min <= 180) & (df.tip_amount >= 0) & (df.total_amount > 0)]
+    return df.reset_index(drop=True), "total_amount", "NYC TLC yellow taxi trips 2019-2020"
 
 
 def airline_frame(raw: Path) -> tuple[pd.DataFrame, str, str]:
-    """US airline on-time performance 1987-2008 (ASA Data Expo 2009); target: arrival delay.  Columns that
-    are functions of the arrival time (ArrTime, ActualElapsedTime) and the delay causes (recorded only from
-    2003) are dropped; cancelled and diverted flights are removed."""
-    cols = ["Month", "DayofMonth", "DayOfWeek", "DepTime", "CRSDepTime", "CRSArrTime", "CRSElapsedTime", "AirTime",
-            "ArrDelay", "DepDelay", "Distance", "TaxiIn", "TaxiOut", "Cancelled", "Diverted", "Year"]
+    """US airline on-time performance 2003-2008 (ASA Data Expo 2009), the years whose records carry the
+    delay causes (carrier, weather, NAS, security, late aircraft); target: arrival delay.  Columns that are
+    functions of the arrival time (ArrTime, ActualElapsedTime) are dropped; carrier, origin and destination
+    become integer codes; cancelled and diverted flights and records without delay causes are removed."""
+    codes = ["UniqueCarrier", "Origin", "Dest"]
+    cols = codes + ["FlightNum", "Month", "DayofMonth", "DayOfWeek", "DepTime", "CRSDepTime", "CRSArrTime",
+                    "CRSElapsedTime", "AirTime", "ArrDelay", "DepDelay", "Distance", "TaxiIn", "TaxiOut", "Cancelled",
+                    "Diverted", "Year",
+                    "CarrierDelay", "WeatherDelay", "NASDelay", "SecurityDelay", "LateAircraftDelay"]
     parts = []
     for f in sorted(raw.glob("*.csv.bz2")):
+        if not f.name[:4].isdigit() or int(f.name[:4]) < 2003:
+            continue
         t = pd.read_csv(f, usecols=lambda c: c in cols, compression="bz2", encoding="latin-1", low_memory=False)
-        t = t.apply(pd.to_numeric, errors="coerce")
+        cat = t[codes].astype(str)
+        t = t.drop(columns=codes).apply(pd.to_numeric, errors="coerce")
+        for c in codes:
+            t[c] = cat[c]
         t = t[(t.Cancelled == 0) & (t.Diverted == 0)].drop(columns=["Cancelled", "Diverted"])
-        parts.append(t.astype("float32"))
+        parts.append(t)
     df = pd.concat(parts, ignore_index=True)
+    for c in codes:  # one code book over all years
+        df[c] = df[c].astype("category").cat.codes
+    df = df.astype("float32")
     return df.dropna(axis=1, how="all").dropna().reset_index(drop=True), "ArrDelay", "ASA Data Expo 2009 airline on-time"
 
 

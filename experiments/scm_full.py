@@ -145,6 +145,7 @@ def main() -> None:
                     help="also time pure-Python propagation, numba and Treelite (not reported in the paper)")
     ap.add_argument("--unit-ids", default="", help="comma-separated unit indices to run (default: all)")
     ap.add_argument("--grouping", default="auto")
+    ap.add_argument("--ours-only", action="store_true", help="time only Tessera (exactness is still checked)")
     ap.add_argument("--tag", default="")
     args = ap.parse_args()
     tag = args.tag or f"{args.dataset}_{args.family}"
@@ -205,7 +206,7 @@ def main() -> None:
             row["build_s"] = time.perf_counter() - start
             st = index.stats
             row.update(boxes=len(bound.boxes), groups=len(index.groups), bitmask_trees=st.bitmask_trees,
-                       bytes=st.packed_bytes)
+                       bytes=st.packed_bytes, choice=index.choice)
             lo = df[T].quantile(0.01).to_numpy()
             hi = df[T].quantile(0.99).to_numpy()
             n_unif = args.queries * 3 // 4
@@ -245,6 +246,18 @@ def main() -> None:
             check("ours_py", [index.query(t).value for t in Q])
             row["ours_py_us"] = per_call_seconds(lambda: [index.query(t) for t in Q], n) * 1e6
             lat["ours_py"] = per_query_us(index.query, Q)
+            if args.ours_only:
+                for q in (25, 50, 75, 95):
+                    row[f"ours_py_p{q}_us"] = float(np.percentile(lat["ours_py"], q))
+                lat_dir = RESULTS / "scm_lat_ours"
+                lat_dir.mkdir(parents=True, exist_ok=True)
+                np.savez_compressed(lat_dir / f"{tag}_u{u}_d{d}.npz", ours_py=lat["ours_py"].astype(np.float32))
+                row["status"] = "ok"
+                rows.append(row)
+                write_csv(f"scm_full_{tag}.csv", rows)
+                print(f"  unit {u} d={d:2d} {index.choice} groups={row['groups']} | ours {row['ours_py_us']:.1f}us",
+                      flush=True)
+                continue
             three = ScmThreeStepPy(scm, unit, T, outcome)
             check("three_step", [three.query(t)[0] for t in Q])
             row["three_step_us"] = per_call_seconds(lambda: [three.query(t) for t in Q], n, repeats=1) * 1e6

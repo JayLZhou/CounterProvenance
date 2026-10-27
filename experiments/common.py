@@ -193,7 +193,7 @@ def paper_zoo(n: int = 1000) -> dict[str, Callable[[], object]]:
             max_iter=n, learning_rate=0.05, max_leaf_nodes=31, early_stopping=False, random_state=0
         ),
         "sklearn-RF": lambda: RandomForestRegressor(
-            n_estimators=max(50, n // 4), max_depth=10, max_features=0.33, random_state=0, n_jobs=1
+            n_estimators=n, max_depth=10, max_features=0.33, random_state=0, n_jobs=1
         ),
     }
     try:

@@ -34,7 +34,7 @@ def zoo(n_trees: int, threads: int):
         "GBR": lambda: GradientBoostingRegressor(n_estimators=n_trees, max_depth=3, learning_rate=0.05, random_state=0),
         "HGB": lambda: HistGradientBoostingRegressor(max_iter=n_trees, learning_rate=0.05, max_leaf_nodes=31,
                                                      early_stopping=False, random_state=0),
-        "RF": lambda: RandomForestRegressor(n_estimators=max(50, n_trees // 4), max_depth=10, max_features=0.33,
+        "RF": lambda: RandomForestRegressor(n_estimators=n_trees, max_depth=10, max_features=0.33,
                                             random_state=0, n_jobs=threads),
     }
     import xgboost as xgb

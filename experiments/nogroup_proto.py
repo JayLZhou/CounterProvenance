@@ -58,7 +58,9 @@ def main() -> None:
         Q = rng.uniform(df[T].quantile(0.01), df[T].quantile(0.99), size=(args.queries, d))
         three = ScmThreeStepPy(scm, unit, T, outcome)
         base_us = per_call_seconds(lambda: [three.query(t) for t in Q[:500]], 500, repeats=1) * 1e6
-        configs = {"greedy": dict(), "trees": dict(mask_ratio=0.0)}
+        configs = {"greedy": dict(), "trees": dict(mask_ratio=0.0), "auto": dict(grouping="auto")}
+        for tau in (4, 8, 16, 32):
+            configs[f"min{tau}"] = dict(min_group_trees=tau)
         if grid <= args.budget:
             configs["one"] = dict(grouping="none", max_leaf_cells=args.budget)
         ref = None
