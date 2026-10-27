@@ -71,8 +71,7 @@ def main() -> None:
     ap.add_argument("--queries", type=int, default=300)
     ap.add_argument("--train-rows", type=int, default=100_000)
     ap.add_argument("--threads", type=int, default=8, help="threads for fitting only; queries are single-threaded")
-    ap.add_argument("--max-boxes", type=int, default=5_000_000)
-    ap.add_argument("--max-cells", type=int, default=5_000_000)
+    ap.add_argument("--max-boxes", type=int, default=50_000_000)
     ap.add_argument("--tag", default="")
     args = ap.parse_args()
 
@@ -103,7 +102,7 @@ def main() -> None:
         row["mediators"] = len(online.order) - 1
         start = time.perf_counter()
         try:
-            bound = bind_scm(scm, unit, T, outcome, max_boxes=args.max_boxes, max_cells=args.max_cells)
+            bound = bind_scm(scm, unit, T, outcome, max_boxes=args.max_boxes)
             index = ProvenanceIndex(bound)
         except (Infeasible, MemoryError) as e:
             row["status"] = f"infeasible: {e}"

@@ -58,6 +58,31 @@ def per_call_seconds(fn: Callable[[], object], calls: int, repeats: int = 3) -> 
     return median(samples)
 
 
+def _timer_overhead_ns(samples: int = 20_000) -> float:
+    pc = time.perf_counter_ns
+    gaps = []
+    for _ in range(samples):
+        start = pc()
+        gaps.append(pc() - start)
+    return float(np.median(gaps))
+
+
+def per_query_us(fn: Callable[[object], object], queries: Sequence) -> np.ndarray:
+    """Latency of every single call ``fn(q)`` in microseconds (timer overhead subtracted).
+
+    Use :func:`per_call_seconds` for the mean (one timer around the whole loop) and these
+    per-call latencies for the distribution (box plots, percentiles).
+    """
+    pc = time.perf_counter_ns
+    overhead = _timer_overhead_ns()
+    out = np.empty(len(queries), dtype=np.float64)
+    for i, q in enumerate(queries):
+        start = pc()
+        fn(q)
+        out[i] = pc() - start
+    return np.maximum(out - overhead, 0.0) / 1e3
+
+
 def full_cell_index(bound, **kwargs) -> tuple[CellIndex, Slabs]:
     """One MCPST over the whole overlay (tree slots)."""
     slabs = Slabs(bound)

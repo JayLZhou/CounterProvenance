@@ -37,7 +37,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from common import per_call_seconds, write_csv
+from common import RESULTS, per_call_seconds, per_query_us, write_csv
 from counterprovenance import ProvenanceIndex, accel
 from counterprovenance.scm import Infeasible, ScmOnline, ancestors, bind_scm, fit_scm, parents_of, relevant_nodes
 from counterprovenance.scm_baselines import ScmNumba, ScmOnlinePy
@@ -45,31 +45,45 @@ from scm_bench import choose_treatments, zoo
 
 
 def treelite_mechanisms(scm, nodes, workdir, threads):
-    """Compile the mechanisms of ``nodes`` with tl2cgen; returns node -> (predictor, dtype, tl2cgen)."""
+    """Compile the mechanisms of ``nodes`` with tl2cgen; returns node -> (C predict function, entry dtype).
+
+    The generated ``void predict(union Entry*, int, double*)`` is called directly through ctypes, so a
+    call costs about as much as one numba call (tl2cgen's ``DMatrix`` + ``Predictor`` wrapper would add
+    tens of microseconds per call, see ``tl_fair.py``)."""
+    import ctypes
+
     from baselines_all import treelite_predictor
 
     out = {}
     for node in nodes:
         sub = Path(workdir) / f"m{len(out)}"
         sub.mkdir(parents=True, exist_ok=True)
-        tl2cgen, predictor, dtype, _ = treelite_predictor(scm.models[node], str(sub))
-        out[node] = (tl2cgen, predictor, dtype)
+        _, _, dtype, _ = treelite_predictor(scm.models[node], str(sub))
+        fn = ctypes.CDLL(str(sub / "model.so")).predict
+        fn.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p]
+        fn.restype = None
+        out[node] = (fn, np.float32 if dtype == "float32" else np.float64)
     return out
 
 
 class ScmTreelite:
+    """Propagation through the DAG with every mechanism's Treelite-compiled C ``predict``."""
+
     def __init__(self, scm, compiled, unit, treatments, outcome):
         self.order = relevant_nodes(scm.parents, treatments, outcome)
         self.unit, self.treatments, self.outcome = dict(unit), list(treatments), outcome
         self.parents, self.compiled, self.ens = scm.parents, compiled, scm.ensembles
+        self._out = np.zeros(1)
+        self._bufs = {n: np.zeros(len(scm.parents[n]), dtype=compiled[n][1]) for n in self.order}
         self.observed = {n: self._predict(n, self.unit) for n in self.order}
 
     def _predict(self, node, values):
-        tl2cgen, predictor, dtype = self.compiled[node]
-        row = self.ens[node].cast(np.array([[values[p] for p in self.parents[node]]]))
-        dm = tl2cgen.DMatrix(np.ascontiguousarray(row, dtype=np.float32 if dtype == "float32" else np.float64),
-                             dtype=dtype)
-        return float(np.asarray(predictor.predict(dm)).reshape(-1)[0])
+        fn, _ = self.compiled[node]
+        buf = self._bufs[node]
+        buf[:] = self.ens[node].cast(np.array([values[p] for p in self.parents[node]]))
+        self._out[0] = 0.0
+        fn(buf.ctypes.data, 0, self._out.ctypes.data)
+        return float(self._out[0])
 
     def query(self, t):
         values = dict(self.unit)
@@ -112,13 +126,13 @@ def main() -> None:
     ap.add_argument("--trees", type=int, default=1000)
     ap.add_argument("--dims", default="1,2,4,8,16")
     ap.add_argument("--units", type=int, default=3)
-    ap.add_argument("--queries", type=int, default=300)
-    ap.add_argument("--dowhy-queries", type=int, default=40)
+    ap.add_argument("--queries", type=int, default=10_000,
+                    help="queries per unit and d (3/4 uniform, 1/4 on box boundaries)")
+    ap.add_argument("--dowhy-queries", type=int, default=10_000)
     ap.add_argument("--train-rows", type=int, default=50_000)
     ap.add_argument("--threads", type=int, default=1, help="threads per model fit (fitting only)")
     ap.add_argument("--fit-jobs", type=int, default=4, help="mechanisms fitted in parallel (fitting only)")
-    ap.add_argument("--max-boxes", type=int, default=5_000_000)
-    ap.add_argument("--max-cells", type=int, default=5_000_000)
+    ap.add_argument("--max-boxes", type=int, default=50_000_000)
     ap.add_argument("--no-treelite", action="store_true")
     ap.add_argument("--tag", default="")
     args = ap.parse_args()
@@ -163,7 +177,7 @@ def main() -> None:
                    "mediators": len(ref.order) - 1, "fit_s": fit_s}
             start = time.perf_counter()
             try:
-                bound = bind_scm(scm, unit, T, outcome, max_boxes=args.max_boxes, max_cells=args.max_cells)
+                bound = bind_scm(scm, unit, T, outcome, max_boxes=args.max_boxes)
                 compile_s = time.perf_counter() - start
                 index = ProvenanceIndex(bound)
             except (Infeasible, MemoryError) as e:
@@ -179,9 +193,10 @@ def main() -> None:
                        bytes=st.packed_bytes)
             lo = df[T].quantile(0.01).to_numpy()
             hi = df[T].quantile(0.99).to_numpy()
-            pts = list(rng.uniform(lo, hi, size=(args.queries, d)))
+            n_unif = args.queries * 3 // 4
+            pts = list(rng.uniform(lo, hi, size=(n_unif, d)))
             th = [[b.hi[a] for b in bound.boxes if np.isfinite(b.hi[a])] for a in range(d)]
-            for _ in range(args.queries // 3):
+            for _ in range(args.queries - n_unif):
                 p = rng.uniform(lo, hi)
                 a = int(rng.integers(d))
                 if th[a]:
@@ -211,9 +226,12 @@ def main() -> None:
                 if err > tol:
                     raise AssertionError(f"{args.dataset} {args.family} d={d}: {name} differs by {err}")
 
+            lat = {}
             check("ours_py", [index.query(t).value for t in Q])
             row["ours_py_us"] = per_call_seconds(lambda: [index.query(t) for t in Q], n) * 1e6
             row["online_py_us"] = per_call_seconds(lambda: [py.query(t) for t in Q], n) * 1e6
+            lat["ours_py"] = per_query_us(index.query, Q)
+            lat["online_py"] = per_query_us(py.query, Q)
             if accel.HAVE_NUMBA:
                 nb_ours = accel.NumbaIndex(index)
                 nb_onl = ScmNumba(scm, unit, T, outcome)
@@ -222,19 +240,29 @@ def main() -> None:
                 check("online_nb", [nb_onl.query(t) for t in Q])
                 row["ours_nb_us"] = per_call_seconds(lambda: [nb_ours.query(t) for t in Q], n) * 1e6
                 row["online_nb_us"] = per_call_seconds(lambda: [nb_onl.query(t) for t in Q], n) * 1e6
+                lat["ours_nb"] = per_query_us(nb_ours.query, Q)
+                lat["online_nb"] = per_query_us(nb_onl.query, Q)
             if compiled:
                 tl = ScmTreelite(scm, compiled, unit, T, outcome)
                 got = [tl.query(t) for t in Q]
                 row["treelite_wrong"] = int((np.abs(np.asarray(got) - lib) > lib_tol).sum())
                 row["treelite_us"] = per_call_seconds(lambda: [tl.query(t) for t in Q], n) * 1e6
+                lat["treelite"] = per_query_us(tl.query, Q)
             k = min(args.dowhy_queries, n)
             ivs = [{name: (lambda _v, value=float(t[j]): value) for j, name in enumerate(T)} for t in Q[:k]]
             got = [float(gcm.counterfactual_samples(cg, iv, observed_data=unit_row)[outcome].iloc[0]) for iv in ivs]
             # DoWhy abducts N = u - f(pa) and adds it back, so rounding can move an observed mediator
             # across a threshold of its child: count such answers instead of failing
             row["dowhy_wrong"] = int((np.abs(np.asarray(got) - lib[:k]) > lib_tol[:k]).sum())
-            row["dowhy_us"] = per_call_seconds(
-                lambda: [gcm.counterfactual_samples(cg, iv, observed_data=unit_row) for iv in ivs], k, repeats=1) * 1e6
+            lat["dowhy"] = per_query_us(lambda iv: gcm.counterfactual_samples(cg, iv, observed_data=unit_row), ivs)
+            row["dowhy_us"] = float(lat["dowhy"].mean())
+            row["queries"], row["dowhy_queries"] = n, k
+            for name, v in lat.items():
+                for q in (25, 50, 75, 95):
+                    row[f"{name}_p{q}_us"] = float(np.percentile(v, q))
+            lat_dir = RESULTS / "scm_lat"
+            lat_dir.mkdir(parents=True, exist_ok=True)
+            np.savez_compressed(lat_dir / f"{tag}_u{u}_d{d}.npz", **{k_: v.astype(np.float32) for k_, v in lat.items()})
             row["status"] = "ok"
             rows.append(row)
             write_csv(f"scm_full_{tag}.csv", rows)

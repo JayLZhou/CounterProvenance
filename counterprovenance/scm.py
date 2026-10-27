@@ -18,8 +18,8 @@ rounding of ``(u_X - f_X(pa)) + f_X(pa')`` would otherwise move them across.
 exactly as :func:`~counterprovenance.ensemble.bind` does for a single model:
 a test on an intervened variable splits the current box, a test on a non-
 intervened, non-mediator variable is decided by the unit, and a test
-``Z <= theta`` on a mediator splits the current box along the grid on which
-``Z(t)`` is constant.  The result is an ordinary
+``Z <= theta`` on a mediator splits the current box only where ``Z(t)`` straddles
+``theta`` (``_Mediator.split``).  The result is an ordinary
 :class:`~counterprovenance.ensemble.BoundEnsemble`, so every index of the
 package applies unchanged.  The provenance atoms are the leaves of the
 outcome's trees.
@@ -31,14 +31,13 @@ online baseline on a DAG and the reference for exactness.
 
 from __future__ import annotations
 
-import bisect
 import math
 from dataclasses import dataclass, field
 from typing import Callable, Sequence
 
 import numpy as np
 
-from .ensemble import BoundEnsemble, LeafBox, Slabs, TreeEnsemble, bind, from_model
+from .ensemble import BoundEnsemble, LeafBox, TreeEnsemble, bind, from_model
 
 
 class Infeasible(RuntimeError):
@@ -206,27 +205,79 @@ class ScmOnline:
 # ---------------------------------------------------------------------------
 # compilation of the outcome's trees into leaf boxes over t
 # ---------------------------------------------------------------------------
-@dataclass
-class _Map:
-    """A piecewise-constant function of ``t``: dense values on the slab grid of its own cuts."""
+class _Mediator:
+    """A mediator ``Z(t) = u_Z + sum_m (w_m(t) - w_m(u))`` given by the leaf boxes of its trees.
 
-    thresholds: list[list[float]]  # per axis; empty for axes the function does not depend on
-    values: np.ndarray  # shape = (len(th_a) + 1 for a in axes)
+    Trees with a single box always select the unit's own leaf and are dropped.  Over a box ``B``
+    of ``t``, ``Z`` lies between ``u_Z + sum_m min_B`` and ``u_Z + sum_m max_B`` of the per-tree
+    differences (sums taken with ``fsum``, so that both bounds are attained exactly when every
+    tree has one box in ``B``).  :meth:`split` uses these bounds as a dominance test: a box on
+    one side of a threshold is decided without being split, and only a box that straddles it is
+    cut, at a boundary of the mediator's own boxes inside it.
+    """
 
+    def __init__(self, boxes: list[LeafBox], observed: float, observed_leaf: np.ndarray, d: int) -> None:
+        trees = np.array([b.tree for b in boxes], dtype=np.int64)
+        counts = np.bincount(trees, minlength=len(observed_leaf)) if len(boxes) else np.zeros(0, dtype=np.int64)
+        keep = [i for i, b in enumerate(boxes) if counts[b.tree] > 1]
+        self.lo = np.array([boxes[i].lo for i in keep], dtype=np.float64).reshape(-1, d)
+        self.hi = np.array([boxes[i].hi for i in keep], dtype=np.float64).reshape(-1, d)
+        self.tree = trees[keep] if keep else np.zeros(0, dtype=np.int64)
+        self.diff = np.array([boxes[i].value - observed_leaf[boxes[i].tree] for i in keep], dtype=np.float64)
+        self.observed = float(observed)
+        self.d = d
 
-def _slab_span(th: list[float], lo: float, hi: float) -> range:
-    """Slabs ``(th[s-1], th[s]]`` that intersect the interval ``(lo, hi]``."""
-    start = 0 if lo == -math.inf else bisect.bisect_right(th, lo)
-    stop = len(th) if hi == math.inf else bisect.bisect_left(th, hi)
-    return range(start, stop + 1)
+    def _range(self, idx: np.ndarray) -> tuple[float, float]:
+        if not len(idx):
+            return self.observed, self.observed
+        tr, df = self.tree[idx], self.diff[idx]
+        starts = np.flatnonzero(np.r_[True, tr[1:] != tr[:-1]])
+        lo = self.observed + math.fsum(np.minimum.reduceat(df, starts).tolist())
+        hi = self.observed + math.fsum(np.maximum.reduceat(df, starts).tolist())
+        return lo, hi
+
+    def split(self, theta: float, lo: list[float], hi: list[float],
+              cast: Callable[[np.ndarray], np.ndarray]) -> list[tuple[bool, list[float], list[float]]]:
+        """Pieces ``(Z <= theta, lo, hi)`` of the box ``(lo, hi]``, as read through ``cast``."""
+        out = []
+        stack = [(lo, hi, np.arange(len(self.tree)))]
+        while stack:
+            lo, hi, idx = stack.pop()
+            blo, bhi = np.asarray(lo), np.asarray(hi)
+            idx = idx[(self.lo[idx] < bhi).all(1) & (self.hi[idx] > blo).all(1)]
+            vlo, vhi = self._range(idx)
+            vlo, vhi = cast(np.array([vlo, vhi]))
+            if vhi <= theta:
+                out.append((True, lo, hi))
+                continue
+            if vlo > theta:
+                out.append((False, lo, hi))
+                continue
+            # some tree still has two boxes in the current box: cut at the median of the
+            # boundaries strictly inside it, on the axis that has the most of them
+            best = None
+            for a in range(self.d):
+                c = np.concatenate((self.lo[idx, a], self.hi[idx, a]))
+                c = np.unique(c[(c > blo[a]) & (c < bhi[a])])
+                if len(c) and (best is None or len(c) > len(best[1])):
+                    best = (a, c)
+            a, c = best
+            cut = float(c[len(c) // 2])
+            hl, lr = list(hi), list(lo)
+            hl[a], lr[a] = cut, cut
+            stack.append((lr, hi, idx))
+            stack.append((lo, hl, idx))
+        return out
 
 
 def _compile_trees(ens: TreeEnsemble, inputs: list[tuple[str, object]], d: int, max_boxes: int) -> list[LeafBox]:
     """Leaf boxes of every tree of ``ens``.
 
     ``inputs[j]`` describes model input ``j``: ``("axis", a)``, ``("fixed", value)`` or
-    ``("map", _Map)``.  A test on a mapped input splits the box along the map's grid.
+    ``("mediator", _Mediator)``.  A test on a mediator keeps the box when the mediator lies on
+    one side of the threshold over the whole box, and splits it otherwise.
     """
+    cast = ens.cast
     boxes: list[LeafBox] = []
     for m, tree in enumerate(ens.trees):
         stack = [(0, [-math.inf] * d, [math.inf] * d)]
@@ -255,57 +306,20 @@ def _compile_trees(ens: TreeEnsemble, inputs: list[tuple[str, object]], d: int, 
                     hl[a], lr[a] = theta, theta
                     stack.append((right, lr, hi))
                     stack.append((left, lo, hl))
-            else:  # mediator: split the box along the map's grid
-                mp: _Map = arg
-                spans = [_slab_span(mp.thresholds[a], lo[a], hi[a]) for a in range(d)]
-                idx = np.ix_(*[np.asarray(s) for s in spans])
-                go_left = mp.values[idx] <= theta
-                if go_left.all():
-                    stack.append((left, lo, hi))
-                    continue
-                if not go_left.any():
-                    stack.append((right, lo, hi))
-                    continue
-                for cell in np.ndindex(go_left.shape):
-                    clo, chi = list(lo), list(hi)
-                    for a in range(d):
-                        th = mp.thresholds[a]
-                        if not th:
-                            continue
-                        s = spans[a][cell[a]]
-                        if s > 0:
-                            clo[a] = max(clo[a], th[s - 1])
-                        if s < len(th):
-                            chi[a] = min(chi[a], th[s])
-                    stack.append((left if go_left[cell] else right, clo, chi))
+            else:
+                for go_left, plo, phi in arg.split(theta, lo, hi, cast):
+                    stack.append((left if go_left else right, plo, phi))
     return boxes
 
 
-def _as_map(bound_boxes: list[LeafBox], observed: float, observed_leaf: np.ndarray, d: int,
-            cast: Callable[[np.ndarray], np.ndarray], max_cells: int) -> _Map:
-    """Dense values of ``observed + sum of (box value - observed leaf value of its tree)`` on the
-    grid of the boxes' own cuts; a cell whose boxes are the observed leaves gets ``observed``."""
-    shim = BoundEnsemble.__new__(BoundEnsemble)
-    shim.boxes = bound_boxes
-    shim.axes = tuple(range(d))
-    slabs = Slabs(shim)
-    cells = math.prod(slabs.counts)
-    if cells > max_cells:
-        raise Infeasible(f"mediator grid of {cells:,} cells exceeds {max_cells:,}")
-    acc = np.zeros(slabs.counts)
-    for box, rng in zip(bound_boxes, slabs.ranges):
-        acc[tuple(slice(s, e) for s, e in rng)] += box.value - observed_leaf[box.tree]
-    return _Map([list(t) for t in slabs.thresholds], cast(observed + acc))
-
-
 def bind_scm(scm: FittedSCM, unit: dict[str, float], treatments: Sequence[str], outcome: str,
-             max_boxes: int = 5_000_000, max_cells: int = 5_000_000) -> BoundEnsemble:
+             max_boxes: int = 50_000_000) -> BoundEnsemble:
     """Leaf boxes over ``t`` of the outcome's trees, through the mediators of the DAG."""
     treatments = list(treatments)
     d = len(treatments)
     axis = {name: a for a, name in enumerate(treatments)}
     order = relevant_nodes(scm.parents, treatments, outcome)
-    maps: dict[str, _Map] = {}
+    meds: dict[str, _Mediator] = {}
     out_ens = scm.ensembles[outcome]
     for node in order:
         ens = scm.ensembles[node]
@@ -313,8 +327,8 @@ def bind_scm(scm: FittedSCM, unit: dict[str, float], treatments: Sequence[str], 
         for p in scm.parents[node]:
             if p in axis:
                 inputs.append(("axis", axis[p]))
-            elif p in maps:
-                inputs.append(("map", maps[p]))
+            elif p in meds:
+                inputs.append(("mediator", meds[p]))
             else:
                 inputs.append(("fixed", float(ens.cast(np.array([unit[p]]))[0])))
         boxes = _compile_trees(ens, inputs, d, max_boxes)
@@ -322,10 +336,7 @@ def bind_scm(scm: FittedSCM, unit: dict[str, float], treatments: Sequence[str], 
             row = np.array([unit[p] for p in scm.parents[node]], dtype=float)
             return BoundEnsemble(out_ens, row, tuple(range(d)), boxes,
                                  out_ens.base + scm.abduct(unit, [node])[node])
-        # the mediator's value is read by its children through their own input casts; all
-        # mechanisms of one SCM come from one model family, so the outcome's cast applies
-        maps[node] = _as_map(boxes, float(unit[node]), scm.observed_leaf_values(node, unit), d, out_ens.cast,
-                             max_cells)
+        meds[node] = _Mediator(boxes, float(unit[node]), scm.observed_leaf_values(node, unit), d)
     raise AssertionError("outcome not reached")
 
 

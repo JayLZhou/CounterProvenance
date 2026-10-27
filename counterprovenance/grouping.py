@@ -9,7 +9,9 @@ sets ``C_a`` costs ``prod_{a in S} (|C_a| + 1)`` cells and one lookup per query.
 :func:`greedy_groups` trades space for lookups: it starts from groups of nested
 supports and repeatedly merges the pair of groups whose union adds the fewest
 cells, until the total would exceed ``budget``.  Trees whose own table already
-exceeds ``cap`` are returned separately (they are answered by leaf bitmasks).
+exceeds ``cap``, or ``mask_ratio`` times its number of leaf boxes, are returned
+separately (they are answered by leaf bitmasks: a table over the grid of a deep
+tree's cuts is mostly redundant, since the tree has far fewer leaves than cells).
 """
 
 from __future__ import annotations
@@ -106,12 +108,14 @@ def greedy_groups(
     budget: int,
     cap: int,
     start_cap: int = 1 << 10,
+    mask_ratio: float = float("inf"),
 ) -> tuple[list[Group], list[TreeProfile]]:
     """Return ``(groups, deep)``: table groups whose total size is at most
     ``budget`` (when the nested start fits), and the trees whose own table
     exceeds ``cap``."""
-    deep = [p for p in profiles if p.cells > cap]
-    shallow = [p for p in profiles if p.cells <= cap]
+    is_deep = [p.cells > cap or p.cells > mask_ratio * len(p.items) for p in profiles]
+    deep = [p for p, flag in zip(profiles, is_deep) if flag]
+    shallow = [p for p, flag in zip(profiles, is_deep) if not flag]
     start = nested_groups(shallow, min(start_cap, cap))
     alive = dict(enumerate(start))
     sizes = {k: g.cells for k, g in alive.items()}

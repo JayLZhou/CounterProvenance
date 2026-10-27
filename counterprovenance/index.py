@@ -22,8 +22,8 @@ chains (``O(N log^{d-1} N)`` space, ``O(log^{d-1} N)`` pieces per group).
 
 Default configuration (``grouping="greedy"``, ``tau=inf``): groups are merged
 greedily under a total table budget (:mod:`grouping`), every group is one MCPST
-leaf, and trees whose own table exceeds ``grid_cap`` are answered by leaf
-bitmasks.  When every group is a leaf the query is *compiled*:
+leaf, and trees whose own table exceeds ``grid_cap``, or ``mask_ratio`` times
+their number of leaf boxes, are answered by leaf bitmasks.  When every group is a leaf the query is *compiled*:
 
 * packed lookup - per axis and slab, one Python int holds the contribution
   ``rank * stride`` of that slab to every group's cell number in a 32-bit
@@ -222,6 +222,7 @@ class ProvenanceIndex:
         grouping: str = "greedy",
         budget: int = 2_000_000,
         grid_cap: int = 1 << 22,
+        mask_ratio: float = 64.0,
         axis_order: str = "bycount",
         layout: str = "hybrid",
         exact: bool = True,
@@ -230,14 +231,15 @@ class ProvenanceIndex:
         compile: bool = True,
     ) -> None:
         """``grouping``: ``"greedy"`` (merge groups under a total table budget
-        ``budget``; trees whose own table exceeds ``grid_cap`` use leaf
-        bitmasks), ``"support"`` (one group per axis support) or ``"none"``."""
+        ``budget``; trees whose own table exceeds ``grid_cap`` or ``mask_ratio`` times
+        their leaf boxes use leaf bitmasks), ``"support"`` (one group per axis support) or ``"none"``."""
         t0 = time.perf_counter()
         self.bound = bound
         self.slabs = Slabs(bound)
         self.tau = tau
         self.budget = budget
         self.grid_cap = grid_cap
+        self.mask_ratio = mask_ratio
         self.layout = layout
         self.exact = exact
         self.alpha = alpha
@@ -287,7 +289,8 @@ class ProvenanceIndex:
 
     def _greedy_groups(self) -> list[tuple[tuple[int, ...], list[int]]]:
         profiles = tree_profiles(self.bound, self.slabs)
-        table_groups, deep = greedy_groups(profiles, self.budget, self.grid_cap)
+        table_groups, deep = greedy_groups(profiles, self.budget, self.grid_cap,
+                                             mask_ratio=self.mask_ratio)
         out = [(tuple(sorted(g.axes)), sorted(g.items)) for g in table_groups]
         self.deep = deep
         varying = {p.tree for p in profiles}

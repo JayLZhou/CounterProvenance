@@ -38,6 +38,7 @@ _D, _W, _G, _K, _NB, _C, _O_THLEN, _O_OFFS, _O_UB, _O_CONTRIB, _O_DB, _O_TH, _O_
 _M, _N, _P, _NA, _LF32, _O_FEAT, _O_LEFT, _O_RIGHT, _O_AXES, _O_THR, _O_VAL, _O_UNIT = range(12)
 
 if HAVE_NUMBA:
+    from numba.cpython.unsafe.numbers import trailing_zeros
 
     @njit(cache=True)
     def _index_query(il, fl, bm, t, work, mw):
@@ -96,8 +97,7 @@ if HAVE_NUMBA:
             if m == 0:  # another 64-leaf field of the same tree holds the leaf
                 work[d + g + j] = 0
                 continue
-            low = m & (~m + np.uint64(1))
-            leaf = il[o_db + np.int64((low * np.uint64(_DEBRUIJN)) >> np.uint64(58))] + 1
+            leaf = np.int64(trailing_zeros(m)) + 1
             work[d + g + j] = leaf
             total += fl[o_bv + j * 65 + leaf]
         return total
