@@ -336,6 +336,11 @@ PC_SETS = {
     "methane": (42701, "MM264", ["year", "month", "day", "hour", "minute", "second"]),
     "zurich_delays": (45045, None, []), "acs_income": (46801, "PINCP", []),
     "mslr": (45579, None, ["query_id"]), "year": (44027, None, []), "baf": (46793, None, []),
+    # candidates whose outcome may have at least 8 ancestors (tabular-learning benchmark tables)
+    "superconduct": (44148, None, []), "ailerons": (44012, None, []), "pol": (43983, None, []),
+    "house_sales": (44019, None, []), "sgemm_gpu": (44961, None, []), "miniboone": (44119, None, []),
+    "cpu_act": (43982, None, []), "miami_housing": (44147, None, []), "elevators": (43992, None, []),
+    "house_16h": (43989, None, []), "jannis": (44131, None, []), "yprop": (45032, None, []),
 }
 
 
@@ -451,9 +456,6 @@ def extend_pdag(n: int, directed: set, undirected: set) -> tuple[list, str]:
 
 def pc_dataset(name):
     def run(out, args):
-        from causallearn.search.ConstraintBased.PC import pc
-        from causallearn.utils.PCUtils.BackgroundKnowledge import BackgroundKnowledge
-
         did, forced, drop = PC_SETS[name]
         cache = out / "_openml"
         cache.mkdir(parents=True, exist_ok=True)
@@ -464,35 +466,119 @@ def pc_dataset(name):
             raise ValueError(f"{name}: no default target in OpenML {did}")
         if "," in target:
             target = target.split(",")[0]
-        df = numeric(df)
-        df = df.loc[:, df.std() > 0]
-        if target not in df.columns:
-            raise ValueError(f"{name}: target {target} constant or missing")
-        rng = np.random.default_rng(2028)
-        sample = df.iloc[rng.choice(len(df), size=min(args.pc_rows, len(df)), replace=False)]
-        X = sample.to_numpy(dtype=float)
-        X = (X - X.mean(0)) / X.std(0)
-        cols = list(df.columns)
-        # the prediction target is an outcome: it causes no feature (background knowledge)
-        bk = BackgroundKnowledge()
-        bk.add_forbidden_by_pattern("^" + re.escape(target) + "$", ".*")
-        start = time.perf_counter()
-        cg = pc(X, alpha=0.01, indep_test="fisherz", depth=args.pc_depth, show_progress=False,
-                node_names=cols, background_knowledge=bk)
-        pc_s = time.perf_counter() - start
-        g = cg.G.graph  # g[j, i] == 1 and g[i, j] == -1: i -> j; both -1: undirected; both 1: bidirected
-        p = len(cols)
-        directed = {(i, j) for i in range(p) for j in range(p) if g[j, i] == 1 and g[i, j] == -1}
-        undirected = {(i, j) for i in range(p) for j in range(i + 1, p)
-                      if (g[i, j] == -1 and g[j, i] == -1) or (g[i, j] == 1 and g[j, i] == 1)}
-        oriented, how = extend_pdag(p, directed, undirected)
-        edges = [(cols[i], cols[j]) for i, j in oriented]
-        # orient any remaining edge out of the target into it: the target becomes a sink, so no cycle
-        flipped = sum(a == target for a, _ in edges)
-        edges = [(b, a) if a == target else (a, b) for a, b in edges]
-        return save(out, name, df, edges, target, "pc", f"OpenML {did}",
-                    f"PC fisherz alpha=0.01 depth={args.pc_depth} on {len(sample)} rows ({pc_s:.0f}s), "
-                    f"target forbidden to cause features; {how}; {flipped} edges into the target flipped")
+        return pc_save(out, args, name, df, target, f"OpenML {did}")
+    return run
+
+
+def pc_save(out, args, name, df, target, source):
+    """Learn a DAG over the numeric columns of ``df`` with PC (``target`` causes no feature) and save it."""
+    from causallearn.search.ConstraintBased.PC import pc
+    from causallearn.utils.PCUtils.BackgroundKnowledge import BackgroundKnowledge
+
+    df = numeric(df)
+    df = df.loc[:, df.std() > 0]
+    if target not in df.columns:
+        raise ValueError(f"{name}: target {target} constant or missing")
+    rng = np.random.default_rng(2028)
+    sample = df.iloc[rng.choice(len(df), size=min(args.pc_rows, len(df)), replace=False)]
+    X = sample.to_numpy(dtype=float)
+    X = (X - X.mean(0)) / X.std(0)
+    cols = list(df.columns)
+    # the prediction target is an outcome: it causes no feature (background knowledge)
+    bk = BackgroundKnowledge()
+    bk.add_forbidden_by_pattern("^" + re.escape(target) + "$", ".*")
+    start = time.perf_counter()
+    cg = pc(X, alpha=0.01, indep_test="fisherz", depth=args.pc_depth, show_progress=False,
+            node_names=cols, background_knowledge=bk)
+    pc_s = time.perf_counter() - start
+    g = cg.G.graph  # g[j, i] == 1 and g[i, j] == -1: i -> j; both -1: undirected; both 1: bidirected
+    p = len(cols)
+    directed = {(i, j) for i in range(p) for j in range(p) if g[j, i] == 1 and g[i, j] == -1}
+    undirected = {(i, j) for i in range(p) for j in range(i + 1, p)
+                  if (g[i, j] == -1 and g[j, i] == -1) or (g[i, j] == 1 and g[j, i] == 1)}
+    oriented, how = extend_pdag(p, directed, undirected)
+    edges = [(cols[i], cols[j]) for i, j in oriented]
+    # orient any remaining edge out of the target into it: the target becomes a sink, so no cycle
+    flipped = sum(a == target for a, _ in edges)
+    edges = [(b, a) if a == target else (a, b) for a, b in edges]
+    return save(out, name, df, edges, target, "pc", source,
+                f"PC fisherz alpha=0.01 depth={args.pc_depth} on {len(sample)} rows ({pc_s:.0f}s), "
+                f"target forbidden to cause features; {how}; {flipped} edges into the target flipped")
+
+
+# ---------------------------------------------------------------------------
+# large public tables (millions to over a hundred million rows), raw files in <out>/_raw/<name>
+# ---------------------------------------------------------------------------
+def nyc_taxi_frame(raw: Path) -> tuple[pd.DataFrame, str, str]:
+    """NYC TLC yellow-taxi trips 2019-2020; target: tip amount.  ``total_amount`` (a sum that includes the
+    tip) and free-text columns are dropped; trips with non-positive fare or distance, or a duration outside
+    1-180 minutes, are removed."""
+    import pyarrow.parquet as pq
+
+    cols = ["tpep_pickup_datetime", "tpep_dropoff_datetime", "passenger_count", "trip_distance", "RatecodeID",
+            "PULocationID", "DOLocationID", "payment_type", "fare_amount", "extra", "mta_tax", "tip_amount",
+            "tolls_amount", "improvement_surcharge", "congestion_surcharge"]
+    parts = []
+    for f in sorted(raw.glob("yellow_tripdata_*.parquet")):
+        t = pq.read_table(f, columns=[c for c in cols if c in pq.read_schema(f).names]).to_pandas()
+        pick, drop = pd.to_datetime(t.pop("tpep_pickup_datetime")), pd.to_datetime(t.pop("tpep_dropoff_datetime"))
+        t["duration_min"] = (drop - pick).dt.total_seconds() / 60.0
+        t["pickup_hour"] = pick.dt.hour + pick.dt.minute / 60.0
+        t["pickup_dow"] = pick.dt.dayofweek
+        parts.append(t.astype("float32"))
+    df = pd.concat(parts, ignore_index=True)
+    df = df.dropna()
+    df = df[(df.fare_amount > 0) & (df.trip_distance > 0) & (df.trip_distance < 200) & (df.duration_min >= 1)
+            & (df.duration_min <= 180) & (df.tip_amount >= 0)]
+    return df.reset_index(drop=True), "tip_amount", "NYC TLC yellow taxi trips 2019-2020"
+
+
+def airline_frame(raw: Path) -> tuple[pd.DataFrame, str, str]:
+    """US airline on-time performance 1987-2008 (ASA Data Expo 2009); target: arrival delay.  Columns that
+    are functions of the arrival time (ArrTime, ActualElapsedTime) and the delay causes (recorded only from
+    2003) are dropped; cancelled and diverted flights are removed."""
+    cols = ["Month", "DayofMonth", "DayOfWeek", "DepTime", "CRSDepTime", "CRSArrTime", "CRSElapsedTime", "AirTime",
+            "ArrDelay", "DepDelay", "Distance", "TaxiIn", "TaxiOut", "Cancelled", "Diverted", "Year"]
+    parts = []
+    for f in sorted(raw.glob("*.csv.bz2")):
+        t = pd.read_csv(f, usecols=lambda c: c in cols, compression="bz2", encoding="latin-1", low_memory=False)
+        t = t.apply(pd.to_numeric, errors="coerce")
+        t = t[(t.Cancelled == 0) & (t.Diverted == 0)].drop(columns=["Cancelled", "Diverted"])
+        parts.append(t.astype("float32"))
+    df = pd.concat(parts, ignore_index=True)
+    return df.dropna(axis=1, how="all").dropna().reset_index(drop=True), "ArrDelay", "ASA Data Expo 2009 airline on-time"
+
+
+def hepmass_frame(raw: Path) -> tuple[pd.DataFrame, str, str]:
+    """HEPMASS (UCI 347): train and test files; target: signal/background label."""
+    parts = [pd.read_csv(raw / f, dtype="float32") for f in ("all_train.csv.gz", "all_test.csv.gz")]
+    df = pd.concat(parts, ignore_index=True)
+    df.columns = ["label" if c.strip().startswith("#") else c.strip() for c in df.columns]
+    return df, "label", "UCI HEPMASS"
+
+
+def susy_frame(raw: Path) -> tuple[pd.DataFrame, str, str]:
+    """SUSY (UCI 279); target: signal/background label."""
+    names = ["label", "lepton1_pt", "lepton1_eta", "lepton1_phi", "lepton2_pt", "lepton2_eta", "lepton2_phi",
+             "missing_energy", "missing_energy_phi", "MET_rel", "axial_MET", "M_R", "M_TR_2", "R", "MT2", "S_R",
+             "M_Delta_R", "dPhi_r_b", "cos_theta_r1"]
+    return pd.read_csv(raw / "SUSY.csv.gz", header=None, names=names, dtype="float32"), "label", "UCI SUSY"
+
+
+def census1990_frame(raw: Path) -> tuple[pd.DataFrame, str, str]:
+    """US Census 1990 (UCI, 1% PUMS extract, coded attributes); target: wage income category."""
+    df = pd.read_csv(raw / "USCensus1990.data.txt", dtype="float32").drop(columns=["caseid"])
+    return df, "dIncome1", "UCI US Census 1990"
+
+
+BIG_SETS = {"nyc_taxi": nyc_taxi_frame, "airline": airline_frame, "hepmass": hepmass_frame, "susy": susy_frame,
+            "census1990": census1990_frame}
+
+
+def big_dataset(name):
+    def run(out, args):
+        df, target, source = BIG_SETS[name](out / "_raw" / name)
+        return pc_save(out, args, name, df, target, source)
     return run
 
 
@@ -501,6 +587,7 @@ REGISTRY = {
     "compas": compas, "sachs": sachs, "concrete": concrete, "ozone": ozone, "abalone": abalone,
     **{n: gentzel(n) for n in GENTZEL},
     **{n: pc_dataset(n) for n in PC_SETS},
+    **{n: big_dataset(n) for n in BIG_SETS},
 }
 
 

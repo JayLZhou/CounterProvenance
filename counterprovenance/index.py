@@ -229,13 +229,22 @@ class ProvenanceIndex:
         alpha: float = 1.5,
         max_leaf_cells: int = 20_000_000,
         compile: bool = True,
+        one_cells: int = 2_000_000,
     ) -> None:
-        """``grouping``: ``"greedy"`` (merge groups under a total table budget
-        ``budget``; trees whose own table exceeds ``grid_cap`` or ``mask_ratio`` times
-        their leaf boxes use leaf bitmasks), ``"support"`` (one group per axis support) or ``"none"``."""
+        """``grouping``: ``"auto"`` (one cell graph for the whole forest when the slab grid of all
+        axes has at most ``one_cells`` cells, otherwise every varying tree on its own, located by leaf
+        bitmasks), ``"greedy"`` (merge groups under a total table budget ``budget``; trees whose own
+        table exceeds ``grid_cap`` or ``mask_ratio`` times their leaf boxes use leaf bitmasks),
+        ``"support"`` (one group per axis support) or ``"none"``."""
         t0 = time.perf_counter()
         self.bound = bound
         self.slabs = Slabs(bound)
+        if grouping == "auto":
+            grid = math.prod(self.slabs.counts)
+            if grid <= one_cells:
+                grouping, max_leaf_cells = "none", max(max_leaf_cells, grid)
+            else:
+                grouping, mask_ratio, grid_cap = "greedy", 0.0, 0
         self.tau = tau
         self.budget = budget
         self.grid_cap = grid_cap

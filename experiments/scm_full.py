@@ -143,6 +143,8 @@ def main() -> None:
     ap.add_argument("--max-boxes", type=int, default=50_000_000)
     ap.add_argument("--extra-baselines", action="store_true",
                     help="also time pure-Python propagation, numba and Treelite (not reported in the paper)")
+    ap.add_argument("--unit-ids", default="", help="comma-separated unit indices to run (default: all)")
+    ap.add_argument("--grouping", default="auto")
     ap.add_argument("--tag", default="")
     args = ap.parse_args()
     tag = args.tag or f"{args.dataset}_{args.family}"
@@ -173,12 +175,16 @@ def main() -> None:
         print(f"  treelite: {len(compiled)} mechanisms compiled in {time.perf_counter() - start:.0f}s", flush=True)
     gcm, cg = dowhy_model(scm, edges)
 
-    rng = np.random.default_rng(2028)
+    # every unit and every (unit, d) draws from its own seeded generator, so that jobs split by unit or d
+    # reproduce the same units and queries
+    unit_idx = np.random.default_rng(2028).integers(len(df), size=args.units)
+    units_run = [int(u) for u in args.unit_ids.split(",")] if args.unit_ids else range(args.units)
     rows = []
-    for u in range(args.units):
-        unit_row = df.iloc[[int(rng.integers(len(df)))]]
+    for u in units_run:
+        unit_row = df.iloc[[int(unit_idx[u])]]
         unit = unit_row.iloc[0].to_dict()
         for d in dims:
+            rng = np.random.default_rng([2028, u, d])
             T = choose_treatments(scm, outcome, d)
             ref = ScmOnline(scm, unit, T, outcome)
             row = {"dataset": args.dataset, "family": args.family, "trees": args.trees, "unit": u, "d": d,
@@ -188,7 +194,7 @@ def main() -> None:
             try:
                 bound = bind_scm(scm, unit, T, outcome, max_boxes=args.max_boxes)
                 compile_s = time.perf_counter() - start
-                index = ProvenanceIndex(bound)
+                index = ProvenanceIndex(bound, grouping=args.grouping)
             except (Infeasible, MemoryError) as e:
                 row["status"] = f"infeasible: {e}"
                 rows.append(row)
