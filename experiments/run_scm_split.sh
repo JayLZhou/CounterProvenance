@@ -5,6 +5,8 @@
 # Usage: [EXTRA="--ours-only"] [LOGDIR=...] [DIMS="1 2 4 8"] run_scm_split.sh DATA_DIR PAR dataset1,dataset2,...
 DATA=$1; PAR=${2:-60}; SETS=$3
 cd "$(dirname "$0")"
+# CPU only: xgboost otherwise opens the GPUs and can block on the driver lock of a shared machine
+export CUDA_VISIBLE_DEVICES=
 [ -d ../../chirho_pkgs ] && export PYTHONPATH=$(cd ../../chirho_pkgs && pwd)
 LOGDIR=${LOGDIR:-../../logs/scm_full}
 mkdir -p $LOGDIR
