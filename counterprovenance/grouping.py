@@ -6,9 +6,15 @@ boundaries) on those axes.  A group of trees is answered by one dense table
 over the product of the group's cuts, so a group with support ``S`` and cut
 sets ``C_a`` costs ``prod_{a in S} (|C_a| + 1)`` cells and one lookup per query.
 
-:func:`greedy_groups` trades space for lookups: it starts from groups of nested
-supports and repeatedly merges the pair of groups whose union adds the fewest
-cells, until the total would exceed ``budget``.  Trees whose own table already
+Choosing the groups is the problem: minimise the number of groups (table reads
+per query) subject to ``sum of group cells <= budget``.  It is NP-hard (reduction
+from Product Partition), so no polynomial algorithm approximates the number of
+groups within a factor below 3/2 unless P = NP.
+
+:func:`greedy_groups` is a Kruskal-like heuristic without an approximation
+guarantee: it starts from groups of nested supports and repeatedly merges the
+pair of groups whose union adds the fewest cells, until the total would exceed
+``budget``.  Trees whose own table already
 exceeds ``cap``, or ``mask_ratio`` times its number of leaf boxes, are returned
 separately (they are answered by leaf bitmasks: a table over the grid of a deep
 tree's cuts is mostly redundant, since the tree has far fewer leaves than cells).

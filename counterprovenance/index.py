@@ -20,7 +20,14 @@ faces); ``tau = 0`` recurses to the last axis, whose leaves are 1D persistent
 chains (``O(N log^{d-1} N)`` space, ``O(log^{d-1} N)`` pieces per group).
 :func:`autotune` picks the parameters at build time from sample queries.
 
-Default configuration (``grouping="greedy"``, ``tau=inf``): groups are merged
+``grouping="auto"`` (used in the experiments) picks one of three configurations:
+one cell graph for the whole forest when the slab grid of all axes has at most
+``one_cells`` cells ("one"); otherwise the greedy groups below ("tables") or leaf
+bitmasks for every tree ("masks"), whichever a per-query cost model
+(``cost_lookup`` per table read, ``cost_masks_fixed`` + ``cost_word`` per mask
+word) says is cheaper, decided from the grouping before any table is built.
+
+Configuration ``grouping="greedy"``, ``tau=inf``: groups are merged
 greedily under a total table budget (:mod:`grouping`), every group is one MCPST
 leaf, and trees whose own table exceeds ``grid_cap``, or ``mask_ratio`` times
 their number of leaf boxes, are answered by leaf bitmasks.  When every group is a leaf the query is *compiled*:

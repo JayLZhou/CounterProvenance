@@ -1,193 +1,206 @@
 # CounterProvenance
 
-**Exact, compact provenance indexes for repeated counterfactual queries over
-tree-ensemble causal models.**
+Code of **TWIN: Indexing Tree Ensembles for Fast and Exact Counterfactual Queries**.
 
-A counterfactual engine such as DoWhy-GCM answers `do(T = t)` for an observed
-unit by abduction, action and prediction, and returns a number. Asking again
-with a new `t` replays the model even though the fitted model and the unit's
-noise have not changed. CounterProvenance compiles the whole intervention
-space of one unit once and then answers every `do(T = t)` with
+A counterfactual query asks, for one observed unit, what the outcome would have been under
+`do(T = t)`. In an additive-noise SCM whose mechanisms are tree ensembles (scikit-learn GBR / HGB / RF,
+XGBoost, LightGBM), every such query is answered today by abduction, action and prediction: the noise is
+abducted, the intervention is applied, and every mechanism between `T` and the outcome is evaluated again,
+tree by tree. TWIN compiles the whole intervention space of one unit once, and then answers every
+`do(T = t)` with a few table reads, returning
 
-* the **exact counterfactual value** (the model's own leaf selection,
-  including points exactly on split thresholds), and
-* its **exact provenance**: the multiset of `(tree, leaf)` contributions as an
-  element of the free commutative semiring `N[X]`, returned as a handful of
-  pre-materialised circuit roots.
+* the **exact counterfactual value** (the libraries' own leaf selection, also on split thresholds), and
+* its **provenance**: the leaf of every tree that produced it.
 
-It works on fitted **scikit-learn** (GBR, HistGBR, random forests, extra
-trees, single trees), **XGBoost** (`exact`, `hist`, ...) and **LightGBM**
-regressors, and on any number of intervention variables.
-
-```
-pip install -r requirements-models.txt
+```bash
+pip install -r requirements-models.txt          # numpy, scipy, scikit-learn, xgboost, lightgbm
+pip install -r requirements-dowhy.txt           # + DoWhy, only for the baselines
 ```
 
 ```python
-import xgboost as xgb
-from sklearn.datasets import fetch_california_housing
-from counterprovenance import from_model, bind, ProvenanceIndex, autotune
+import pandas as pd
+from lightgbm import LGBMRegressor
+from counterprovenance import ProvenanceIndex
+from counterprovenance.scm import fit_scm, bind_scm
 
-X, y = fetch_california_housing(return_X_y=True)
-model = xgb.XGBRegressor(n_estimators=300, max_depth=4).fit(X, y)
-unit = X[17]
-noise = y[17] - model.predict(unit[None, :])[0]          # abduction (additive noise)
+df = pd.read_parquet("data.parquet")                         # columns = nodes of the causal DAG
+edges = list(pd.read_csv("graph.csv").itertuples(index=False))   # (source, target) pairs
+T, Y = ["A", "B"], "Y"                                       # intervened variables: ancestors of Y
+scm = fit_scm(df, edges, outcome=Y, treatments=T,
+              factory=lambda: LGBMRegressor(n_estimators=1000, verbose=-1), max_rows=50_000)
 
-bound = bind(from_model(model), unit, axes=[0, 6, 7], noise=noise)
-index = ProvenanceIndex(bound)                            # or: autotune(bound, sample_points).index
+unit = df.iloc[17].to_dict()                                 # the observed unit
+bound = bind_scm(scm, unit, treatments=T, outcome=Y)         # leaf boxes over t, through the mediators
+index = ProvenanceIndex(bound, grouping="auto")              # built once per unit
 
-answer = index.query([4.5, 34.1, -118.2])                 # do(X0=4.5, X6=34.1, X7=-118.2)
-answer.value        # counterfactual Y, equal to model.predict(...) + noise
-answer.labels()     # Counter({(tree, leaf): multiplicity, ...}) - one leaf per tree
-answer.pieces       # pre-materialised provenance roots (a few to a few dozen)
+ans = index.query([40.0, 35.0])          # do(A = 40, B = 35)
+ans.value                                # exact counterfactual outcome
+ans.labels()                             # provenance: Counter({(tree, leaf): 1, ...})
+index.choice                             # "one", "tables" or "masks" (see below)
 ```
 
 ## How it works
 
 ```
-fitted ensemble ──bind(unit, axes)──► N leaf boxes in R^d
-                                          │
-            ┌─────────────────────────────┴─────────────────────────────┐
-            │ ProvenanceIndex(tau, group budget)                        │
-            │   1. group trees by the intervention axes they split on   │
-            │   2. inside a group: overlay small enough (<= tau cells)?  │
-            │        yes -> one MCPST leaf                              │
-            │        no  -> segment tree on the busiest axis, recurse   │
-            │   3. MCPST leaf: exact overlay -> face graph with change  │
-            │      labels -> MST construction plan -> persistent factor │
-            │      tree (path / node copying) -> one root per face      │
-            └───────────────────────────────────────────────────────────┘
-query(t): locate t in every visited leaf, return one root per leaf (+ cached values)
+fitted SCM + unit ──compile──► leaf boxes of the outcome's trees over t ∈ R^d
+                                   │
+          slab grid of all trees ≤ 2M cells? ──yes──► one cell graph + MST          ("one")
+                                   │ no
+                     greedy grouping into cell graphs (budget β)
+                                   │
+            cost model: α·#graphs (+ masks of deep trees)  vs  F + γ·#mask words
+                       │                                        │
+            several cell graphs, each stored along its MST   leaf bitmasks for every tree
+                       ("tables")                                 ("masks")
 ```
 
-* **Leaf boxes.** Binding a unit follows every split on a non-intervened
-  feature with the unit's own value; each tree becomes a partition of the
-  intervention space into axis-aligned boxes, and a query is a
-  point-enclosure query over those boxes.
-* **Exact overlay.** Box faces label the grid edges they cross with the trees
-  whose leaf changes there; faces are the components of the unlabelled-edge
-  graph. No cell-by-tree matrix is ever built, and conditional thresholds of
-  deep trees do not create spurious cells.
-* **MST planning + persistence.** Adjacent faces differ in a few trees. A
-  persistent factor tree over the trees stores one directly addressable root
-  per face: immutable path copying along the source-augmented MST of the
-  exact copy costs, node copying along a covering walk of the face graph, or
-  a hybrid that picks the cheaper plan.
-* **Groups and the segment tree.** The two parameters move the index between
-  one root per query with `Theta(K)` faces (`tau = inf`, one group) and
-  `O(log^{d-1} N)` roots per query with `O(N log^{d-1} N)` space independent of
-  the overlay size (`tau = 0`). `autotune` picks the point from sample queries.
+**1. Leaf boxes through mediators.** For a fixed unit, every variable that is not intervened and not a
+descendant of `T` keeps its observed value, so every tree of the outcome becomes a partition of the
+intervention space into axis-aligned *leaf boxes*. A mediator `Z` between `T` and the outcome is replayed
+by its own trees: `Z(t) = u_Z + (f_Z(pa(t)) − f_Z(pa(u)))`, which equals the observed value on the factual
+cell. A box of the outcome's tree that tests `Z ≤ θ` is kept whole when `Z` stays on one side of `θ` over
+the box. This is checked by a dominance test that bounds `Z` by `u_Z` plus the per-tree minimum and maximum
+differences. Only the boxes that straddle `θ` are split at the mediator's internal boundaries
+(`scm.bind_scm`).
 
-Exact statements, cost models and proofs: [`docs/DESIGN.md`](docs/DESIGN.md).
+**2. One cell graph and its MST.** The walls of all leaf boxes cut the space into *cells*; two adjacent
+cells differ only in the trees whose leaf changes across their common wall.
+* The **cell graph** has one node per cell and one edge per wall, weighted by the number of trees that
+  change.
+* The index stores the cells along a **minimum spanning tree** of this graph in a persistent factor tree
+  (path or node copying). Every cell is then one directly addressable root, and a cell costs only the trees
+  that change on its MST edge.
+* A query is `d` binary searches plus one table read.
 
-## Guarantees (summary)
+This is used whenever the slab grid of all trees has at most `one_cells = 2·10^6` cells, which in
+practice means `d ≤ 2` (`cellindex.py`, `persistence.py`, `plan.py`).
 
-| | statement | model |
+**3. Several cell graphs: greedy grouping.** For larger `d`, the product grid of all trees is too large,
+but most trees split on few of the intervened axes.
+* *Group sizes.* A group of trees gets its own cell graph over the axes its trees split on. Its size is
+  the product, over those axes, of (number of cuts + 1).
+* *Problem.* Choose groups that minimise the number of cell graphs (= table reads per query) subject to
+  a total size `Σ cells ≤ β`.
+* *Hardness.* The problem is NP-hard by a reduction from Product Partition. Hence no polynomial algorithm
+  approximates the number of groups within a factor below 3/2 unless P = NP.
+* *Greedy* (`grouping.greedy_groups`, Kruskal-like):
+  - start from groups of nested axis supports;
+  - repeatedly merge the pair whose union adds the fewest cells, while the total stays within `β`
+    (default `2·10^6`);
+  - trees whose own grid exceeds `grid_cap`, or 64× their number of leaves, are *deep*: a table over
+    their grid would be mostly redundant.
+
+  The greedy has no approximation guarantee; it is fast and works well in practice.
+* *Storage.* Each group is a cell graph stored along its MST, as in step 2. A single-tree group is
+  trivial: one entry per leaf.
+
+**4. Tables or masks: a cost model.** Before building anything, `grouping="auto"` compares two estimated
+query costs (in µs):
+
+| choice | per-query cost | answered by |
 |---|---|---|
-| T1 | value and provenance equal the fitted model's own leaf selection, on and off split thresholds | all supported models |
-| T2 | 1D: one direct root per region in `O(P + B + K_Delta)` space, `K_Delta = N - M` | explicit change representation |
-| T3 | the source-augmented MST under the exact path-copy cost is optimal among adjacency-constrained single-parent immutable plans | fixed factor-tree layout |
-| T4 | the MST shortcut walk is a 2-approximation of the cheapest covering walk; node copying realises it with O(1) amortised records per change; in general position every plan needs `K - 1` changes and a Hamiltonian chain attains it | additive per-change cost |
-| T5 | `tau = 0`: `O(N log^{d-1} N)` space, `O(log^{d-1} N)` pieces per group, `O(log^d N)` time | pointer machine |
+| `tables` | `α · #cell graphs` (+ `F + γ · words` for the deep trees) | one packed read per cell graph |
+| `masks`  | `F + γ · Σ_m ⌈leaves_m / 64⌉` | leaf bitmasks of every tree |
 
-Not claimed: optimal realised allocation of the hybrid (its MST minimises a
-surrogate), optimal grouping, bit-level optimality, arbitrary algebraic
-factorisation, model families outside the list above.
+* Defaults: `α = 0.15`, `F = 8`, `γ = 0.02`.
+* *Leaf bitmasks.* For every axis and slab, one 64-bit field per tree holds the leaves whose box
+  contains the slab. The AND over the `d` axes leaves exactly one bit per tree, so the storage is a sum
+  over axes rather than a product.
+* *Why a pure choice.* Mixing small cell graphs with masks was slower than either pure choice in our
+  measurements, so the cost model picks one of the two.
 
-## Results
+**Exactness.**
+* Abduction sums the leaf values exactly (`fsum`). XGBoost's own `predict` accumulates in single
+  precision; its deviation is recorded separately as `err_lib`.
+* Every experiment checks every query of TWIN against the three-step evaluation, ChiRho and DoWhy-GCM.
 
-Full tables: [`results/RESULTS.md`](results/RESULTS.md) (CSV files alongside). Every
-reported index was checked query by query: values against `model.predict`
-and DoWhy, provenance against brute force and each library's own leaf ids,
-including points exactly on split thresholds. All runs are single-threaded
-(`n_jobs=1`, `OMP_NUM_THREADS=1`). Space is counted in structural records;
-times are pure Python and are compared only with other Python code.
+## Experiments
 
-**Compression against independent per-cell provenance (IIP)** - synthetic
-families where every boundary changes one tree:
+**Baselines.** All are pure Python and run single-threaded with the same fitted models:
+* **Three-step** (`scm_baselines.ScmThreeStepPy`): abduction, action and prediction on every query,
+  without caching the noise;
+* **ChiRho** (`experiments/chirho_baseline.py`): a Pyro program under `TwinWorldCounterfactual` and `do`;
+* **DoWhy-GCM** (PyWhy): `gcm.counterfactual_samples` over the causal DAG.
 
-| workload | IIP records | path copying (rho-MST) | node copying / hybrid | grouped index |
+**Datasets.** There are 15 real tables, from 1,030 to 101 million rows. Every outcome has ≥ 8 ancestors,
+so all `d ∈ {1, 2, 4, 8}` can be evaluated. `experiments/causal_datasets.py` writes `data.parquet`,
+`graph.csv` and `meta.json` for each.
+
+| group | datasets |
+|---|---|
+| published graph | gov_census (fairadapt), light_tunnel (Causal Chambers) |
+| partial graph (cause → effect) | postgres, jdk (Gentzel et al.), concrete (Tübingen pairs) |
+| graph learned by PC | nyc_taxi (101M), airline (32.6M), higgs (11M), methane (9.2M), susy (5M), census1990 (2.5M), acs_income (1.7M), mslr (1.2M), baf (1M), superconduct (21K) |
+
+For the PC-learned graphs:
+* PC (causal-learn) uses Fisher-z tests at level 0.01, conditioning sets of at most 3 variables, and
+  10,000 sampled rows; the outcome is forbidden to cause any other variable.
+* Conflicting orientations are demoted by the Eades–Lin–Smyth ordering.
+* The result is extended to a DAG by Dor–Tarsi, or, when no consistent extension exists, along a
+  topological order.
+
+**Setup.**
+* *Models.* 1,000 trees per mechanism for all five families (GBR depth 3, HGB and LGBM 31 leaves, XGB
+  depth 6, RF depth 10), trained on up to 50,000 sampled rows.
+* *Queries.* For each dataset, model and `d` there are 3 random units and 10,000 queries per unit:
+  - 7,500 uniform between the 1st and 99th percentiles of the intervened variables;
+  - 2,500 with one coordinate moved onto a leaf-box boundary.
+* *Intervened variables.* Those the outcome's mechanism splits on most often.
+
+**Results so far** (10 of the 15 datasets, 173 settings; geometric-mean speedup of TWIN; all methods
+return the same values):
+
+| d | TWIN, mean per query | vs three-step | vs ChiRho | vs DoWhy-GCM |
 |---|---|---|---|---|
-| 1D, 16,384 trees | 268.5 M | 344 K (780x) | 131 K (2,049x) | - |
-| 2D, 1,024 stumps, 263 K cells | 270.0 M | 3.43 M (79x) | 1.19 M (227x) | 8,196 records, 2 pieces per query |
+| 1 | 5.5 µs | 677× | 3,023× | 9,323× |
+| 2 | 6.1 µs | 913× | 3,596× | 8,091× |
+| 4 | 42 µs | 233× | 989× | 1,832× |
+| 8 | 66 µs | 101× | 601× | 1,060× |
 
-**The MST matters on real models** (California housing, d = 2, exact
-overlay; `c_e` = trees that change across a face boundary, mean 1.5-3.9,
-max 15-25): an MST plan uses 1.2-1.8x fewer persistent records than a random
-spanning tree, e.g. LightGBM 91 K vs 133 K (path copying) and 36 K vs 61 K
-(hybrid). The exact overlay has 2.0-6.9x fewer faces than the threshold grid.
-
-**Against DoWhy-GCM** (California housing, 8 features, star SCM, autotuned
-index, per query):
-
-| intervened features d | DoWhy fresh | index | speed-up vs fresh | vs DoWhy cached noise |
-|---|---|---|---|---|
-| 2 | 3.1-7.1 ms | 9-10 us | 303-757x | 153-371x |
-| 4 | 3.1-7.2 ms | 20-76 us | 44-354x | 22-174x |
-| 8 | 3.0-7.2 ms | 193-494 us | 7-37x | 3-18x |
-
-**Hundreds of features** (OpenML topo_2_1 with 261 and yprop_4_1 with 212
-features, 300 trees, the d most-used features intervened). DoWhy's cost grows
-with the number of nodes; after binding the unit only the trees that split on
-an intervened feature remain ("effective trees"), and the rest collapse into
-one constant piece:
-
-| d | effective trees | pieces | index | DoWhy fresh | speed-up vs fresh | vs single-row `predict` |
-|---|---|---|---|---|---|---|
-| 2 | 26-93 / 300 | 3-7 | 7-16 us | 41-57 ms | 2,578-7,814x | 26-307x |
-| 8 | 90-177 / 300 | 13-25 | 36-82 us | 38-57 ms | 534-1,460x | 5-53x |
-| 16 | 147-238 / 300 | 28-56 | 100-359 us | 41-54 ms | 125-538x | 1.2-21x |
-
-**Limits.** The overlay grows roughly like `N^d`, so a single MCPST is only
-feasible for small `d` (here `d <= 2`); beyond that the index trades space for
-pieces. With 8 features and `d = 8` it is 7-37x faster than DoWhy but no
-faster than a single-row `predict` call; on 200-260 features at `d = 16` it
-stays 125-538x faster than DoWhy and 1.2-21x faster than `predict`. Index
-build takes 0.05 s (d = 2) to about a minute (d = 16) per unit. Only star
-SCMs (the ensemble's inputs are intervened or fixed) are supported; chains of
-mechanisms between the intervention and the target are future work.
-
-## Reproducing
-
-All numbers were produced on a Linux server (112 cores, one single-threaded
-Python process per experiment, three experiments in parallel) with Python
-3.11, numpy 2.4, scikit-learn 1.9, XGBoost 3.2, LightGBM 4.7 and DoWhy 0.14.
+**Reproducing.** Experiments run on a Linux server. The paths below assume the layout
+`<W>/{env,data,logs,repo}`.
 
 ```bash
-pip install -r requirements-dowhy.txt
-python -m unittest discover -s tests          # 27 tests, includes XGBoost/LightGBM if installed
-bash experiments/run_all.sh                   # writes results/*.csv and results/RESULTS.md
-bash experiments/run_all.sh --quick           # small configuration for a smoke test
+python experiments/causal_datasets.py --out ../data/causal              # build the 15 datasets (downloads)
+DIMS="1 2 4 8" experiments/run_scm_split.sh ../data/causal 80 <datasets> # baselines (+ TWIN), one job per (dataset, model, d)
+EXTRA="--ours-only" LOGDIR=../logs/scm_ours DIMS="1 2 4 8" \
+  experiments/run_scm_split.sh ../data/causal 24 <datasets>               # TWIN alone
+python experiments/main_report.py --base <baseline repo> --ours <ours repo> \
+  --data ../data/causal --out results/main                                # tables and figures
+python -m unittest discover -s tests                                      # exactness tests
 ```
 
-The California housing data are downloaded by scikit-learn on first use
-(`DATA_HOME` selects the cache directory).
+`run_scm_split.sh` has the following properties:
+* it skips finished and running jobs, so it can be restarted at any time;
+* it hides the GPUs (`CUDA_VISIBLE_DEVICES=`), because XGBoost would otherwise open them and can block on
+  the driver of a shared machine;
+* it runs every job single-threaded.
 
 ## Repository layout
 
 ```
 counterprovenance/
-  semiring.py     hash-consed circuits in N[X] (non-idempotent sum)
-  ensemble.py     sklearn / XGBoost / LightGBM compilers, unit binding, slabs
-  overlay.py      exact overlay with boundary labels and face adjacency
-  persistence.py  persistent factor tree: path copying + node copying
-  plan.py         MST, Euler / shortcut / greedy-DFS covering walks
-  cellindex.py    MCPST leaf (overlay + plan + materialisation)
-  index.py        ProvenanceIndex (groups + adaptive segment tree) and autotune
-  synthetic.py    synthetic ensembles for tests and controlled experiments
-tests/            exactness and optimality tests (brute force, model leaf APIs)
-experiments/      synthetic.py, real_models.py, dowhy_e2e.py, report.py, run_all.sh
-results/          CSV files and RESULTS.md
-docs/DESIGN.md    design, cost models, theorems and non-claims
-docs/archive/     design documents of the v1 prototype
+  ensemble.py       tree compilers (sklearn, XGBoost, LightGBM), unit binding, slabs
+  scm.py            additive-noise SCMs on a DAG: fitting, abduction, leaf boxes through mediators
+  grouping.py       tree profiles and the greedy grouping under the budget β
+  index.py          ProvenanceIndex: one cell graph / greedy cell graphs / leaf masks, cost model, query
+  cellindex.py      a cell graph: exact overlay, MST plan, persistent factor tree
+  overlay.py        exact overlay of leaf boxes with wall labels and cell adjacency
+  plan.py           MST and covering walks of the cell graph
+  persistence.py    persistent factor tree (path and node copying)
+  accel.py          numba kernels (bitmask AND, packed lookups)
+  scm_baselines.py  three-step and online baselines
+  semiring.py       provenance circuits in N[X]
+experiments/
+  causal_datasets.py  the 15 datasets and their DAGs
+  scm_full.py         one (dataset, model, d) job: TWIN, three-step, ChiRho, DoWhy-GCM
+  chirho_baseline.py  the ChiRho baseline
+  run_scm_split.sh    job runner (resumable)
+  main_report.py      tables and figures of the main experiment
+  *_proto.py, ...     design studies behind the algorithm (grouping, masks, dominance, skyline)
+tests/              exactness tests against brute force and the libraries' leaf APIs
+docs/DESIGN.md      design notes; docs/archive/ the v1 prototype
 ```
 
-The previous prototype (linear SCMs, versioned closures, global-grid MCPST)
-is preserved at the git tag `v1-prototype`.
-
-## Data, results, and logs
-
-- `data/` - cached datasets used by the experiments (California housing from scikit-learn; OpenML 416, 422, 46293, 45716), so that runs work without network access.
-- `results/` - every CSV of the paper: `qbench_*` (index vs online loop, numba, libraries), `baselines_*` (Treelite, QuickScorer, QuickScorer-B; `experiments/baselines_all.py`), `baselines_dowhy_*` (DoWhy-GCM, 1,000-tree models), and the earlier `e*`/`r*` studies.
-- `logs/` - raw stdout of the runs on the experiment server.
-- `prototypes/` - the review prototypes and notes behind the design (node copying, K-free index, hybrid plans, unified index).
+The previous prototype (linear SCMs, versioned closures, global-grid MCPST) is kept at the git tag
+`v1-prototype`.

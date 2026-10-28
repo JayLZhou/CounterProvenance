@@ -510,9 +510,9 @@ def pc_save(out, args, name, df, target, source):
 # large public tables (millions to over a hundred million rows), raw files in <out>/_raw/<name>
 # ---------------------------------------------------------------------------
 def nyc_taxi_frame(raw: Path) -> tuple[pd.DataFrame, str, str]:
-    """NYC TLC yellow-taxi trips 2019-2020; target: the total amount charged (fare, surcharges, taxes, tolls
-    and tip).  Free-text columns are dropped; trips with non-positive fare or distance, or a duration outside
-    1-180 minutes, are removed."""
+    """NYC TLC yellow-taxi trips 2019-2020; target: the tolls paid on the trip.  Free-text columns are dropped;
+    trips with non-positive fare or distance, or a duration outside 1-180 minutes, are removed.  (With the total
+    amount or the tip as the target PC finds only 4-5 ancestors: the total is an exact sum of its parts.)"""
     import pyarrow.parquet as pq
 
     cols = ["tpep_pickup_datetime", "tpep_dropoff_datetime", "passenger_count", "trip_distance", "RatecodeID",
@@ -530,7 +530,7 @@ def nyc_taxi_frame(raw: Path) -> tuple[pd.DataFrame, str, str]:
     df = df.dropna()
     df = df[(df.fare_amount > 0) & (df.trip_distance > 0) & (df.trip_distance < 200) & (df.duration_min >= 1)
             & (df.duration_min <= 180) & (df.tip_amount >= 0) & (df.total_amount > 0)]
-    return df.reset_index(drop=True), "total_amount", "NYC TLC yellow taxi trips 2019-2020"
+    return df.reset_index(drop=True), "tolls_amount", "NYC TLC yellow taxi trips 2019-2020"
 
 
 def airline_frame(raw: Path) -> tuple[pd.DataFrame, str, str]:
