@@ -146,9 +146,14 @@ def main() -> None:
     ap.add_argument("--unit-ids", default="", help="comma-separated unit indices to run (default: all)")
     ap.add_argument("--grouping", default="auto")
     ap.add_argument("--ours-only", action="store_true", help="time only Tessera (exactness is still checked)")
+    ap.add_argument("--baselines-only", action="store_true",
+                    help="time only the baselines: the leaf boxes are compiled (they place the boundary queries), "
+                         "the index is not built")
     ap.add_argument("--tag", default="")
     args = ap.parse_args()
     tag = args.tag or f"{args.dataset}_{args.family}"
+    # a run of some units only writes its own CSV (the latency files are per unit anyway)
+    csv_name = f"scm_full_{tag}_u{args.unit_ids.replace(',', '-')}.csv" if args.unit_ids else f"scm_full_{tag}.csv"
 
     d0 = Path(args.data) / args.dataset
     meta = json.loads((d0 / "meta.json").read_text())
@@ -195,18 +200,20 @@ def main() -> None:
             try:
                 bound = bind_scm(scm, unit, T, outcome, max_boxes=args.max_boxes)
                 compile_s = time.perf_counter() - start
-                index = ProvenanceIndex(bound, grouping=args.grouping)
+                index = None if args.baselines_only else ProvenanceIndex(bound, grouping=args.grouping)
             except (Infeasible, MemoryError) as e:
                 row["status"] = f"infeasible: {e}"
                 rows.append(row)
-                write_csv(f"scm_full_{tag}.csv", rows)
+                write_csv(csv_name, rows)
                 print(f"  unit {u} d={d:2d} INFEASIBLE ({e})", flush=True)
                 continue
             row["compile_s"] = compile_s
             row["build_s"] = time.perf_counter() - start
-            st = index.stats
-            row.update(boxes=len(bound.boxes), groups=len(index.groups), bitmask_trees=st.bitmask_trees,
-                       bytes=st.packed_bytes, choice=index.choice)
+            row["boxes"] = len(bound.boxes)
+            if index is not None:
+                st = index.stats
+                row.update(groups=len(index.groups), bitmask_trees=st.bitmask_trees, bytes=st.packed_bytes,
+                           choice=index.choice)
             lo = df[T].quantile(0.01).to_numpy()
             hi = df[T].quantile(0.99).to_numpy()
             n_unif = args.queries * 3 // 4
@@ -243,9 +250,10 @@ def main() -> None:
                     raise AssertionError(f"{args.dataset} {args.family} d={d}: {name} differs by {err}")
 
             lat = {}
-            check("ours_py", [index.query(t).value for t in Q])
-            row["ours_py_us"] = per_call_seconds(lambda: [index.query(t) for t in Q], n) * 1e6
-            lat["ours_py"] = per_query_us(index.query, Q)
+            if index is not None:
+                check("ours_py", [index.query(t).value for t in Q])
+                row["ours_py_us"] = per_call_seconds(lambda: [index.query(t) for t in Q], n) * 1e6
+                lat["ours_py"] = per_query_us(index.query, Q)
             if args.ours_only:
                 for q in (25, 50, 75, 95):
                     row[f"ours_py_p{q}_us"] = float(np.percentile(lat["ours_py"], q))
@@ -254,7 +262,7 @@ def main() -> None:
                 np.savez_compressed(lat_dir / f"{tag}_u{u}_d{d}.npz", ours_py=lat["ours_py"].astype(np.float32))
                 row["status"] = "ok"
                 rows.append(row)
-                write_csv(f"scm_full_{tag}.csv", rows)
+                write_csv(csv_name, rows)
                 print(f"  unit {u} d={d:2d} {index.choice} groups={row['groups']} | ours {row['ours_py_us']:.1f}us",
                       flush=True)
                 continue
@@ -304,9 +312,9 @@ def main() -> None:
             np.savez_compressed(lat_dir / f"{tag}_u{u}_d{d}.npz", **{k_: v.astype(np.float32) for k_, v in lat.items()})
             row["status"] = "ok"
             rows.append(row)
-            write_csv(f"scm_full_{tag}.csv", rows)
-            print(f"  unit {u} d={d:2d} med={row['mediators']:3d} boxes={row['boxes']:>9,} groups={row['groups']:5d} "
-                  f"build={row['build_s']:6.1f}s | ours {row['ours_py_us']:7.1f}us | three-step "
+            write_csv(csv_name, rows)
+            print(f"  unit {u} d={d:2d} med={row['mediators']:3d} boxes={row['boxes']:>9,} groups={row.get('groups', -1):5d} "
+                  f"build={row['build_s']:6.1f}s | ours {row.get('ours_py_us', float('nan')):7.1f}us | three-step "
                   f"{row['three_step_us']:8.0f}us | chirho {row.get('chirho_us', float('nan')):9.0f}us | dowhy "
                   f"{row['dowhy_us']:9.0f}us", flush=True)
     tl_dir.cleanup()

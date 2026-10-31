@@ -43,9 +43,12 @@ plt.rcParams.update({
 })
 
 
-def load(root: Path) -> pd.DataFrame:
-    df = pd.concat([pd.read_csv(f) for f in glob.glob(str(root / "results" / "scm_full_*.csv"))], ignore_index=True)
-    return df[df.status.eq("ok") & df.d.le(8)]
+def load(root: Path, ok: bool = True) -> pd.DataFrame:
+    """All result rows of a run; a unit re-run in its own CSV (``--unit-ids``) replaces the older row."""
+    files = sorted(glob.glob(str(root / "results" / "scm_full_*.csv")), key=lambda f: Path(f).stat().st_mtime)
+    df = pd.concat([pd.read_csv(f) for f in files], ignore_index=True)
+    df = df[df.d.le(8)].drop_duplicates(KEY, keep="last")
+    return df[df.status.eq("ok")] if ok else df
 
 
 def gmean(x) -> float:
@@ -204,7 +207,12 @@ def main() -> None:
     base, ours, out = Path(args.base), Path(args.ours), Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     b = load(base)
-    o = load(ours)[KEY + ["ours_py_us", "choice"]].rename(columns={"ours_py_us": "ours_us"})
+    o_all = load(ours, ok=False)
+    bad = o_all[~o_all.status.eq("ok")]
+    if len(bad):
+        print(f"TWIN over budget in {len(bad)} rows:")
+        print(bad.groupby(["dataset", "family", "d"]).size().to_string())
+    o = o_all[o_all.status.eq("ok")][KEY + ["ours_py_us", "choice"]].rename(columns={"ours_py_us": "ours_us"})
     m = b.merge(o, on=KEY)
     print(f"{len(m)} matched rows, {m.groupby(['dataset', 'family', 'd']).ngroups} settings, "
           f"{m.dataset.nunique()} datasets; wrong answers: three-step {int((m.err_three_step > 0).sum())}, "
