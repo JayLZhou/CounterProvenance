@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 
 W = Path("/mnt/data/yingli/counterprovenance")
-SETS = "acs_income,jdk,concrete,light_tunnel,higgs,baf,postgres,methane,mslr,gov_census,superconduct,census1990,susy,airline,nyc_taxi".split(",")
+SETS = "acs_income,jdk,concrete,light_tunnel,higgs,baf,postgres,methane,mslr,gov_census,house_sales,census1990,susy,airline,nyc_taxi".split(",")
 START_GB = 400
 anc = {ds: json.loads((W / "data/causal" / ds / "meta.json").read_text())["target_ancestors"] for ds in SETS}
 jobs = [(ds, f, d) for ds in SETS for d in (1, 2, 4, 8) if d <= anc[ds] for f in ("LGBM", "XGB", "HGB", "RF", "GBR")]
