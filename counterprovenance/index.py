@@ -241,7 +241,7 @@ class ProvenanceIndex:
         cost_lookup: float = 0.15,
         cost_masks_fixed: float = 8.0,
         cost_word: float = 0.02,
-        max_mask_bytes: float = 16e9,
+        max_mask_bytes: float = 80e9,
     ) -> None:
         """``grouping``: ``"auto"`` (one cell graph for the whole forest when the slab grid of all
         axes has at most ``one_cells`` cells; otherwise the greedy cell graphs or leaf bitmasks for
@@ -358,8 +358,8 @@ class ProvenanceIndex:
             return
         boxes, ranges, counts = self.bound.boxes, self.slabs.ranges, self.slabs.counts
         used = sorted(set().union(*(p.axes for p in deep)))
-        # the masks are held twice (numpy rows and Python ints): refuse before allocating them
-        need = 2 * 8 * len(fields) * sum(counts[a] for a in used)
+        # refuse before allocating them (the process holds about twice this: numpy rows and Python ints)
+        need = 8 * len(fields) * sum(counts[a] for a in used)
         if need > self.max_mask_bytes:
             raise MemoryError(f"leaf masks would take {need / 1e9:.1f} GB "
                               f"(> {self.max_mask_bytes / 1e9:.0f} GB)")
