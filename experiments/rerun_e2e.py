@@ -30,6 +30,14 @@ def finished(ds, f, d, u):
     return (df.backend == "dowhy").any() and df.backend.astype(str).str.startswith("twin").any()
 
 
+if "--workloads" in sys.argv:
+    # the tables and the variables of the literature, with more units, as these tables are small
+    jobs = []
+    for ds in ("german_mint", "compas", "adult", "bike", "german_full", "heloc", "give_credit"):
+        act = json.loads((W / "data/causal" / ds / "meta.json").read_text())["actionable"]
+        jobs += [(ds, f, d, u) for u in range(10) for d in sorted({v for v in (1, 2, 4, 8) if v <= len(act)} | {len(act)})
+                 for f in ("LGBM", "XGB", "HGB", "RF", "GBR")]
+
 active = {tuple(l.split("--dataset ")[1].split()[0:1]) + (l.split("--family ")[1].split()[0], int(l.split("--d ")[1].split()[0]),
                                                            int(l.split("--unit ")[1].split()[0])) for l in running()}
 todo = [j for j in jobs if j not in active and not finished(*j)]

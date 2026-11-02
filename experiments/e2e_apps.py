@@ -90,11 +90,12 @@ class DoWhy:
 class Ctx:
     """What an application knows about a unit: the box of the interventions, the factual point and the scales."""
 
-    def __init__(self, df, T, row, y, seed):
+    def __init__(self, df, T, row, y, seed, increase_only=()):
         self.T, self.d = T, len(T)
         self.lo, self.hi = df[T].quantile(0.01).to_numpy(), df[T].quantile(0.99).to_numpy()
-        self.hi = np.where(self.hi > self.lo, self.hi, self.lo + 1.0)
         self.u = np.clip(row[T].to_numpy(dtype=float)[0], self.lo, self.hi)
+        self.lo = np.array([u if name in increase_only else lo for name, u, lo in zip(T, self.u, self.lo)])
+        self.hi = np.where(self.hi > self.lo, self.hi, self.lo + 1.0)
         self.scale = np.maximum(df[T].std().to_numpy(), 1e-9)
         self.bg = df[T].sample(min(len(df), 2000), random_state=seed).to_numpy(dtype=float)
         self.seed = seed
@@ -311,6 +312,15 @@ APPS = dict(what_if_surface=what_if_surface, what_if_slider=what_if_slider, dose
             monte_carlo_risk=monte_carlo_risk)
 
 
+def treatments(scm, y, d, meta):
+    """The ``d`` variables the outcome splits on most often, among those the workload allows to change."""
+    if not meta.get("actionable"):
+        return choose_treatments(scm, y, d)
+    ranked = choose_treatments(scm, y, len(ancestors(scm.parents, y)))
+    T = [n for n in ranked if n in meta["actionable"]][:d]
+    return T if len(T) == d else None
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--data", required=True)
@@ -335,12 +345,12 @@ def main() -> None:
     scm = fit_scm(df, edges, y, [sorted(ancestors(parents_of(edges), y))[0]], zoo(1000, 1)[args.family],
                   max_rows=args.train_rows, seed=0, n_jobs=4)
     fit_s = time.perf_counter() - t0
-    row = df.iloc[[int(np.random.default_rng(2028).integers(len(df), size=3)[args.unit])]]
+    row = df.iloc[[int(np.random.default_rng(2028).integers(len(df), size=max(3, args.unit + 1))[args.unit])]]
     unit = row.iloc[0].to_dict()
-    T = choose_treatments(scm, y, args.d)
+    T = treatments(scm, y, args.d, meta)
     if T is None:
         return
-    ctx = Ctx(df, T, row, y, 2028 + args.unit)
+    ctx = Ctx(df, T, row, y, 2028 + args.unit, meta.get("increase_only", ()))
     tag = f"{args.dataset}_{args.family}_d{args.d}_u{args.unit}"
     backends = {}
     if "twin" in args.backends:
