@@ -6,7 +6,7 @@ import pandas as pd
 W = Path("/mnt/data/yingli/counterprovenance")
 SETS = "concrete,light_tunnel,ailerons,pol,elevators,jdk,postgres,baf,mslr,census1990,susy,methane,higgs,airline,nyc_taxi".split(",")
 BIG = {"nyc_taxi", "airline", "higgs", "methane", "susy", "census1990", "mslr", "baf", "postgres"}
-START_GB, MAX_RUNNING = 400, 30
+START_GB, MAX_RUNNING = 400, 30   # with rerun_units.py: at most 100 processes on 112 cores
 anc = {ds: json.loads((W / "data/causal" / ds / "meta.json").read_text())["target_ancestors"] for ds in SETS}
 jobs = [(ds, f, d, u) for u in (0, 1, 2) for ds in SETS for d in (1, 2, 4, 8, 16) if d <= anc[ds]
         for f in ("LGBM", "XGB", "HGB", "RF", "GBR")]

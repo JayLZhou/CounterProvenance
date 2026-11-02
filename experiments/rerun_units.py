@@ -10,7 +10,7 @@ W = Path("/mnt/data/yingli/counterprovenance")
 SETS = "concrete,light_tunnel,ailerons,pol,elevators,jdk,postgres,baf,mslr,census1990,susy,methane,higgs,airline,nyc_taxi".split(",")
 START_GB = 400
 BIG = {"nyc_taxi", "airline", "higgs", "methane", "susy", "census1990", "mslr", "baf", "postgres"}
-MAX_RUNNING = 40
+MAX_RUNNING = {True: 30, False: 40}   # processes of ours and of the baselines
 anc = {ds: json.loads((W / "data/causal" / ds / "meta.json").read_text())["target_ancestors"] for ds in SETS}
 jobs = [(ds, f, d) for ds in SETS for d in (1, 2, 4, 8, 16) if d <= anc[ds] for f in ("LGBM", "XGB", "HGB", "RF", "GBR")]
 
@@ -59,7 +59,7 @@ if "--dry" in sys.argv:
     sys.exit()
 env = dict(os.environ, OMP_NUM_THREADS="1", CUDA_VISIBLE_DEVICES="", PYTHONPATH=str(W / "chirho_pkgs"))
 for repo, ours_only, ds, f, d, tag, u in todo:
-    while ours_gb() > START_GB or len(running_units(True) | running_units(False)) / 3 > MAX_RUNNING:
+    while ours_gb() > START_GB or len(running_units(ours_only)) >= MAX_RUNNING[ours_only]:
         time.sleep(30)
     log = W / "logs" / ("scm_ours" if ours_only else "scm_full") / f"{tag}_u{u}.log"
     cmd = [str(W / "env/bin/python"), "scm_full.py", "--data", str(W / "data/causal"), "--dataset", ds, "--family", f,
