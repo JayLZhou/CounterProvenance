@@ -259,7 +259,7 @@ class ProvenanceIndex:
         self.slabs = Slabs(bound)
         self.choice = None
         self.np_read_groups = np_read_groups
-        self._nbase = None
+        self._nbase = self._ncolumns = None
         if grouping == "tables":
             # every tree in a cell graph with its persistent tree: one for the whole forest when its grid is small,
             # otherwise the greedy groups under ``budget``; built in C++
@@ -269,7 +269,8 @@ class ProvenanceIndex:
                 max_leaf_cells = max(max_leaf_cells, grid)
             else:
                 grouping, native_cells, self.choice = "greedy", True, "tables"
-                grid_cap, mask_ratio, max_leaf_cells = budget, math.inf, max(max_leaf_cells, budget)
+                # ``budget`` limits the merges; a tree alone only has to fit (its cell graph has one cell per leaf box)
+                grid_cap, mask_ratio, max_leaf_cells = max(budget, 10**9), math.inf, max(max_leaf_cells, budget, 10**9)
         if grouping == "auto":
             grid = math.prod(self.slabs.counts)
             if grid <= one_cells:
@@ -510,13 +511,16 @@ class ProvenanceIndex:
         out = np.empty(len(X), dtype=np.float64)
         th = [np.asarray(t, dtype=np.float64) for t in self.slabs.thresholds]
         n_groups = len(self._fast_leaves)
+        if self._nbase is not None and self._ncolumns is None:
+            self._ncolumns = [np.ascontiguousarray(rows.T) for _, _, _, rows in self._naxes]
         for lo in range(0, len(X), chunk):
             x = X[lo:lo + chunk]
             if self._nbase is not None:
-                c = np.tile(self._nbase, (len(x), 1))
-                for a, _, groups, rows in self._naxes:
-                    c[:, groups] += rows[np.searchsorted(th[a], x[:, a], side="left")]
-                out[lo:lo + chunk] = self._const + self._ntable[c].sum(axis=1)
+                # one row per group: the reads stay inside one table at a time, which keeps them in the cache
+                c = np.repeat(self._nbase[:, None], len(x), axis=1)
+                for (a, _, groups, _), columns in zip(self._naxes, self._ncolumns):
+                    c[groups] += columns[:, np.searchsorted(th[a], x[:, a], side="left")]
+                out[lo:lo + chunk] = self._const + self._ntable[c].sum(axis=0)
             else:
                 c = np.zeros((len(x), n_groups), dtype=np.int64)
                 for g, a, contrib in self._contrib:
