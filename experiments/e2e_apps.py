@@ -383,7 +383,7 @@ def _mcce(f, c, k):
     from sklearn.tree import DecisionTreeRegressor
 
     free = [j for j, name in enumerate(c.T) if name not in c.fixed]
-    rest = [n for n in c.df.columns if n not in c.T and n != c.y]
+    rest = [n for n in c.df.columns if (n not in c.T or n in c.fixed) and n != c.y]
     if c._samplers is None:
         train = c.df.sample(min(len(c.df), 10_000), random_state=c.seed)
         Z = train[rest].to_numpy(dtype=float) if rest else np.zeros((len(train), 0))
