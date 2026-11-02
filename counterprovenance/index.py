@@ -62,6 +62,7 @@ from .baselines import make_cast
 from .cellindex import CellIndex, Piece
 from .ensemble import BoundEnsemble, Slabs
 from .grouping import greedy_groups, tree_profiles
+from .native_cells import NativeCellIndex
 from .semiring import CircuitArena, NodeId
 
 _FIELD = 0xFFFFFFFF
@@ -242,6 +243,8 @@ class ProvenanceIndex:
         cost_masks_fixed: float = 8.0,
         cost_word: float = 0.02,
         max_mask_bytes: float = 80e9,
+        native_cells: bool = False,
+        build_threads: int = 1,
     ) -> None:
         """``grouping``: ``"auto"`` (one cell graph for the whole forest when the slab grid of all
         axes has at most ``one_cells`` cells; otherwise the greedy cell graphs or leaf bitmasks for
@@ -276,6 +279,8 @@ class ProvenanceIndex:
         self.mask_ratio = mask_ratio
         self.min_group_trees = min_group_trees
         self.max_mask_bytes = max_mask_bytes
+        self.native_cells = native_cells
+        self.build_threads = build_threads
         self.layout = layout
         self.exact = exact
         self.alpha = alpha
@@ -513,6 +518,19 @@ class ProvenanceIndex:
 
     def _leaf(self, items, axes, depth):
         boxes = self.bound.boxes
+        if self.native_cells and axes:
+            cells = NativeCellIndex(
+                items=items,
+                ranges=[[self.slabs.ranges[i][a] for a in axes] for i in items],
+                slots=[boxes[i].tree for i in items],
+                slab_counts=[self.slabs.counts[a] for a in axes],
+                values=[boxes[i].value for i in items],
+                threads=self.build_threads,
+            )
+            leaf = _Leaf(tuple(axes), cells)
+            self._leaves.append(leaf)
+            self._leaf_depths[depth] += 1
+            return leaf
         cells = CellIndex(
             items=items,
             ranges=[[self.slabs.ranges[i][a] for a in axes] for i in items],
