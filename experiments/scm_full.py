@@ -147,7 +147,7 @@ def main() -> None:
                     help="also time pure-Python propagation, numba and Treelite (not reported in the paper)")
     ap.add_argument("--unit-ids", default="", help="comma-separated unit indices to run (default: all)")
     ap.add_argument("--grouping", default="tables")
-    ap.add_argument("--budget", type=float, default=1e8, help="table cells of the greedy cell graphs")
+    ap.add_argument("--budget", type=float, default=2e7, help="table cells of the greedy cell graphs")
     ap.add_argument("--ours-only", action="store_true", help="time only Tessera (exactness is still checked)")
     ap.add_argument("--baselines-only", action="store_true",
                     help="time only the baselines: the leaf boxes are compiled (they place the boundary queries), "

@@ -261,14 +261,14 @@ class ProvenanceIndex:
         self.np_read_groups = np_read_groups
         self._nbase = None
         if grouping == "tables":
-            # every tree in a cell graph: one for the whole forest when its grid is small (with its persistent tree),
-            # otherwise the greedy groups under ``budget``, built in C++ with one value per grid cell
+            # every tree in a cell graph with its persistent tree: one for the whole forest when its grid is small,
+            # otherwise the greedy groups under ``budget``; built in C++
             grid = math.prod(self.slabs.counts)
             if grid <= one_cells:
                 grouping, native_cells, self.choice = "none", True, "one"
                 max_leaf_cells = max(max_leaf_cells, grid)
             else:
-                grouping, lean_cells, self.choice = "greedy", True, "tables"
+                grouping, native_cells, self.choice = "greedy", True, "tables"
                 grid_cap, mask_ratio, max_leaf_cells = budget, math.inf, max(max_leaf_cells, budget)
         if grouping == "auto":
             grid = math.prod(self.slabs.counts)
@@ -495,6 +495,37 @@ class ProvenanceIndex:
             leaves, deep = self._bitmask_np(x)
             value += deep
         return LazyAnswer(value, self, c - self._nbase, leaves)
+
+    def query_batch(self, T: np.ndarray, chunk: int = 4096) -> np.ndarray:
+        """The values of many interventions (one per row): one vector operation per axis and group,
+        no Python per row.  The same reads as :meth:`query`; the sum is a plain vector sum."""
+        if not self._fast:
+            return np.array([self.query(t).value for t in T], dtype=np.float64)
+        ens = self.bound.ensemble
+        X = np.asarray(T, dtype=np.float64)
+        if ens.input_dtype == np.float32:
+            X = X.astype(np.float32).astype(np.float64)
+        if ens.zero_threshold > 0.0:
+            X = np.where(np.abs(X) <= ens.zero_threshold, 0.0, X)
+        out = np.empty(len(X), dtype=np.float64)
+        th = [np.asarray(t, dtype=np.float64) for t in self.slabs.thresholds]
+        n_groups = len(self._fast_leaves)
+        for lo in range(0, len(X), chunk):
+            x = X[lo:lo + chunk]
+            if self._nbase is not None:
+                c = np.tile(self._nbase, (len(x), 1))
+                for a, _, groups, rows in self._naxes:
+                    c[:, groups] += rows[np.searchsorted(th[a], x[:, a], side="left")]
+                out[lo:lo + chunk] = self._const + self._ntable[c].sum(axis=1)
+            else:
+                c = np.zeros((len(x), n_groups), dtype=np.int64)
+                for g, a, contrib in self._contrib:
+                    c[:, g] += contrib[np.searchsorted(th[a], x[:, a], side="left")]
+                v = np.full(len(x), self._const)
+                for g, table in enumerate(self._tables):
+                    v += np.frombuffer(table, dtype=np.float64)[c[:, g]]
+                out[lo:lo + chunk] = v
+        return out
 
     def _query_fast(self, t: Sequence[float]) -> LazyAnswer:
         x = self._cast(t)

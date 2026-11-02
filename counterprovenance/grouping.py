@@ -14,7 +14,7 @@ groups within a factor below 3/2 unless P = NP.
 :func:`greedy_groups` is a Kruskal-like heuristic without an approximation
 guarantee: it starts from groups of nested supports and repeatedly merges the
 pair of groups whose union adds the fewest cells, until the total would exceed
-``budget``.  Trees whose own table already
+``budget``; a merge that does not grow the total is always allowed.  Trees whose own table already
 exceeds ``cap``, or ``mask_ratio`` times its number of leaf boxes, are returned
 separately (they are answered by leaf bitmasks: a table over the grid of a deep
 tree's cuts is mostly redundant, since the tree has far fewer leaves than cells).
@@ -138,7 +138,8 @@ def greedy_groups(
     nxt = len(start)
     while heap:
         delta, k1, k2 = heapq.heappop(heap)
-        if k1 not in alive or k2 not in alive or total + delta > budget:
+        # a merge that shrinks the total is always taken, also when the trees alone exceed the budget
+        if k1 not in alive or k2 not in alive or (delta > 0 and total + delta > budget):
             continue
         axes, cuts, size = _merged(alive[k1], alive[k2])
         g = Group(axes, cuts, alive[k1].items + alive[k2].items, alive[k1].trees + alive[k2].trees)

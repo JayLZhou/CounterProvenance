@@ -94,5 +94,18 @@ class NativeCells(unittest.TestCase):
                 self.assertEqual(sorted(x.boxes()), sorted(y.boxes()))
 
 
+    def test_query_batch(self):
+        for bound in self.binds():
+            for budget in (64, 1 << 20):
+                try:
+                    index = ProvenanceIndex(bound, grouping="tables", budget=budget, one_cells=16)
+                except MemoryError:
+                    continue
+                rng = np.random.default_rng(1)
+                Q = rng.normal(size=(300, bound.d))
+                one = np.array([index.query(t).value for t in Q])
+                self.assertLess(np.abs(index.query_batch(Q, chunk=70) - one).max(), 1e-9)
+
+
 if __name__ == "__main__":
     unittest.main()
