@@ -146,7 +146,8 @@ def main() -> None:
     ap.add_argument("--extra-baselines", action="store_true",
                     help="also time pure-Python propagation, numba and Treelite (not reported in the paper)")
     ap.add_argument("--unit-ids", default="", help="comma-separated unit indices to run (default: all)")
-    ap.add_argument("--grouping", default="auto")
+    ap.add_argument("--grouping", default="tables")
+    ap.add_argument("--budget", type=float, default=1e8, help="table cells of the greedy cell graphs")
     ap.add_argument("--ours-only", action="store_true", help="time only Tessera (exactness is still checked)")
     ap.add_argument("--baselines-only", action="store_true",
                     help="time only the baselines: the leaf boxes are compiled (they place the boundary queries), "
@@ -202,8 +203,9 @@ def main() -> None:
             try:
                 bound = bind_scm(scm, unit, T, outcome, max_boxes=args.max_boxes, threads=args.build_threads)
                 compile_s = time.perf_counter() - start
-                index = None if args.baselines_only else ProvenanceIndex(bound, grouping=args.grouping,
-                                                                         max_mask_bytes=args.max_mask_bytes)
+                index = None if args.baselines_only else ProvenanceIndex(bound, grouping=args.grouping, budget=int(args.budget),
+                                                                         max_mask_bytes=args.max_mask_bytes,
+                                                                         build_threads=args.build_threads)
             except (Infeasible, MemoryError) as e:
                 row["status"] = f"infeasible: {e}"
                 rows.append(row)

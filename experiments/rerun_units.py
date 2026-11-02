@@ -7,12 +7,12 @@ from pathlib import Path
 import pandas as pd
 
 W = Path("/mnt/data/yingli/counterprovenance")
-SETS = "jdk,concrete,light_tunnel,higgs,baf,postgres,methane,mslr,elevators,pol,ailerons,census1990,susy,airline,nyc_taxi".split(",")
+SETS = "concrete,light_tunnel,ailerons,pol,elevators,jdk,postgres,baf,mslr,census1990,susy,methane,higgs,airline,nyc_taxi".split(",")
 START_GB = 400
 BIG = {"nyc_taxi", "airline", "higgs", "methane", "susy", "census1990", "mslr", "baf", "postgres"}
 MAX_RUNNING = 40
 anc = {ds: json.loads((W / "data/causal" / ds / "meta.json").read_text())["target_ancestors"] for ds in SETS}
-jobs = [(ds, f, d) for ds in SETS for d in (1, 2, 4, 8) if d <= anc[ds] for f in ("LGBM", "XGB", "HGB", "RF", "GBR")]
+jobs = [(ds, f, d) for ds in SETS for d in (1, 2, 4, 8, 16) if d <= anc[ds] for f in ("LGBM", "XGB", "HGB", "RF", "GBR")]
 
 
 def ours_gb():

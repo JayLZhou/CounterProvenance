@@ -73,6 +73,16 @@ class NativeCells(unittest.TestCase):
             for t in rng.normal(size=(300, bound.d)):
                 self.assertAlmostEqual(a.query(t).value, b.query(t).value, places=10)
 
+    def test_tables_mode(self):
+        rng = np.random.default_rng(4)
+        for bound in self.binds():
+            a = ProvenanceIndex(bound, grouping="none", max_leaf_cells=10**8)
+            for kw in (dict(budget=10**7), dict(budget=20000, np_read_groups=1, one_cells=1)):
+                b = ProvenanceIndex(bound, grouping="tables", build_threads=2, **kw)
+                self.assertFalse(b.deep)
+                for t in rng.normal(size=(200, bound.d)):
+                    self.assertAlmostEqual(a.query(t).value, b.query(t).value, places=9)
+
     def test_queries(self):
         rng = np.random.default_rng(1)
         for bound in self.binds():

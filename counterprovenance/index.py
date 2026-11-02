@@ -246,6 +246,7 @@ class ProvenanceIndex:
         native_cells: bool = False,
         lean_cells: bool = False,
         build_threads: int = 1,
+        np_read_groups: int = 30,
     ) -> None:
         """``grouping``: ``"auto"`` (one cell graph for the whole forest when the slab grid of all
         axes has at most ``one_cells`` cells; otherwise the greedy cell graphs or leaf bitmasks for
@@ -257,6 +258,18 @@ class ProvenanceIndex:
         self.bound = bound
         self.slabs = Slabs(bound)
         self.choice = None
+        self.np_read_groups = np_read_groups
+        self._nbase = None
+        if grouping == "tables":
+            # every tree in a cell graph: one for the whole forest when its grid is small (with its persistent tree),
+            # otherwise the greedy groups under ``budget``, built in C++ with one value per grid cell
+            grid = math.prod(self.slabs.counts)
+            if grid <= one_cells:
+                grouping, native_cells, self.choice = "none", True, "one"
+                max_leaf_cells = max(max_leaf_cells, grid)
+            else:
+                grouping, lean_cells, self.choice = "greedy", True, "tables"
+                grid_cap, mask_ratio, max_leaf_cells = budget, math.inf, max(max_leaf_cells, budget)
         if grouping == "auto":
             grid = math.prod(self.slabs.counts)
             if grid <= one_cells:
@@ -294,6 +307,8 @@ class ProvenanceIndex:
         self._cast = make_cast(bound.ensemble)
         self.deep: list = []
         groups = self._groups(grouping)
+        if self.choice in ("one", "tables") and self.deep:
+            raise MemoryError(f"{len(self.deep)} trees alone exceed {grid_cap:,} grid cells")
         if group_budget is not None:
             merged: dict[tuple[int, ...], list[int]] = {}
             for axes, items in groups:
@@ -425,17 +440,28 @@ class ProvenanceIndex:
         rows = [[0] * counts[a] for a in range(d)]
         self._contrib: list[tuple[int, int, np.ndarray]] = []  # (group, axis, rank*stride per slab)
         groups_of_axis: dict[int, list[int]] = {}
+        # many groups: all tables in one array, read with one fancy index
+        vector = len(leaves) > self.np_read_groups
+        if vector:
+            sizes = np.array([leaf.cells.overlay.grid_cells for leaf in leaves], dtype=np.int64)
+            self._nbase = np.concatenate(([0], np.cumsum(sizes)[:-1])).astype(np.int64)
+            self._ntable = np.empty(int(sizes.sum()), dtype=np.float64)
         for gi, leaf in enumerate(leaves):
             cells, overlay = leaf.cells, leaf.cells.overlay
-            table = array("d")
             if isinstance(cells, LeanCellIndex):
-                table.frombytes(cells.table.tobytes())
+                dense = cells.table
                 cells.table = cells.face_value = None
             else:
                 dense = np.ascontiguousarray(cells.face_value[overlay.face_of_cell], dtype=np.float64)
+            if vector:
+                self._ntable[self._nbase[gi]:self._nbase[gi] + len(dense)] = dense
+                self._table_cells += len(dense)
+            else:
+                table = array("d")
                 table.frombytes(dense.tobytes())
-            self._tables.append(table)
-            self._table_cells += len(table)
+                self._tables.append(table)
+                self._table_cells += len(table)
+            del dense
             shift = 32 * gi
             for k, a in enumerate(leaf.axes):
                 if not overlay.cuts[k]:
@@ -444,17 +470,36 @@ class ProvenanceIndex:
                 contrib = contrib.astype(np.int64) * int(overlay.strides[k])
                 self._contrib.append((gi, a, contrib))
                 groups_of_axis.setdefault(a, []).append(gi)
-                row = rows[a]
-                for s in np.flatnonzero(contrib).tolist():
-                    row[s] += int(contrib[s]) << shift
+                if not vector:
+                    row = rows[a]
+                    for s in np.flatnonzero(contrib).tolist():
+                        row[s] += int(contrib[s]) << shift
+        if vector:
+            self._naxes = []
+            for a, groups in sorted(groups_of_axis.items()):
+                pick = [c for g, ax, c in self._contrib if ax == a]
+                self._naxes.append((a, th[a], np.array(groups, dtype=np.int64), np.stack(pick, axis=1)))
         self._paxes = [(a, th[a], rows[a]) for a in range(d) if any(rows[a])]
         self._groups_of_axis = groups_of_axis
         self._nbytes = 4 * len(leaves)
         self._pack_words = sum(counts[a] for a, _, _ in self._paxes) * len(leaves)
         self._const = math.fsum([self.bound.offset] + [float(leaf.cells.face_value[0]) for leaf in self._const_leaves])
 
+    def _query_vector(self, x) -> LazyAnswer:
+        c = self._nbase.copy()
+        for a, th, groups, rows in self._naxes:
+            c[groups] += rows[bisect_left(th, x[a])]
+        value = self._const + float(self._ntable[c].sum())
+        leaves = ()
+        if self._baxes:
+            leaves, deep = self._bitmask_np(x)
+            value += deep
+        return LazyAnswer(value, self, c - self._nbase, leaves)
+
     def _query_fast(self, t: Sequence[float]) -> LazyAnswer:
         x = self._cast(t)
+        if self._nbase is not None:
+            return self._query_vector(x)
         packed = 0
         for a, th, rows in self._paxes:
             packed += rows[bisect_left(th, x[a])]
