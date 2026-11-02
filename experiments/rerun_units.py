@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 
 W = Path("/mnt/data/yingli/counterprovenance")
-SETS = "jdk,concrete,light_tunnel,higgs,baf,postgres,methane,mslr,house_sales,pol,ailerons,census1990,susy,airline,nyc_taxi".split(",")
+SETS = "jdk,concrete,light_tunnel,higgs,baf,postgres,methane,mslr,elevators,pol,ailerons,census1990,susy,airline,nyc_taxi".split(",")
 START_GB = 400
 BIG = {"nyc_taxi", "airline", "higgs", "methane", "susy", "census1990", "mslr", "baf", "postgres"}
 MAX_RUNNING = 40
