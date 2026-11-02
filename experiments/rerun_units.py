@@ -44,7 +44,7 @@ def units_done(repo, tag):
 
 
 todo = []
-sides = [("repo_dev2", True)] if "--ours" in sys.argv else [("repo", False), ("repo_dev2", True)]
+sides = [("repo_dev2", True)] if "--ours" in sys.argv else [("repo", False)] if "--base" in sys.argv else [("repo", False), ("repo_dev2", True)]
 for repo, ours_only in sides:
     run = running_units(ours_only)
     for ds, f, d in jobs:
