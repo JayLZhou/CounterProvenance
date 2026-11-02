@@ -134,7 +134,7 @@ class Ctx:
 
     def __init__(self, df, T, row, y, seed, increase_only=(), fixed=()):
         self.T, self.d = T, len(T)
-        self.df, self.row, self.y, self.fixed, self._samplers = df, row, y, fixed, None
+        self.df, self.row, self.y, self.fixed, self._samplers = df, row, y, fixed, {}
         self.lo, self.hi = df[T].quantile(0.01).to_numpy(), df[T].quantile(0.99).to_numpy()
         self.u = np.clip(row[T].to_numpy(dtype=float)[0], self.lo, self.hi)
         self.lo = np.array([u if name in increase_only else lo for name, u, lo in zip(T, self.u, self.lo)])
@@ -444,11 +444,10 @@ def _mcce(f, c, k):
 
     free = [j for j, name in enumerate(c.T) if name not in c.fixed]
     rest = [n for n in c.df.columns if (n not in c.T or n in c.fixed) and n != c.y]
-    if c._samplers is None:
+    if not c._samplers:
         train = c.df.sample(min(len(c.df), 10_000), random_state=c.seed)
         Z = train[rest].to_numpy(dtype=float) if rest else np.zeros((len(train), 0))
         tt = train[c.T].to_numpy(dtype=float)
-        c._samplers = {}
         for i, j in enumerate(free):
             cond = np.hstack((Z, tt[:, free[:i]]))
             if cond.shape[1] == 0:
