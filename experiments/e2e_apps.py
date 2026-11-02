@@ -348,43 +348,76 @@ def monte_carlo_risk(f, c, n=200_000):
     return float(y.mean() + np.quantile(y, 0.05) + np.quantile(y, 0.95))
 
 
-def geco_genetic(f, c, q=100, k=5, initial=20, mutate=5, max_generations=100):
-    """The genetic search of GeCo (Schleich et al., PVLDB 2021) with its defaults: 100 candidates survive a generation,
-    5 counterfactuals are returned, 20 initial candidates per variable and 5 new ones per variable when mutating; it
-    stops when the top 5 do not change.  One request, several generations of a few thousand candidates each."""
-    total = 0.0
-    tau = float(np.quantile(f(np.random.default_rng(c.seed).uniform(c.lo, c.hi, size=(200, c.d))), 0.8))
+def geco_genetic(f, c, q=100, k=5, m_init=20, m_mut=5, max_generations=100):
+    """Algorithm 1 of GeCo (Schleich et al., PVLDB 2021) with its defaults.  Every intervened variable is a group; its
+    values are sampled from the data by their frequency, without replacement.  The first candidates change one group,
+    a generation mutates every surviving candidate in every group it has not changed and crosses the best candidates
+    of every pair of change sets; the q best survive, by the l1 distance plus a penalty below every counterfactual; it
+    stops when the top k are counterfactuals and none of them is new.  Without its constraints and its optimizations."""
     rng = np.random.default_rng([c.seed, 7])
-    values = c.bg
+    domain = []
+    for a in range(c.d):
+        values, counts = np.unique(c.bg[:, a], return_counts=True)
+        keep = (values >= c.lo[a]) & (values <= c.hi[a])
+        domain.append((values[keep], counts[keep] / counts[keep].sum()) if keep.any() else (c.u[[a]], np.ones(1)))
+    tau = float(np.quantile(f(np.random.default_rng(c.seed).uniform(c.lo, c.hi, size=(200, c.d))), 0.8))
 
-    def fresh(base, per):
-        out = []
-        for a in range(c.d):
-            Q = np.tile(base, (per, 1)) if base.ndim == 1 else base[rng.integers(len(base), size=per)].copy()
-            Q[:, a] = values[rng.integers(len(values), size=per), a]
-            out.append(Q)
-        return np.vstack(out)
+    def draw(a, m):
+        values, p = domain[a]
+        return rng.choice(values, size=min(m, len(values)), replace=False, p=p)
+
+    def mutate(P, D, m):
+        out, changed = [], []
+        for x, delta in zip(P, D):
+            for a in np.flatnonzero(~delta):
+                v = draw(a, m)
+                Q = np.tile(x, (len(v), 1))
+                Q[:, a] = v
+                out.append(Q)
+                e = delta.copy()
+                e[a] = True
+                changed.append(np.tile(e, (len(v), 1)))
+        return (np.vstack(out), np.vstack(changed)) if out else (np.zeros((0, c.d)), np.zeros((0, c.d), dtype=bool))
+
+    def crossover(P, D):
+        best = {}
+        for i, delta in enumerate(D):
+            best.setdefault(delta.tobytes(), i)     # the population is sorted by score
+        ids = list(best.values())
+        out, changed = [], []
+        for x, i in enumerate(ids):
+            for j in ids[x + 1:]:
+                child = c.u.copy()
+                both = D[i] & D[j]
+                child[D[i]] = P[i][D[i]]
+                child[D[j] & ~both] = P[j][D[j] & ~both]
+                pick = rng.random(c.d) < 0.5
+                child[both & pick] = P[j][both & pick]
+                out.append(child)
+                changed.append(D[i] | D[j])
+        return (np.array(out), np.array(changed)) if out else (np.zeros((0, c.d)), np.zeros((0, c.d), dtype=bool))
 
     def score(P):
         y = f(P)
-        dist = np.abs(P - c.u) / c.scale
-        return np.maximum(tau - y, 0.0) * 100 + (dist > 0).sum(axis=1) + dist.sum(axis=1) / c.d
+        dist = (np.abs(P - c.u) / c.scale).sum(axis=1) / c.d
+        return np.where(y >= tau, dist, dist + 1 + np.maximum(tau - y, 0.0)), y >= tau
 
-    pop = fresh(c.u, initial)
-    best = None
+    P, D = mutate(c.u[None, :], np.zeros((1, c.d), dtype=bool), m_init)
+    S, cf = score(P)
     for _ in range(max_generations):
-        sc = score(pop)
-        order = np.argsort(sc, kind="stable")[:q]
-        pop, sc = pop[order], sc[order]
-        top = tuple(np.round(sc[:k], 9))
-        if top == best:
+        order = np.argsort(S, kind="stable")[:q]
+        P, D, S, cf = P[order], D[order], S[order], cf[order]
+        M1, D1 = mutate(P, D, m_mut)
+        M2, D2 = crossover(P, D)
+        N, E = np.vstack((M1, M2)), np.vstack((D1, D2))
+        Sn, cn = score(N) if len(N) else (np.zeros(0), np.zeros(0, dtype=bool))
+        worst_top = S[min(k, len(S)) - 1]
+        stable = cf[:k].all() and not (len(Sn) and Sn.min() < worst_top)
+        P, D, S, cf = np.vstack((P, N)), np.vstack((D, E)), np.r_[S, Sn], np.r_[cf, cn]
+        if stable:
             break
-        best = top
-        a, b = pop[rng.integers(len(pop), size=q)], pop[rng.integers(len(pop), size=q)]
-        cross = np.where(rng.random(a.shape) < 0.5, a, b)
-        pop = np.unique(np.vstack((pop, cross, fresh(pop[: min(q, len(pop))], mutate * q // 10))), axis=0)
-    total += float(sum(best))
-    return total
+    top = np.sort(S)[:k]
+    return float(top.sum())
 
 
 def dowhy_feature_relevance(f, c):
