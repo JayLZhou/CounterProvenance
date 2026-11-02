@@ -128,9 +128,9 @@ so all `d ∈ {1, 2, 4, 8}` can be evaluated. `experiments/causal_datasets.py` w
 
 | group | datasets |
 |---|---|
-| published graph | gov_census (fairadapt), light_tunnel (Causal Chambers) |
+| published graph | light_tunnel (Causal Chambers) |
 | partial graph (cause → effect) | postgres, jdk (Gentzel et al.), concrete (Tübingen pairs) |
-| graph learned by PC | nyc_taxi (101M), airline (32.6M), higgs (11M), methane (9.2M), susy (5M), census1990 (2.5M), acs_income (1.7M), mslr (1.2M), baf (1M), house_sales (22K) |
+| graph learned by PC | nyc_taxi (101M), airline (32.6M), higgs (11M), methane (9.2M), susy (5M), census1990 (2.5M), mslr (1.2M), baf (1M), house_sales (22K), pol (15K), ailerons (14K) |
 
 For the PC-learned graphs:
 * PC (causal-learn) uses Fisher-z tests at level 0.01, conditioning sets of at most 3 variables, and
@@ -139,8 +139,9 @@ For the PC-learned graphs:
 * The result is extended to a DAG by Dor–Tarsi, or, when no consistent extension exists, along a
   topological order.
 
-Superconduct (OpenML 44148, 36 ancestors) was tried and dropped: with its many mediators, `d = 8` compiles
-to more than 50 million leaf boxes (`bind_scm`'s `max_boxes`) on GBR, HGB and LightGBM.
+Three datasets were tried and dropped because compiling through mediators creates too many leaf boxes:
+superconduct and gov_census (`d = 8` exceeds 50 million boxes on several boosted models) and acs_income
+(RF, `d = 4`: 43 million boxes, a query no faster than three-step).
 
 **Setup.**
 * *Models.* 1,000 trees per mechanism for all five families (GBR depth 3, HGB and LGBM 31 leaves, XGB
