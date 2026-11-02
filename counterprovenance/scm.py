@@ -37,6 +37,7 @@ from typing import Callable, Sequence
 
 import numpy as np
 
+from . import native_compile
 from .ensemble import BoundEnsemble, LeafBox, TreeEnsemble, bind, from_model
 
 
@@ -312,10 +313,48 @@ def _compile_trees(ens: TreeEnsemble, inputs: list[tuple[str, object]], d: int, 
     return boxes
 
 
+def _bind_scm_native(scm: FittedSCM, unit: dict[str, float], treatments: list[str], outcome: str,
+                     max_boxes: int, threads: int) -> BoundEnsemble:
+    """:func:`bind_scm` with the C++ compiler: the same boxes, in the same order."""
+    d = len(treatments)
+    axis = {name: a for a, name in enumerate(treatments)}
+    meds: dict[str, native_compile.NativeMediator] = {}
+    for node in relevant_nodes(scm.parents, treatments, outcome):
+        ens = scm.ensembles[node]
+        inputs = []
+        for p in scm.parents[node]:
+            if p in axis:
+                inputs.append(("axis", axis[p]))
+            elif p in meds:
+                inputs.append(("mediator", meds[p]))
+            else:
+                inputs.append(("fixed", float(ens.cast(np.array([unit[p]]))[0])))
+        flat = native_compile.flat_trees(ens)
+        boxes, status = native_compile.compile_trees(ens, flat, inputs, d, max_boxes, threads)
+        if status == 1:
+            raise Infeasible(f"more than {max_boxes:,} leaf boxes")
+        if status != 0:
+            raise AssertionError("a straddling box has no boundary inside")
+        if node == outcome:
+            at = flat["ptr"][boxes.tree] + boxes.node
+            out = [LeafBox(*f) for f in zip(boxes.tree.tolist(), boxes.node.tolist(), flat["native_leaf"][at].tolist(),
+                                            map(tuple, boxes.lo.tolist()), map(tuple, boxes.hi.tolist()),
+                                            flat["value"][at].tolist())]
+            row = np.array([unit[p] for p in scm.parents[node]], dtype=float)
+            return BoundEnsemble(ens, row, tuple(range(d)), out, ens.base + scm.abduct(unit, [node])[node])
+        meds[node] = native_compile.mediator_from(boxes, flat, float(unit[node]),
+                                                  scm.observed_leaf_values(node, unit))
+    raise AssertionError("outcome not reached")
+
+
 def bind_scm(scm: FittedSCM, unit: dict[str, float], treatments: Sequence[str], outcome: str,
-             max_boxes: int = 50_000_000) -> BoundEnsemble:
-    """Leaf boxes over ``t`` of the outcome's trees, through the mediators of the DAG."""
+             max_boxes: int = 50_000_000, native: bool = True, threads: int = 1) -> BoundEnsemble:
+    """Leaf boxes over ``t`` of the outcome's trees, through the mediators of the DAG.
+
+    ``native``: compile in C++ with ``threads`` threads when a compiler is available (the same boxes)."""
     treatments = list(treatments)
+    if native and native_compile.available():
+        return _bind_scm_native(scm, unit, treatments, outcome, max_boxes, threads)
     d = len(treatments)
     axis = {name: a for a, name in enumerate(treatments)}
     order = relevant_nodes(scm.parents, treatments, outcome)

@@ -53,7 +53,8 @@ for repo, ours_only, ds, f, d, tag, u in todo:
         time.sleep(60)
     log = W / "logs" / ("scm_ours" if ours_only else "scm_full") / f"{tag}_u{u}.log"
     cmd = [str(W / "env/bin/python"), "scm_full.py", "--data", str(W / "data/causal"), "--dataset", ds, "--family", f,
-           "--dims", str(d), "--tag", tag, "--unit-ids", str(u), "--ours-only" if ours_only else "--baselines-only"]
+           "--dims", str(d), "--tag", tag, "--unit-ids", str(u), "--build-threads", "16",
+           "--ours-only" if ours_only else "--baselines-only"]
     subprocess.Popen(cmd, cwd=W / repo / "experiments", env=env, stdout=open(log, "w"), stderr=subprocess.STDOUT,
                      stdin=subprocess.DEVNULL, start_new_session=True)
     print(time.strftime("%F %T"), "started", repo, tag, "unit", u, flush=True)
