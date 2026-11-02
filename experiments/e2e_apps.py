@@ -29,6 +29,26 @@ from scm_bench import choose_treatments, zoo
 from scm_full import dowhy_model
 
 
+def paper_models():
+    """The models of the papers the applications come from.  Classifiers are fitted as regressors of the 0/1 outcome:
+    a forest of them gives the same averaged leaves up to the split criterion."""
+    from sklearn.ensemble import HistGradientBoostingRegressor, RandomForestRegressor
+    from sklearn.tree import DecisionTreeRegressor
+    from xgboost import XGBRegressor
+
+    return dict(RF200=lambda: RandomForestRegressor(n_estimators=200, random_state=0, n_jobs=1),    # MCCE, Appendix 6.2
+                RF100=lambda: RandomForestRegressor(random_state=0, n_jobs=1),                     # DiCE; DoWhy's candidates
+                RF500=lambda: RandomForestRegressor(n_estimators=500, random_state=0, n_jobs=1),   # ICE: R's randomForest default
+                XGB100=lambda: XGBRegressor(n_estimators=100, random_state=0, n_jobs=1),           # Heskes et al.
+                HGB100=lambda: HistGradientBoostingRegressor(random_state=0),                      # DoWhy's candidates
+                DT=lambda: DecisionTreeRegressor(random_state=0))                                  # MINT
+
+
+def model_factory(family):
+    models = paper_models()
+    return models[family] if family in models else zoo(1000, 1)[family]
+
+
 class Timeout(Exception):
     pass
 
@@ -455,7 +475,7 @@ def main() -> None:
     edges = [tuple(r) for r in pd.read_csv(d0 / "graph.csv", dtype=str).itertuples(index=False)]
     y = str(meta["target"])
     t0 = time.perf_counter()
-    scm = fit_scm(df, edges, y, [sorted(ancestors(parents_of(edges), y))[0]], zoo(1000, 1)[args.family],
+    scm = fit_scm(df, edges, y, [sorted(ancestors(parents_of(edges), y))[0]], model_factory(args.family),
                   max_rows=args.train_rows, seed=0, n_jobs=4)
     fit_s = time.perf_counter() - t0
     row = df.iloc[[int(np.random.default_rng(2028).integers(len(df), size=max(3, args.unit + 1))[args.unit])]]

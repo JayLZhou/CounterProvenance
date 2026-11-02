@@ -19,8 +19,7 @@ import pandas as pd
 
 from common import write_csv
 from counterprovenance.scm import ancestors, fit_scm, parents_of
-from e2e_apps import APPS, Ctx, DoWhy, Online, Oracle, Twin
-from scm_bench import zoo
+from e2e_apps import APPS, Ctx, DoWhy, Online, Oracle, Twin, model_factory
 from scm_full import dowhy_model
 
 
@@ -57,7 +56,7 @@ def main() -> None:
     df.columns = [str(c) for c in df.columns]
     edges = [tuple(r) for r in pd.read_csv(d0 / "graph.csv", dtype=str).itertuples(index=False)]
     y = str(meta["target"])
-    scm = fit_scm(df, edges, y, [sorted(ancestors(parents_of(edges), y))[0]], zoo(1000, 1)[args.family],
+    scm = fit_scm(df, edges, y, [sorted(ancestors(parents_of(edges), y))[0]], model_factory(args.family),
                   max_rows=50_000, seed=0, n_jobs=4)
     T = list(scm.parents[y])
     order = np.random.default_rng(2028).permutation(len(df))
