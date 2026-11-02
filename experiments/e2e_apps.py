@@ -41,6 +41,7 @@ def paper_models():
                 RF500=lambda: RandomForestRegressor(n_estimators=500, random_state=0, n_jobs=1),   # ICE: R's randomForest default
                 XGB100=lambda: XGBRegressor(n_estimators=100, random_state=0, n_jobs=1),           # Heskes et al.
                 HGB100=lambda: HistGradientBoostingRegressor(random_state=0),                      # DoWhy's candidates
+                RF500D10=lambda: RandomForestRegressor(n_estimators=500, max_depth=10, random_state=0, n_jobs=1),  # GeCo
                 DT=lambda: DecisionTreeRegressor(random_state=0))                                  # MINT
 
 
@@ -347,6 +348,45 @@ def monte_carlo_risk(f, c, n=200_000):
     return float(y.mean() + np.quantile(y, 0.05) + np.quantile(y, 0.95))
 
 
+def geco_genetic(f, c, q=100, k=5, initial=20, mutate=5, max_generations=100):
+    """The genetic search of GeCo (Schleich et al., PVLDB 2021) with its defaults: 100 candidates survive a generation,
+    5 counterfactuals are returned, 20 initial candidates per variable and 5 new ones per variable when mutating; it
+    stops when the top 5 do not change.  One request, several generations of a few thousand candidates each."""
+    total = 0.0
+    tau = float(np.quantile(f(np.random.default_rng(c.seed).uniform(c.lo, c.hi, size=(200, c.d))), 0.8))
+    rng = np.random.default_rng([c.seed, 7])
+    values = c.bg
+
+    def fresh(base, per):
+        out = []
+        for a in range(c.d):
+            Q = np.tile(base, (per, 1)) if base.ndim == 1 else base[rng.integers(len(base), size=per)].copy()
+            Q[:, a] = values[rng.integers(len(values), size=per), a]
+            out.append(Q)
+        return np.vstack(out)
+
+    def score(P):
+        y = f(P)
+        dist = np.abs(P - c.u) / c.scale
+        return np.maximum(tau - y, 0.0) * 100 + (dist > 0).sum(axis=1) + dist.sum(axis=1) / c.d
+
+    pop = fresh(c.u, initial)
+    best = None
+    for _ in range(max_generations):
+        sc = score(pop)
+        order = np.argsort(sc, kind="stable")[:q]
+        pop, sc = pop[order], sc[order]
+        top = tuple(np.round(sc[:k], 9))
+        if top == best:
+            break
+        best = top
+        a, b = pop[rng.integers(len(pop), size=q)], pop[rng.integers(len(pop), size=q)]
+        cross = np.where(rng.random(a.shape) < 0.5, a, b)
+        pop = np.unique(np.vstack((pop, cross, fresh(pop[: min(q, len(pop))], mutate * q // 10))), axis=0)
+    total += float(sum(best))
+    return total
+
+
 def dowhy_feature_relevance(f, c):
     """The relevance of the intervened variables for the unit by DoWhy-GCM itself (``feature_relevance_sample``, Janzing
     et al.), with its defaults: at most 5,000 background samples per coalition, all coalitions up to five variables,
@@ -436,7 +476,7 @@ def _mcce(f, c, k):
     return total
 
 
-APPS = dict(dowhy_feature_relevance=dowhy_feature_relevance, kernel_shap=kernel_shap, lime_tabular=lime_tabular,
+APPS = dict(geco_genetic=geco_genetic, dowhy_feature_relevance=dowhy_feature_relevance, kernel_shap=kernel_shap, lime_tabular=lime_tabular,
             mcce_1000=lambda f, c: _mcce(f, c, 1000), mcce_10000=lambda f, c: _mcce(f, c, 10_000),
             mcce_100000=lambda f, c: _mcce(f, c, 100_000), what_if_surface=what_if_surface, what_if_slider=what_if_slider, dose_response=dose_response,
             recourse_genetic=recourse_genetic, recourse_minimal=recourse_minimal, optimal_evolution=optimal_evolution,
