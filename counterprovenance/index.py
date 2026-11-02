@@ -259,7 +259,7 @@ class ProvenanceIndex:
         self.slabs = Slabs(bound)
         self.choice = None
         self.np_read_groups = np_read_groups
-        self._nbase = self._ncolumns = None
+        self._nbase = None
         if grouping == "tables":
             # every tree in a cell graph with its persistent tree: one for the whole forest when its grid is small,
             # otherwise the greedy groups under ``budget``; built in C++
@@ -511,15 +511,13 @@ class ProvenanceIndex:
         out = np.empty(len(X), dtype=np.float64)
         th = [np.asarray(t, dtype=np.float64) for t in self.slabs.thresholds]
         n_groups = len(self._fast_leaves)
-        if self._nbase is not None and self._ncolumns is None:
-            self._ncolumns = [np.ascontiguousarray(rows.T) for _, _, _, rows in self._naxes]
         for lo in range(0, len(X), chunk):
             x = X[lo:lo + chunk]
             if self._nbase is not None:
                 # one row per group: the reads stay inside one table at a time, which keeps them in the cache
                 c = np.repeat(self._nbase[:, None], len(x), axis=1)
-                for (a, _, groups, _), columns in zip(self._naxes, self._ncolumns):
-                    c[groups] += columns[:, np.searchsorted(th[a], x[:, a], side="left")]
+                for a, _, groups, rows in self._naxes:
+                    c[groups] += rows[np.searchsorted(th[a], x[:, a], side="left")].T
                 out[lo:lo + chunk] = self._const + self._ntable[c].sum(axis=0)
             else:
                 c = np.zeros((len(x), n_groups), dtype=np.int64)
