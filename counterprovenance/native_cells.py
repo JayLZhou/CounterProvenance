@@ -42,6 +42,9 @@ def _load():
     lib.tw_cg_cuts.argtypes = [C.c_void_p, C.c_int, _I64]
     lib.tw_cg_take.argtypes = [C.c_void_p, _U32, _F64, _I32, _U8, _I32, _I32, _F64]
     lib.tw_cg_free.argtypes = [C.c_void_p]
+    lib.tw_lean_table.restype = C.c_void_p
+    lib.tw_lean_table.argtypes = [C.c_int, C.c_int64, _I64, _I64, _F64, _I64, C.c_double, C.c_int, C.c_int64, _I64]
+    lib.tw_lean_take.argtypes = [C.c_void_p, _F64]
     _LIB = lib
     return lib
 
@@ -207,3 +210,48 @@ class NativeCellIndex:
 
     def piece(self, slab: Sequence[int]) -> Piece:
         return Piece(self, self.face_of(slab))
+
+
+class LeanCellIndex:
+    """A large cell graph: walls with their weights, the minimum spanning tree over the grid cells, and one value per
+    cell computed along it; no persistent tree (a read of the leaves goes through the items).  ``table`` is the value
+    of every grid cell, in the numbering of the overlay."""
+
+    plan_kind = "tree"
+
+    def __init__(self, items: Sequence[int], ranges, slots: Sequence[int], slab_counts: Sequence[int], values,
+                 offset: float = 0.0, threads: int = 1, max_cells: int = 1 << 40) -> None:
+        t0 = time.perf_counter()
+        lib = _load()
+        self.items = list(items)
+        d = len(slab_counts)
+        n = len(self.items)
+        dense = {s: i for i, s in enumerate(sorted(set(slots)))}
+        slot_of = np.array([dense[s] for s in slots], dtype=np.int64)
+        rr = np.asarray(ranges, dtype=np.int64).reshape(n, d, 2)
+        vals = np.asarray(values, dtype=np.float64)
+        counts = np.asarray(slab_counts, dtype=np.int64)
+        status = C.c_int64(0)
+        h = lib.tw_lean_table(d, n, rr.ctypes.data_as(_I64), slot_of.ctypes.data_as(_I64), vals.ctypes.data_as(_F64),
+                              counts.ctypes.data_as(_I64), float(offset), threads, int(max_cells), C.byref(status))
+        try:
+            if status.value != 0:
+                raise MemoryError(f"cell graph: status {status.value}")
+            info = (C.c_int64 * 8)()
+            weight = C.c_double(0.0)
+            lib.tw_cg_info(h, info, C.byref(weight))
+            K = list(info)[0]
+            cuts = []
+            for k in range(d):
+                c = np.empty(lib.tw_cg_ncuts(h, k), dtype=np.int64)
+                lib.tw_cg_cuts(h, k, c.ctypes.data_as(_I64))
+                cuts.append(c.tolist())
+            self.table = np.empty(K, dtype=np.float64)
+            lib.tw_lean_take(h, self.table.ctypes.data_as(_F64))
+        finally:
+            lib.tw_cg_free(h)
+        self.overlay = _Overlay(cuts, slab_counts, None, K)
+        self.face_value = self.table
+        self.stats = CellStats(grid_cells=K, faces=K, face_edges=0, slots=len(dense), tree_weight=weight.value,
+                               walk_cost=weight.value, sources=1, pft_nodes=0, pft_entries=0, node_copies=0, path_nodes=0,
+                               locator_words=sum(len(c) for c in cuts), seconds={"native": time.perf_counter() - t0})

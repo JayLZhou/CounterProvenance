@@ -501,6 +501,220 @@ void* tw_cell_graph(int d, int64_t n, const int64_t* ranges, const int64_t* slot
     return gp;
 }
 
+// A large cell graph with one value per grid cell and no persistent tree.  Every wall keeps only its weight (the
+// number of trees that change across it); the walls of the minimum spanning tree get the change of the value; the
+// table is computed along the tree.  About 30 bytes per cell during the build, 8 bytes per cell in the end.
+// status: 0 ok, 1 too many cells (or d * cells does not fit in 32 bits)
+void* tw_lean_table(int d, int64_t n, const int64_t* ranges, const int64_t* slots, const double* values,
+                    const int64_t* slab_counts, double offset, int threads, int64_t max_cells, int64_t* status) {
+    auto* gp = new Graph();
+    Graph& g = *gp;
+    g.d = d;
+    *status = 0;
+    g.cuts.resize(d);
+    g.shape.resize(d);
+    g.strides.resize(d);
+    __int128 K128 = 1;
+    for (int k = 0; k < d; ++k) {
+        auto& c = g.cuts[k];
+        c.reserve(2 * n);
+        for (int64_t i = 0; i < n; ++i) {
+            int64_t lo = ranges[(i * d + k) * 2], hi = ranges[(i * d + k) * 2 + 1];
+            if (lo > 0) c.push_back(lo);
+            if (hi < slab_counts[k]) c.push_back(hi);
+        }
+        std::sort(c.begin(), c.end());
+        c.erase(std::unique(c.begin(), c.end()), c.end());
+        g.shape[k] = static_cast<int64_t>(c.size()) + 1;
+        K128 *= g.shape[k];
+    }
+    if (K128 > max_cells || K128 * d >= (static_cast<__int128>(1) << 32) - 1) {
+        *status = 1;
+        return gp;
+    }
+    g.K = static_cast<int64_t>(K128);
+    const int64_t K = g.K;
+    int64_t stride = 1;
+    for (int k = d - 1; k >= 0; --k) { g.strides[k] = stride; stride *= g.shape[k]; }
+    std::vector<int64_t> local(n * d * 2);
+    for (int64_t i = 0; i < n; ++i)
+        for (int k = 0; k < d; ++k) {
+            const auto& c = g.cuts[k];
+            int64_t lo = ranges[(i * d + k) * 2], hi = ranges[(i * d + k) * 2 + 1];
+            local[(i * d + k) * 2] = std::upper_bound(c.begin(), c.end(), lo) - c.begin();
+            local[(i * d + k) * 2 + 1] = (std::upper_bound(c.begin(), c.end(), hi - 1) - c.begin()) + 1;
+        }
+    const int64_t E = d * K;
+
+    // 1. the weight of every wall: each tree that changes across it contributes one item on each side
+    std::vector<std::atomic<uint16_t>> count(E);
+    for (auto& c : count) c.store(0, std::memory_order_relaxed);
+    parallel_items(n, threads, [&](int64_t i) {
+        thread_local std::vector<int64_t> at;
+        at.resize(d);
+        const int64_t* loc = &local[i * d * 2];
+        for (int k = 0; k < d; ++k) {
+            auto mark = [&](int64_t cell) { count[k * K + cell].fetch_add(1, std::memory_order_relaxed); };
+            if (loc[2 * k] > 0) face_cells(g, loc, k, loc[2 * k], at, mark);
+            if (loc[2 * k + 1] < g.shape[k]) face_cells(g, loc, k, loc[2 * k + 1], at, mark);
+        }
+    });
+
+    // 2. Kruskal: a counting sort of the walls by weight, then a union-find over the grid cells
+    uint16_t maxw = 0;
+    for (int64_t e = 0; e < E; ++e) maxw = std::max(maxw, count[e].load(std::memory_order_relaxed));
+    std::vector<uint64_t> bucket(static_cast<size_t>(maxw) + 2, 0);
+    int64_t n_walls = 0;
+    {
+        std::vector<int64_t> at(d, 0);
+        for (int64_t u = 0; u < K; ++u) {
+            for (int k = 0; k < d; ++k)
+                if (at[k] > 0) { ++bucket[count[k * K + u].load(std::memory_order_relaxed) + 1]; ++n_walls; }
+            for (int k = d - 1; k >= 0; --k) { if (++at[k] < g.shape[k]) break; at[k] = 0; }
+        }
+    }
+    for (size_t b = 1; b < bucket.size(); ++b) bucket[b] += bucket[b - 1];
+    std::vector<uint32_t> order(n_walls);
+    {
+        std::vector<int64_t> at(d, 0);
+        for (int64_t u = 0; u < K; ++u) {
+            for (int k = 0; k < d; ++k)
+                if (at[k] > 0) order[bucket[count[k * K + u].load(std::memory_order_relaxed)]++] = static_cast<uint32_t>(k * K + u);
+            for (int k = d - 1; k >= 0; --k) { if (++at[k] < g.shape[k]) break; at[k] = 0; }
+        }
+    }
+    std::vector<uint32_t> dsu(K);
+    for (int64_t i = 0; i < K; ++i) dsu[i] = static_cast<uint32_t>(i);
+    auto dfind = [&](uint32_t x) {
+        while (dsu[x] != x) { dsu[x] = dsu[dsu[x]]; x = dsu[x]; }
+        return x;
+    };
+    std::vector<uint32_t> tree_edges;
+    tree_edges.reserve(K);
+    double weight = 0.0;
+    for (uint32_t e : order) {
+        int k = static_cast<int>(e / K);
+        int64_t u = e % K;
+        uint32_t a = dfind(static_cast<uint32_t>(u)), b = dfind(static_cast<uint32_t>(u - g.strides[k]));
+        if (a != b) {
+            dsu[a] = b;
+            tree_edges.push_back(e);
+            weight += count[e].load(std::memory_order_relaxed) / 2;
+            if (static_cast<int64_t>(tree_edges.size()) == K - 1) break;
+        }
+    }
+    g.tree_weight = weight;
+    std::vector<uint32_t>().swap(order);
+    std::vector<uint32_t>().swap(dsu);
+    std::vector<std::atomic<uint16_t>>().swap(count);
+
+    // 3. the tree: adjacency, breadth-first order from the first cell, parent wall of every cell
+    std::vector<uint32_t> aptr(K + 1, 0);
+    for (uint32_t e : tree_edges) {
+        int k = static_cast<int>(e / K);
+        int64_t u = e % K;
+        ++aptr[u + 1];
+        ++aptr[u - g.strides[k] + 1];
+    }
+    for (int64_t i = 0; i < K; ++i) aptr[i + 1] += aptr[i];
+    std::vector<uint32_t> adj(aptr[K]);
+    {
+        std::vector<uint32_t> pos(aptr.begin(), aptr.end() - 1);
+        for (uint32_t e : tree_edges) {
+            int k = static_cast<int>(e / K);
+            int64_t u = e % K;
+            adj[pos[u]++] = e;
+            adj[pos[u - g.strides[k]]++] = e;
+        }
+    }
+    const uint32_t NONE = 0xFFFFFFFFu;
+    std::vector<uint32_t> parent_edge(K, NONE), bfs;
+    bfs.reserve(K);
+    bfs.push_back(0);
+    std::vector<uint32_t> parent_cell(K, NONE);
+    for (size_t h = 0; h < bfs.size(); ++h) {
+        uint32_t v = bfs[h];
+        for (uint32_t i = aptr[v]; i < aptr[v + 1]; ++i) {
+            uint32_t e = adj[i];
+            int k = static_cast<int>(e / K);
+            uint32_t up = static_cast<uint32_t>(e % K), low = static_cast<uint32_t>(up - g.strides[k]);
+            uint32_t w = v == up ? low : up;
+            if (e == parent_edge[v]) continue;
+            parent_edge[w] = e;
+            parent_cell[w] = v;
+            bfs.push_back(w);
+        }
+    }
+    std::vector<uint32_t>().swap(aptr);
+    std::vector<uint32_t>().swap(adj);
+
+    // 4. the change of the value across every tree wall: only these walls are looked at
+    std::vector<uint64_t> is_tree(static_cast<size_t>(E) / 64 + 1, 0);
+    for (uint32_t e : tree_edges) is_tree[e >> 6] |= 1ull << (e & 63);
+    std::vector<uint32_t>().swap(tree_edges);
+    std::vector<std::atomic<double>> delta(K);
+    for (auto& x : delta) x.store(0.0, std::memory_order_relaxed);
+    parallel_items(n, threads, [&](int64_t i) {
+        thread_local std::vector<int64_t> at;
+        at.resize(d);
+        const int64_t* loc = &local[i * d * 2];
+        const double v = values[i];
+        for (int k = 0; k < d; ++k) {
+            for (int side = 0; side < 2; ++side) {
+                int64_t coord = side ? loc[2 * k] : loc[2 * k + 1];
+                if (side ? coord <= 0 : coord >= g.shape[k]) continue;
+                const double up_minus_low = side ? v : -v;
+                face_cells(g, loc, k, coord, at, [&](int64_t cell) {
+                    uint64_t e = static_cast<uint64_t>(k) * K + cell;
+                    if ((is_tree[e >> 6] >> (e & 63)) & 1) {
+                        const bool up_is_child = parent_edge[cell] == e;
+                        const int64_t child = up_is_child ? cell : cell - g.strides[k];
+                        const double x = up_is_child ? up_minus_low : -up_minus_low;
+                        double cur = delta[child].load(std::memory_order_relaxed);
+                        while (!delta[child].compare_exchange_weak(cur, cur + x, std::memory_order_relaxed)) {}
+                    }
+                });
+            }
+        }
+    });
+    std::vector<uint64_t>().swap(is_tree);
+    std::vector<uint32_t>().swap(parent_edge);
+
+    // 5. the values along the tree, with a compensated sum
+    std::vector<double> acc_s(K), acc_c(K);
+    {
+        Neumaier a;
+        a.add(offset);
+        for (int64_t i = 0; i < n; ++i) {
+            bool in = true;
+            for (int k = 0; k < d && in; ++k) in = local[(i * d + k) * 2] == 0;
+            if (in) a.add(values[i]);
+        }
+        acc_s[0] = a.s;
+        acc_c[0] = a.c;
+    }
+    g.face_value.resize(K);
+    g.face_value[0] = acc_s[0] + acc_c[0];
+    for (size_t h = 1; h < bfs.size(); ++h) {
+        uint32_t w = bfs[h], v = parent_cell[w];
+        Neumaier a;
+        a.s = acc_s[v];
+        a.c = acc_c[v];
+        a.add(delta[w].load(std::memory_order_relaxed));
+        acc_s[w] = a.s;
+        acc_c[w] = a.c;
+        g.face_value[w] = a.value();
+    }
+    g.n_faces = K;
+    return gp;
+}
+
+void tw_lean_take(void* h, double* table) {
+    auto* g = static_cast<Graph*>(h);
+    std::memcpy(table, g->face_value.data(), g->face_value.size() * sizeof(double));
+    std::vector<double>().swap(g->face_value);
+}
+
 void tw_cg_info(void* h, int64_t* out, double* weight) {
     auto* g = static_cast<Graph*>(h);
     out[0] = g->K; out[1] = g->n_faces; out[2] = g->n_edges; out[3] = g->labels; out[4] = g->labelled;

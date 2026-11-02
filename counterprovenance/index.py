@@ -62,7 +62,7 @@ from .baselines import make_cast
 from .cellindex import CellIndex, Piece
 from .ensemble import BoundEnsemble, Slabs
 from .grouping import greedy_groups, tree_profiles
-from .native_cells import NativeCellIndex
+from .native_cells import LeanCellIndex, NativeCellIndex
 from .semiring import CircuitArena, NodeId
 
 _FIELD = 0xFFFFFFFF
@@ -244,6 +244,7 @@ class ProvenanceIndex:
         cost_word: float = 0.02,
         max_mask_bytes: float = 80e9,
         native_cells: bool = False,
+        lean_cells: bool = False,
         build_threads: int = 1,
     ) -> None:
         """``grouping``: ``"auto"`` (one cell graph for the whole forest when the slab grid of all
@@ -280,6 +281,7 @@ class ProvenanceIndex:
         self.min_group_trees = min_group_trees
         self.max_mask_bytes = max_mask_bytes
         self.native_cells = native_cells
+        self.lean_cells = lean_cells
         self.build_threads = build_threads
         self.layout = layout
         self.exact = exact
@@ -425,9 +427,13 @@ class ProvenanceIndex:
         groups_of_axis: dict[int, list[int]] = {}
         for gi, leaf in enumerate(leaves):
             cells, overlay = leaf.cells, leaf.cells.overlay
-            dense = np.ascontiguousarray(cells.face_value[overlay.face_of_cell], dtype=np.float64)
             table = array("d")
-            table.frombytes(dense.tobytes())
+            if isinstance(cells, LeanCellIndex):
+                table.frombytes(cells.table.tobytes())
+                cells.table = cells.face_value = None
+            else:
+                dense = np.ascontiguousarray(cells.face_value[overlay.face_of_cell], dtype=np.float64)
+                table.frombytes(dense.tobytes())
             self._tables.append(table)
             self._table_cells += len(table)
             shift = 32 * gi
@@ -518,8 +524,9 @@ class ProvenanceIndex:
 
     def _leaf(self, items, axes, depth):
         boxes = self.bound.boxes
-        if self.native_cells and axes:
-            cells = NativeCellIndex(
+        if (self.native_cells or self.lean_cells) and axes:
+            cls = LeanCellIndex if self.lean_cells else NativeCellIndex
+            cells = cls(
                 items=items,
                 ranges=[[self.slabs.ranges[i][a] for a in axes] for i in items],
                 slots=[boxes[i].tree for i in items],
