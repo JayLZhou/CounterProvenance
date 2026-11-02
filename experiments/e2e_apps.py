@@ -516,7 +516,30 @@ def geco_genetic(f, c, q=100, k=5, m_init=20, m_mut=5, max_generations=100):
         if stable:
             break
     top = np.sort(S)[:k]
+    c.last = dict(tau=tau, best=float(top[0]), counterfactual=bool(cf.any()))
     return float(top.sum())
+
+
+def geco_one_query(f, c):
+    """The same request as ``geco_genetic`` in one query on the index: the optimal answer among the same values, against
+    the answer of the genetic search on the same target.  TWIN only."""
+    index = f.fn.index
+    run = Oracle(f.fn)
+    t0 = time.perf_counter()
+    geco_genetic(run, c)
+    genetic_s = time.perf_counter() - t0
+    tau = c.last["tau"]
+    values = [np.unique(c.bg[:, a]) for a in range(c.d)]
+    values = [v[(v >= c.lo[a]) & (v <= c.hi[a])] for a, v in enumerate(values)]
+    t0 = time.perf_counter()
+    t, cost, value = index.nearest(c.u, tau, values, c.scale, k=5)
+    one_s = time.perf_counter() - t0
+    best = float(cost[0]) / c.d if len(cost) else float("inf")
+    check = float(index.query(t[0]).value) if len(cost) else float("nan")
+    c.extra = dict(one_query_us=one_s * 1e6, genetic_query_s=run.query_s, genetic_s=genetic_s, genetic_queries=run.queries,
+                   best_one=best, best_genetic=c.last["best"], genetic_cf=c.last["counterfactual"], tau=tau,
+                   check_value=check, cells=int(index.stats.grid_cells), one_query_ok=bool(len(cost)) and check >= tau - 1e-9)
+    return best
 
 
 def dowhy_feature_relevance(f, c):
@@ -607,7 +630,7 @@ def _mcce(f, c, k):
     return total
 
 
-APPS = dict(geco_genetic=geco_genetic, dowhy_feature_relevance=dowhy_feature_relevance, kernel_shap=kernel_shap, lime_tabular=lime_tabular,
+APPS = dict(geco_genetic=geco_genetic, geco_one_query=geco_one_query, dowhy_feature_relevance=dowhy_feature_relevance, kernel_shap=kernel_shap, lime_tabular=lime_tabular,
             mcce_1000=lambda f, c: _mcce(f, c, 1000), mcce_10000=lambda f, c: _mcce(f, c, 10_000),
             mcce_100000=lambda f, c: _mcce(f, c, 100_000), what_if_surface=what_if_surface, what_if_slider=what_if_slider, dose_response=dose_response,
             recourse_genetic=recourse_genetic, recourse_minimal=recourse_minimal, optimal_evolution=optimal_evolution,
@@ -699,6 +722,8 @@ def main() -> None:
             finally:
                 signal.alarm(0)
             r.update(run_s=time.perf_counter() - t0, query_s=f.query_s, queries=f.queries, calls=f.calls)
+            r.update(getattr(ctx, "extra", {}))
+            ctx.extra = {}
             if f.single:
                 r.update(single_p50_us=float(np.median(f.single)) * 1e6, single_p99_us=float(np.quantile(f.single, 0.99)) * 1e6)
             r["peak_gb"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1048576

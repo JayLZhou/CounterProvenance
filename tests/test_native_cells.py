@@ -107,5 +107,25 @@ class NativeCells(unittest.TestCase):
                 self.assertLess(np.abs(index.query_batch(Q, chunk=70) - one).max(), 1e-9)
 
 
+    def test_nearest_is_optimal(self):
+        for bound in self.binds():
+            if bound.d > 2:
+                continue
+            index = ProvenanceIndex(bound, grouping="tables", budget=1 << 22, one_cells=1 << 22)
+            rng = np.random.default_rng(2)
+            values = [rng.normal(size=40) for _ in range(bound.d)]
+            scale = rng.uniform(0.5, 2.0, size=bound.d)
+            u = rng.normal(size=bound.d)
+            axes = [np.r_[values[a], u[a]] for a in range(bound.d)]
+            grid = np.array(np.meshgrid(*axes, indexing="ij")).reshape(bound.d, -1).T
+            y = np.array([index.query(t).value for t in grid])
+            brute = (np.abs(grid - u) / scale).sum(axis=1)
+            for tau in np.quantile(y, [0.5, 0.9, 0.99]) - 1e-9:     # below a value, whose sum may round differently
+                t, cost, value = index.nearest(u, tau, values, scale, k=1)
+                self.assertAlmostEqual(cost[0], brute[y >= tau].min(), places=9)
+                self.assertGreaterEqual(index.query(t[0]).value, tau - 1e-9)
+                self.assertAlmostEqual(index.query(t[0]).value, value[0], places=9)
+
+
 if __name__ == "__main__":
     unittest.main()
