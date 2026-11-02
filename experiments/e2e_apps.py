@@ -538,7 +538,8 @@ def geco_one_query(f, c):
     check = float(index.query(t[0]).value) if len(cost) else float("nan")
     c.extra = dict(one_query_us=one_s * 1e6, genetic_query_s=run.query_s, genetic_s=genetic_s, genetic_queries=run.queries,
                    best_one=best, best_genetic=c.last["best"], genetic_cf=c.last["counterfactual"], tau=tau,
-                   check_value=check, cells=int(index.stats.grid_cells), one_query_ok=bool(len(cost)) and check >= tau - 1e-9)
+                   check_value=check, cells=int(index.stats.grid_cells), one_query_ok=bool(len(cost)) and check >= tau - 1e-9,
+                   one_query_proven=index.nearest_proven)
     return best
 
 

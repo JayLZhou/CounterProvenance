@@ -111,6 +111,7 @@ class NativeCells(unittest.TestCase):
         for bound in self.binds():
             if bound.d > 2:
                 continue
+            many = ProvenanceIndex(bound, grouping="tables", budget=16, one_cells=4, np_read_groups=2)
             index = ProvenanceIndex(bound, grouping="tables", budget=1 << 22, one_cells=1 << 22)
             rng = np.random.default_rng(2)
             values = [rng.normal(size=40) for _ in range(bound.d)]
@@ -125,6 +126,10 @@ class NativeCells(unittest.TestCase):
                 self.assertAlmostEqual(cost[0], brute[y >= tau].min(), places=9)
                 self.assertGreaterEqual(index.query(t[0]).value, tau - 1e-9)
                 self.assertAlmostEqual(index.query(t[0]).value, value[0], places=9)
+                self.assertAlmostEqual(many.nearest(u, tau, values, scale, k=1)[1][0], cost[0], places=9)
+                t5, cost5, _ = index.nearest(u, tau, values, scale, k=5)
+                self.assertAlmostEqual(cost5[0], cost[0], places=12)
+                self.assertTrue(np.all(np.diff(cost5) >= 0))
 
 
 if __name__ == "__main__":

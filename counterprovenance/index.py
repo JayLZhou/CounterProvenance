@@ -507,46 +507,75 @@ class ProvenanceIndex:
             X = np.where(np.abs(X) <= ens.zero_threshold, 0.0, X)
         return X
 
-    def nearest(self, u: Sequence[float], tau: float, values: Sequence[np.ndarray], scale: Sequence[float], k: int = 1):
-        """The ``k`` cheapest interventions with outcome at least ``tau``, one query on the index: no search and no
-        candidates.  The cost is the sum over the axes of ``|t_a - u_a| / scale_a``, and ``t_a`` is one of ``values[a]``
-        or ``u_a``.  The cost is separable, so that every grid cell has one cheapest point, the nearest value of every
-        axis inside the cell; the answer is optimal among all grid cells, at most one per cell.  One group of trees only:
-        with several groups, the value of a point is a sum over tables that overlap in their axes.
-        Returns ``(interventions, costs, values)``, cheapest first; empty if no cell reaches ``tau``."""
-        if not self._fast or len(self._fast_leaves) != 1:
-            raise ValueError(f"nearest needs one group of trees, not {len(self._fast_leaves)}")
-        leaf = self._fast_leaves[0]
-        table = self._ntable if self._nbase is not None else np.frombuffer(self._tables[0], dtype=np.float64)
-        hits = np.flatnonzero(table >= tau - self._const)
+    def nearest(self, u: Sequence[float], tau: float, values: Sequence[np.ndarray], scale: Sequence[float], k: int = 1,
+                max_points: int = 5_000_000):
+        """The ``k`` cheapest interventions with outcome at least ``tau``, without candidates and without any search over
+        the model.  The cost is the sum over the axes of ``|t_a - u_a| / scale_a``, and ``t_a`` is one of ``values[a]`` or
+        ``u_a``.  The cost is separable, so that every slab of an axis has one cheapest value, and only the points within
+        a radius of ``u`` are read; the radius doubles until ``k`` of them reach ``tau``, which makes them the optimum.
+        This holds for any number of groups: one group reads its table, several groups add their tables by
+        :meth:`query_batch`.  ``self.nearest_proven`` is False if the points within a radius exceed ``max_points``; the
+        answer is then the best one found so far.
+        Returns ``(interventions, costs, values)``, cheapest first; empty if no point reaches ``tau``."""
+        if not self._fast:
+            raise ValueError("nearest needs the compiled index")
         u = np.asarray(u, dtype=np.float64)
-        cost = np.zeros(len(hits))
-        chosen = []
-        overlay = leaf.cells.overlay
-        for pos, a in enumerate(leaf.axes):
-            cuts = np.asarray(overlay.cuts[pos], dtype=np.int64)
-            if not len(cuts):
-                continue
+        self.nearest_proven = True
+        axes = []                                       # per axis: its cheapest cost and value of every slab
+        for a in sorted(self._groups_of_axis):
             vals = np.r_[np.asarray(values[a], dtype=np.float64), u[a]]
             read = self._read_as_model(vals.reshape(-1, 1)).ravel()
             th = np.asarray(self.slabs.thresholds[a], dtype=np.float64)
-            rank = np.searchsorted(cuts, np.searchsorted(th, read, side="left"), side="right")
+            slab = np.searchsorted(th, read, side="left")
             d = np.abs(vals - u[a]) / scale[a]
-            order = np.argsort(-d, kind="stable")       # the last write of a rank is its cheapest value
-            best_cost, best_value = np.full(len(cuts) + 1, np.inf), np.full(len(cuts) + 1, np.nan)
-            best_cost[rank[order]], best_value[rank[order]] = d[order], vals[order]
-            at = (hits // int(overlay.strides[pos])) % (len(cuts) + 1)
-            cost += best_cost[at]
-            chosen.append((a, best_value[at]))
-        ok = np.flatnonzero(np.isfinite(cost))
-        if not len(ok):
+            order = np.argsort(-d, kind="stable")       # the last write of a slab is its cheapest value
+            best_cost, best_value = np.full(self.slabs.counts[a], np.inf), np.full(self.slabs.counts[a], np.nan)
+            best_cost[slab[order]], best_value[slab[order]] = d[order], vals[order]
+            keep = np.flatnonzero(np.isfinite(best_cost))
+            # slabs of one rank in all groups give the same answer: the cheapest one stands for them
+            ranks = np.stack([c for _, ax, c in self._contrib if ax == a], axis=1)[keep]
+            _, stand = np.unique(ranks[np.argsort(best_cost[keep], kind="stable")], axis=0, return_index=True)
+            pick = np.argsort(best_cost[keep], kind="stable")[stand]
+            pick = pick[np.argsort(best_cost[keep][pick], kind="stable")]
+            axes.append((a, best_cost[keep][pick], best_value[keep][pick]))
+        if not axes:
+            value = self.query_batch(u[None, :])
+            if value[0] >= tau:
+                return u[None, :], np.zeros(1), value
             return np.zeros((0, len(u))), np.zeros(0), np.zeros(0)
-        top = ok[np.argpartition(cost[ok], min(k, len(ok)) - 1)[:k]]
-        top = top[np.argsort(cost[top], kind="stable")]
-        t = np.tile(u, (len(top), 1))
-        for a, picked in chosen:
-            t[:, a] = picked[top]
-        return t, cost[top], self._const + table[hits[top]]
+        positive = [c[c > 0] for _, c, _ in axes]
+        radius = min((p.min() for p in positive if len(p)), default=1.0)
+        largest = sum(float(c.max()) for _, c, _ in axes)
+        best = None
+        while True:
+            # the points of cost at most ``radius``, built axis by axis: the costs are sorted, and a partial sum that
+            # exceeds the radius cannot come back
+            costs, at = np.zeros(1), np.zeros((1, 0), dtype=np.int64)
+            too_many = False
+            for _, c, _ in axes:
+                n = np.searchsorted(c, radius - costs, side="right")
+                if int(n.sum()) > max_points:
+                    too_many = True
+                    break
+                rows = np.repeat(np.arange(len(costs)), n)
+                column = np.concatenate([np.arange(m) for m in n]) if len(rows) else np.zeros(0, dtype=np.int64)
+                costs = costs[rows] + c[column]
+                at = np.c_[at[rows], column]
+            if too_many:
+                self.nearest_proven = False
+                break
+            T = np.tile(u, (len(costs), 1))
+            for pos, (a, _, picked) in enumerate(axes):
+                T[:, a] = picked[at[:, pos]]
+            y = self.query_batch(T)
+            hit = np.flatnonzero(y >= tau)
+            if len(hit):
+                top = hit[np.argsort(costs[hit], kind="stable")[:k]]
+                best = (T[top], costs[top], y[top])
+            if len(hit) >= k or radius >= largest:
+                break
+            radius *= 2.0
+        return best if best is not None else (np.zeros((0, len(u))), np.zeros(0), np.zeros(0))
 
     def query_batch(self, T: np.ndarray, chunk: int = 4096) -> np.ndarray:
         """The values of many interventions (one per row): one vector operation per axis and group,
