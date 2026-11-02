@@ -35,6 +35,7 @@ def main() -> None:
     ap.add_argument("--threads", type=int, default=8)
     ap.add_argument("--native-cells", action="store_true")
     ap.add_argument("--lean", action="store_true")
+    ap.add_argument("--grouping", default="auto")
     ap.add_argument("--tag", required=True)
     args = ap.parse_args()
     d0 = Path(args.data) / args.dataset
@@ -55,7 +56,7 @@ def main() -> None:
         bound = bind_scm(scm, unit, T, y, threads=args.threads)
         compile_s = time.perf_counter() - t0
         t0 = time.perf_counter()
-        index = ProvenanceIndex(bound, grouping="auto", budget=int(args.budget), grid_cap=int(args.grid_cap),
+        index = ProvenanceIndex(bound, grouping=args.grouping, budget=int(args.budget), grid_cap=int(args.grid_cap),
                                 one_cells=int(args.one_cells), max_leaf_cells=int(args.max_leaf_cells),
                                 mask_ratio=args.mask_ratio, max_mask_bytes=float("inf"),
                                 native_cells=args.native_cells, lean_cells=args.lean, build_threads=args.threads)
