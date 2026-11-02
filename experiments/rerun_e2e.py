@@ -14,9 +14,12 @@ jobs = [(ds, f, d, u) for u in (0, 1, 2) for ds in SETS for d in (1, 2, 4, 8, 16
 
 # the applications on the tables of the papers they come from
 GENETIC = ["recourse_genetic"]
-OWN_APPS = dict(german_mint=["recourse_minimal"] + GENETIC, compas=GENETIC, adult=GENETIC, german_full=GENETIC, heloc=GENETIC,
-                give_credit=GENETIC, bike=["shapley_attribution"], boston=["dose_response"], white_wine=["dose_response"],
-                pima=["dose_response"])
+RELEVANCE = ["dowhy_feature_relevance"]            # DoWhy-GCM's own API, on the tables of the recourse and attribution papers
+MCCE = ["mcce_1000", "mcce_10000", "mcce_100000"]  # k = 1,000 by default, up to 100,000 in the paper
+OWN_APPS = dict(german_mint=["recourse_minimal"] + GENETIC + RELEVANCE, compas=GENETIC + RELEVANCE,
+                adult=GENETIC + MCCE + RELEVANCE, german_full=GENETIC + MCCE + RELEVANCE, heloc=GENETIC + MCCE + RELEVANCE,
+                give_credit=GENETIC + MCCE + RELEVANCE, bike=["shapley_attribution"] + RELEVANCE,
+                boston=["dose_response"], white_wine=["dose_response"], pima=["dose_response"])
 
 
 def ours_gb():

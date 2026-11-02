@@ -2,8 +2,8 @@
 """End-to-end applications that issue many counterfactual queries on one unit, with TWIN embedded or with DoWhy-GCM.
 
 Every application only sees an oracle ``f(Q) -> values`` (one row per intervention), so that it is the same code on
-both backends, and both answer a batch at once, in one thread.  The reported time is the run of the application; the
-build of TWIN is recorded separately.  DoWhy-GCM gets its most favorable use: the noise is abducted once, and every
+both backends, and both answer a batch at once, in one thread.  The reported time is that of the queries (``query_s``;
+``run_s`` adds the application's own work); the build of TWIN is recorded separately.  DoWhy-GCM gets its most favorable use: the noise is abducted once, and every
 call passes the whole batch of the application.
 Output: ``results/e2e_<dataset>_<family>_d<d>_u<unit>.csv``, one row per (application, backend)."""
 
@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import differential_evolution
 
-from common import write_csv
+from common import RESULTS, write_csv
 from counterprovenance import ProvenanceIndex
 from counterprovenance.scm import Infeasible, ancestors, bind_scm, fit_scm, parents_of
 from scm_bench import choose_treatments, zoo
@@ -41,18 +41,19 @@ class Oracle:
     """Counts the queries and calls and keeps the latency of the calls with one row."""
 
     def __init__(self, fn):
-        self.fn, self.queries, self.calls, self.single = fn, 0, 0, []
+        self.fn, self.queries, self.calls, self.single, self.query_s = fn, 0, 0, [], 0.0
 
     def __call__(self, Q: np.ndarray) -> np.ndarray:
         Q = np.atleast_2d(Q)
         self.queries += len(Q)
         self.calls += 1
+        t0 = time.perf_counter()
+        y = self.fn(Q)
+        spent = time.perf_counter() - t0
+        self.query_s += spent
         if len(Q) == 1:
-            t0 = time.perf_counter()
-            y = self.fn(Q)
-            self.single.append(time.perf_counter() - t0)
-            return y
-        return self.fn(Q)
+            self.single.append(spent)
+        return y
 
 
 class Twin:
@@ -90,14 +91,15 @@ class DoWhy:
 class Ctx:
     """What an application knows about a unit: the box of the interventions, the factual point and the scales."""
 
-    def __init__(self, df, T, row, y, seed, increase_only=()):
+    def __init__(self, df, T, row, y, seed, increase_only=(), fixed=()):
         self.T, self.d = T, len(T)
+        self.df, self.row, self.y, self.fixed, self._samplers = df, row, y, fixed, None
         self.lo, self.hi = df[T].quantile(0.01).to_numpy(), df[T].quantile(0.99).to_numpy()
         self.u = np.clip(row[T].to_numpy(dtype=float)[0], self.lo, self.hi)
         self.lo = np.array([u if name in increase_only else lo for name, u, lo in zip(T, self.u, self.lo)])
         self.hi = np.where(self.hi > self.lo, self.hi, self.lo + 1.0)
         self.scale = np.maximum(df[T].std().to_numpy(), 1e-9)
-        self.bg = df[T].sample(min(len(df), 2000), random_state=seed).to_numpy(dtype=float)
+        self.bg = df[T].sample(min(len(df), 5000), random_state=seed).to_numpy(dtype=float)
         self.seed = seed
 
 
@@ -305,7 +307,61 @@ def monte_carlo_risk(f, c, n=200_000):
     return float(y.mean() + np.quantile(y, 0.05) + np.quantile(y, 0.95))
 
 
-APPS = dict(what_if_surface=what_if_surface, what_if_slider=what_if_slider, dose_response=dose_response,
+def dowhy_feature_relevance(f, c):
+    """The relevance of the intervened variables for the unit by DoWhy-GCM itself (``feature_relevance_sample``, Janzing
+    et al.), with its defaults: at most 5,000 background samples per coalition, all coalitions up to five variables,
+    otherwise 25 permutations.  The backend is its ``prediction_method``."""
+    from dowhy.gcm.feature_relevance import feature_relevance_sample
+    from dowhy.gcm.shapley import ShapleyConfig
+
+    np.random.seed(c.seed)
+    phi = feature_relevance_sample(f, c.bg, c.u[None, :], subset_scoring_func=lambda a, b: np.mean(a) - b,
+                                   average_set_function=True, shapley_config=ShapleyConfig(n_jobs=1))
+    return float(np.abs(phi).sum())
+
+
+def _mcce(f, c, k):
+    """MCCE (Redelmeier et al., 2021): k candidates for the unit from an autoregressive model whose conditionals are
+    decision trees, one query per candidate; the closest candidate that reaches each target."""
+    from sklearn.tree import DecisionTreeRegressor
+
+    free = [j for j, name in enumerate(c.T) if name not in c.fixed]
+    rest = [n for n in c.df.columns if n not in c.T and n != c.y]
+    if c._samplers is None:
+        train = c.df.sample(min(len(c.df), 10_000), random_state=c.seed)
+        Z = train[rest].to_numpy(dtype=float) if rest else np.zeros((len(train), 0))
+        tt = train[c.T].to_numpy(dtype=float)
+        c._samplers = {}
+        for i, j in enumerate(free):
+            cond = np.hstack((Z, tt[:, free[:i]]))
+            if cond.shape[1] == 0:
+                cond = np.zeros((len(train), 1))
+            tree = DecisionTreeRegressor(min_samples_leaf=5, random_state=0).fit(cond, tt[:, j])
+            leaves = tree.apply(cond)
+            order = np.argsort(leaves, kind="stable")
+            ids, starts = np.unique(leaves[order], return_index=True)
+            c._samplers[j] = (tree, ids, starts, np.diff(np.r_[starts, len(order)]), tt[order, j])
+    rng = np.random.default_rng([c.seed, k])
+    Q = np.tile(c.u, (k, 1))
+    z = np.tile(c.row[rest].to_numpy(dtype=float)[0], (k, 1)) if rest else np.zeros((k, 0))
+    for i, j in enumerate(free):
+        tree, ids, starts, sizes, values = c._samplers[j]
+        cond = np.hstack((z, Q[:, free[:i]]))
+        if cond.shape[1] == 0:
+            cond = np.zeros((k, 1))
+        at = np.searchsorted(ids, tree.apply(cond))
+        Q[:, j] = values[starts[at] + (rng.random(k) * sizes[at]).astype(np.int64)]
+    y = f(Q)
+    cost = (np.abs(Q - c.u) / c.scale).sum(axis=1)
+    total = 0.0
+    for tau in np.quantile(y, [0.6, 0.7, 0.8, 0.9, 0.95]):
+        total += float(cost[y >= tau].min())
+    return total
+
+
+APPS = dict(dowhy_feature_relevance=dowhy_feature_relevance,
+            mcce_1000=lambda f, c: _mcce(f, c, 1000), mcce_10000=lambda f, c: _mcce(f, c, 10_000),
+            mcce_100000=lambda f, c: _mcce(f, c, 100_000), what_if_surface=what_if_surface, what_if_slider=what_if_slider, dose_response=dose_response,
             recourse_genetic=recourse_genetic, recourse_minimal=recourse_minimal, optimal_evolution=optimal_evolution,
             optimal_candidates=optimal_candidates, tipping_points=tipping_points,
             shapley_attribution=shapley_attribution, sobol_sensitivity=sobol_sensitivity,
@@ -350,7 +406,7 @@ def main() -> None:
     T = treatments(scm, y, args.d, meta)
     if T is None:
         return
-    ctx = Ctx(df, T, row, y, 2028 + args.unit, meta.get("increase_only", ()))
+    ctx = Ctx(df, T, row, y, 2028 + args.unit, meta.get("increase_only", ()), meta.get("mcce_immutable", ()))
     tag = f"{args.dataset}_{args.family}_d{args.d}_u{args.unit}"
     backends = {}
     if "twin" in args.backends:
@@ -360,8 +416,14 @@ def main() -> None:
         gcm, cg = dowhy_model(scm, edges)
         backends["dowhy"] = lambda: DoWhy(gcm, cg, row, T, y)
     signal.signal(signal.SIGALRM, _alarm)
-    rows = []
+    # a job that ran some of the applications keeps them
+    path = RESULTS / f"e2e_{tag}.csv"
+    rows = pd.read_csv(path).to_dict("records") if path.exists() else []
+    done = {(r["backend"], r["app"]) for r in rows if r["status"] == "ok"}
     for name, make in backends.items():
+        apps = [a for a in args.apps.split(",") if (name, a) not in done]
+        if not apps:
+            continue
         base = dict(dataset=args.dataset, family=args.family, d=args.d, unit=args.unit, backend=name, fit_s=fit_s,
                     mechanisms=len(scm.models), nodes=len(set(sum(map(list, edges), []))))
         try:
@@ -370,7 +432,7 @@ def main() -> None:
             rows.append(dict(base, app="-", status=f"infeasible: {str(e)[:60]}"))
             write_csv(f"e2e_{tag}.csv", rows)
             continue
-        for app in args.apps.split(","):
+        for app in apps:
             f = Oracle(backend)
             r = dict(base, app=app, build_s=backend.build_s, **backend.info)
             signal.alarm(args.timeout)
@@ -382,7 +444,7 @@ def main() -> None:
                 r["status"] = "timeout"
             finally:
                 signal.alarm(0)
-            r.update(run_s=time.perf_counter() - t0, queries=f.queries, calls=f.calls)
+            r.update(run_s=time.perf_counter() - t0, query_s=f.query_s, queries=f.queries, calls=f.calls)
             if f.single:
                 r.update(single_p50_us=float(np.median(f.single)) * 1e6, single_p99_us=float(np.quantile(f.single, 0.99)) * 1e6)
             r["peak_gb"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1048576

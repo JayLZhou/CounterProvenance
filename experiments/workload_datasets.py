@@ -111,6 +111,11 @@ def pima(out, args):
     return ice_table(out, 37, "pima", "class", "skin", "OpenML 37")
 
 
+# the variables MCCE keeps fixed (Redelmeier et al., 2021, Experiment 1)
+MCCE_IMMUTABLE = dict(adult=["age", "is_male"], give_credit=["age"], heloc=["ExternalRiskEstimate"],
+                      german_full=["purpose", "age", "personal_status"])
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--out", required=True)
@@ -125,6 +130,11 @@ def main() -> None:
             print(f"OK   {name:12s} rows={m['rows']:>7,} nodes={m['nodes']:>3} edges={m['edges']:>3} target={m['target']} anc={m['target_ancestors']} actionable={m['actionable']}", flush=True)
         except Exception as e:  # noqa: BLE001
             print(f"FAIL {name:12s} {type(e).__name__}: {e}", flush=True)
+    for name, fixed in MCCE_IMMUTABLE.items():
+        path = out / name / "meta.json"
+        meta = json.loads(path.read_text())
+        meta["mcce_immutable"] = fixed
+        path.write_text(json.dumps(meta, indent=2))
 
 
 if __name__ == "__main__":
