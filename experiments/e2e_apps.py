@@ -24,7 +24,7 @@ from scipy.optimize import differential_evolution
 
 from common import RESULTS, write_csv
 from counterprovenance import ProvenanceIndex
-from counterprovenance.scm import Infeasible, ancestors, bind_scm, fit_scm, parents_of
+from counterprovenance.scm import Infeasible, ancestors, bind_scm, fit_scm, parents_of, relevant_nodes
 from scm_bench import choose_treatments, zoo
 from scm_full import dowhy_model
 
@@ -86,6 +86,26 @@ class DoWhy:
         iv = {name: (lambda _v, it=it: next(it)) for name, it in zip(self.T, its)}
         nd = pd.DataFrame(np.repeat(self.noise.to_numpy(), len(Q), axis=0), columns=self.noise.columns)
         return self.gcm.counterfactual_samples(self.cg, iv, noise_data=nd)[self.y].to_numpy()
+
+
+class Online:
+    """The online evaluation at its leanest: the noise once, then the libraries' own ``predict`` over the whole batch,
+    only for the mediators and the outcome, in topological order."""
+
+    def __init__(self, scm, unit, T, y):
+        self.scm, self.unit, self.T, self.y = scm, dict(unit), T, y
+        t0 = time.perf_counter()
+        self.order = relevant_nodes(scm.parents, T, y)
+        self.observed = {n: scm.predict(n, self.unit) for n in self.order}
+        self.build_s = time.perf_counter() - t0
+        self.info = {}
+
+    def __call__(self, Q):
+        values = {name: Q[:, j] for j, name in enumerate(self.T)}
+        for node in self.order:
+            X = np.column_stack([values.get(p, np.full(len(Q), float(self.unit[p]))) for p in self.scm.parents[node]])
+            values[node] = float(self.unit[node]) + (self.scm.models[node].predict(X) - self.observed[node])
+        return values[self.y]
 
 
 class Ctx:
@@ -320,6 +340,43 @@ def dowhy_feature_relevance(f, c):
     return float(np.abs(phi).sum())
 
 
+def kernel_shap(f, c, background=100):
+    """KernelSHAP with the defaults of the shap library: 2 d + 2048 coalitions (all of them when fewer), each evaluated
+    on 100 background rows, and the weighted least squares of the Shapley kernel."""
+    d = c.d
+    if d < 2:
+        return 0.0
+    rng = np.random.default_rng(c.seed)
+    n = min(2 * d + 2048, 2 ** d - 2) if d <= 30 else 2 * d + 2048
+    bg = c.bg[:background]
+    if 2 ** d - 2 <= n:
+        masks = np.array([[(i >> j) & 1 for j in range(d)] for i in range(1, 2 ** d - 1)], dtype=bool)
+    else:
+        sizes = np.arange(1, d)
+        p = (d - 1) / (sizes * (d - sizes))
+        chosen = rng.choice(sizes, size=n, p=p / p.sum())
+        masks = np.zeros((n, d), dtype=bool)
+        for i, k in enumerate(chosen):
+            masks[i, rng.choice(d, size=k, replace=False)] = True
+    Q = np.tile(bg, (len(masks), 1))
+    Q[np.repeat(masks, len(bg), axis=0)] = np.repeat(c.u[None, :], len(masks) * len(bg), axis=0)[np.repeat(masks, len(bg), axis=0)]
+    v = f(Q).reshape(len(masks), len(bg)).mean(axis=1)
+    base = float(f(bg).mean())
+    phi, *_ = np.linalg.lstsq(masks.astype(float), v - base, rcond=None)
+    return float(np.abs(phi).sum())
+
+
+def lime_tabular(f, c, n=5000):
+    """LIME with the default of its library: 5,000 perturbed rows around the unit, and a weighted ridge regression."""
+    rng = np.random.default_rng(c.seed)
+    Q = np.clip(rng.normal(c.u, c.scale, size=(n, c.d)), c.lo, c.hi)
+    y = f(Q)
+    Z = (Q - c.u) / c.scale
+    w = np.exp(-(Z ** 2).sum(axis=1) / (0.75 * math.sqrt(c.d)) ** 2)
+    A = Z.T @ (Z * w[:, None]) + np.eye(c.d)
+    return float(np.abs(np.linalg.solve(A, Z.T @ (w * (y - y.mean())))).sum())
+
+
 def _mcce(f, c, k):
     """MCCE (Redelmeier et al., 2021): k candidates for the unit from an autoregressive model whose conditionals are
     decision trees, one query per candidate; the closest candidate that reaches each target."""
@@ -359,7 +416,7 @@ def _mcce(f, c, k):
     return total
 
 
-APPS = dict(dowhy_feature_relevance=dowhy_feature_relevance,
+APPS = dict(dowhy_feature_relevance=dowhy_feature_relevance, kernel_shap=kernel_shap, lime_tabular=lime_tabular,
             mcce_1000=lambda f, c: _mcce(f, c, 1000), mcce_10000=lambda f, c: _mcce(f, c, 10_000),
             mcce_100000=lambda f, c: _mcce(f, c, 100_000), what_if_surface=what_if_surface, what_if_slider=what_if_slider, dose_response=dose_response,
             recourse_genetic=recourse_genetic, recourse_minimal=recourse_minimal, optimal_evolution=optimal_evolution,
@@ -386,7 +443,7 @@ def main() -> None:
     ap.add_argument("--unit", type=int, default=0)
     ap.add_argument("--budgets", default="2e7")
     ap.add_argument("--apps", default=",".join(APPS))
-    ap.add_argument("--backends", default="twin,dowhy")
+    ap.add_argument("--backends", default="twin,online,dowhy")
     ap.add_argument("--train-rows", type=int, default=50_000)
     ap.add_argument("--build-threads", type=int, default=4)
     ap.add_argument("--timeout", type=int, default=3600, help="seconds per application and backend")
@@ -412,6 +469,8 @@ def main() -> None:
     if "twin" in args.backends:
         for b in args.budgets.split(","):
             backends[f"twin_{b}"] = lambda b=b: Twin(scm, unit, T, y, float(b), args.build_threads)
+    if "online" in args.backends:
+        backends["online"] = lambda: Online(scm, unit, T, y)
     if "dowhy" in args.backends:
         gcm, cg = dowhy_model(scm, edges)
         backends["dowhy"] = lambda: DoWhy(gcm, cg, row, T, y)

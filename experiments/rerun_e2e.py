@@ -16,8 +16,9 @@ jobs = [(ds, f, d, u) for u in (0, 1, 2) for ds in SETS for d in (1, 2, 4, 8, 16
 GENETIC = ["recourse_genetic"]
 RELEVANCE = ["dowhy_feature_relevance"]            # DoWhy-GCM's own API, on the tables of the recourse and attribution papers
 MCCE = ["mcce_1000", "mcce_10000", "mcce_100000"]  # k = 1,000 by default, up to 100,000 in the paper
+EXPLAIN = ["kernel_shap", "lime_tabular"]          # the defaults of the shap and lime libraries
 OWN_APPS = dict(german_mint=["recourse_minimal"] + GENETIC + RELEVANCE, compas=GENETIC + RELEVANCE,
-                adult=GENETIC + MCCE + RELEVANCE, german_full=GENETIC + MCCE + RELEVANCE, heloc=GENETIC + MCCE + RELEVANCE,
+                adult=GENETIC + MCCE + RELEVANCE + EXPLAIN, german_full=GENETIC + MCCE + RELEVANCE, heloc=GENETIC + MCCE + RELEVANCE,
                 give_credit=GENETIC + MCCE + RELEVANCE, bike=["shapley_attribution"] + RELEVANCE,
                 boston=["dose_response"], white_wine=["dose_response"], pima=["dose_response"])
 
@@ -37,7 +38,7 @@ def finished(ds, f, d, u):
     if not path.exists():
         return False
     df = pd.read_csv(path)
-    return all(((df.backend == "dowhy") & (df.app == a)).any() and
+    return all(((df.backend == "dowhy") & (df.app == a)).any() and ((df.backend == "online") & (df.app == a)).any() and
                (df.backend.astype(str).str.startswith("twin") & (df.app == a)).any() for a in OWN_APPS.get(ds, [df.app.iloc[0]]))
 
 
