@@ -7,7 +7,9 @@ german_full   German Credit with its 20 features (DiCE, Mothilal et al., FAT* 20
 adult, compas the published graphs of Nabi & Shpitser (already built by causal_datasets.py), as in DiCE and CARLA
 give_credit   Give Me Some Credit (CARLA), graph by PC
 heloc         HELOC (CARLA), graph by PC
-bike          daily bike rentals with the causal chain of Heskes et al. (NeurIPS 2020): trend, season, weather"""
+bike          daily bike rentals with the causal chain of Heskes et al. (NeurIPS 2020): trend, season, weather
+boston, white_wine, pima  the ICE plots of Goldstein et al. (JCGS 2015): a predictive model without a causal graph
+              (all features -> outcome), one feature varied per plot"""
 
 from __future__ import annotations
 
@@ -89,6 +91,26 @@ def bike(out, args):
     return workload(out, "bike", source="Causal Shapley values (Heskes et al., NeurIPS 2020)")
 
 
+def ice_table(out, did, name, target, feature, source):
+    df, _ = openml_parquet(did, out / "_openml")
+    t = numeric(df)
+    edges = [(c, target) for c in t.columns if c != target]
+    save(out, name, t, edges, target, "published", source, "no causal graph in the paper: all features -> outcome")
+    return workload(out, name, only=(feature,), source="ICE (Goldstein et al., JCGS 2015)")
+
+
+def boston(out, args):
+    return ice_table(out, 531, "boston", "MEDV", "AGE", "OpenML 531")
+
+
+def white_wine(out, args):
+    return ice_table(out, 40498, "white_wine", "Class", "V9", "OpenML 40498 (V9 is pH)")
+
+
+def pima(out, args):
+    return ice_table(out, 37, "pima", "class", "skin", "OpenML 37")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--out", required=True)
@@ -97,16 +119,12 @@ def main() -> None:
     args = ap.parse_args()
     out = Path(args.out)
     (out / "_openml").mkdir(parents=True, exist_ok=True)
-    for name, fn in dict(german_mint=german_mint, german_full=german_full, give_credit=give_credit, heloc=heloc, bike=bike).items():
+    for name, fn in dict(boston=boston, white_wine=white_wine, pima=pima).items():
         try:
             m = fn(out, args)
             print(f"OK   {name:12s} rows={m['rows']:>7,} nodes={m['nodes']:>3} edges={m['edges']:>3} target={m['target']} anc={m['target_ancestors']} actionable={m['actionable']}", flush=True)
         except Exception as e:  # noqa: BLE001
             print(f"FAIL {name:12s} {type(e).__name__}: {e}", flush=True)
-    for name, kw in dict(adult=dict(immutable=("is_male", "native_us"), increase_only=("age",), source="DiCE, CARLA"),
-                         compas=dict(immutable=("is_male", "is_caucasian"), increase_only=("age",), source="DiCE, CARLA")).items():
-        m = workload(out, name, **kw)
-        print(f"OK   {name:12s} rows={m['rows']:>7,} nodes={m['nodes']:>3} anc={m['target_ancestors']} actionable={m['actionable']}", flush=True)
 
 
 if __name__ == "__main__":

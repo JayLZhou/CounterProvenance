@@ -12,6 +12,13 @@ jobs = [(ds, f, d, u) for u in (0, 1, 2) for ds in SETS for d in (1, 2, 4, 8, 16
         for f in ("LGBM", "XGB", "HGB", "RF", "GBR")]
 
 
+# the applications on the tables of the papers they come from
+GENETIC = ["recourse_genetic"]
+OWN_APPS = dict(german_mint=["recourse_minimal"] + GENETIC, compas=GENETIC, adult=GENETIC, german_full=GENETIC, heloc=GENETIC,
+                give_credit=GENETIC, bike=["shapley_attribution"], boston=["dose_response"], white_wine=["dose_response"],
+                pima=["dose_response"])
+
+
 def ours_gb():
     out = subprocess.run(["ps", "-u", "yingli", "-o", "rss="], capture_output=True, text=True).stdout.split()
     return sum(int(x) for x in out) / 1048576
@@ -27,13 +34,14 @@ def finished(ds, f, d, u):
     if not path.exists():
         return False
     df = pd.read_csv(path)
-    return (df.backend == "dowhy").any() and df.backend.astype(str).str.startswith("twin").any()
+    return all(((df.backend == "dowhy") & (df.app == a)).any() and
+               (df.backend.astype(str).str.startswith("twin") & (df.app == a)).any() for a in OWN_APPS.get(ds, [df.app.iloc[0]]))
 
 
 if "--workloads" in sys.argv:
     # the tables and the variables of the literature, with more units, as these tables are small
     jobs = []
-    for ds in ("german_mint", "compas", "adult", "bike", "german_full", "heloc", "give_credit"):
+    for ds in OWN_APPS:
         act = json.loads((W / "data/causal" / ds / "meta.json").read_text())["actionable"]
         jobs += [(ds, f, d, u) for u in range(10) for d in sorted({v for v in (1, 2, 4, 8) if v <= len(act)} | {len(act)})
                  for f in ("LGBM", "XGB", "HGB", "RF", "GBR")]
@@ -52,6 +60,8 @@ for ds, f, d, u in todo:
     log = W / "logs/e2e" / f"{ds}_{f}_d{d}_u{u}.log"
     cmd = [str(W / "env/bin/python"), "e2e_apps.py", "--data", str(W / "data/causal"), "--dataset", ds, "--family", f,
            "--d", str(d), "--unit", str(u), "--build-threads", "16" if ds in BIG else "4"]
+    if "--workloads" in sys.argv:
+        cmd += ["--apps", ",".join(OWN_APPS[ds])]
     subprocess.Popen(cmd, cwd=W / "repo_dev2/experiments", env=env, stdout=open(log, "w"), stderr=subprocess.STDOUT,
                      stdin=subprocess.DEVNULL, start_new_session=True)
     print(time.strftime("%F %T"), "started", ds, f, d, u, flush=True)
