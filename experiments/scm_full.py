@@ -140,7 +140,8 @@ def main() -> None:
     ap.add_argument("--train-rows", type=int, default=50_000)
     ap.add_argument("--threads", type=int, default=1, help="threads per model fit (fitting only)")
     ap.add_argument("--fit-jobs", type=int, default=4, help="mechanisms fitted in parallel (fitting only)")
-    ap.add_argument("--max-boxes", type=int, default=50_000_000)
+    ap.add_argument("--max-boxes", type=int, default=10**15, help="no limit by default")
+    ap.add_argument("--max-mask-bytes", type=float, default=float("inf"), help="no limit by default")
     ap.add_argument("--build-threads", type=int, default=1, help="threads of the C++ leaf-box compiler")
     ap.add_argument("--extra-baselines", action="store_true",
                     help="also time pure-Python propagation, numba and Treelite (not reported in the paper)")
@@ -201,7 +202,8 @@ def main() -> None:
             try:
                 bound = bind_scm(scm, unit, T, outcome, max_boxes=args.max_boxes, threads=args.build_threads)
                 compile_s = time.perf_counter() - start
-                index = None if args.baselines_only else ProvenanceIndex(bound, grouping=args.grouping)
+                index = None if args.baselines_only else ProvenanceIndex(bound, grouping=args.grouping,
+                                                                         max_mask_bytes=args.max_mask_bytes)
             except (Infeasible, MemoryError) as e:
                 row["status"] = f"infeasible: {e}"
                 rows.append(row)
