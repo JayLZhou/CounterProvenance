@@ -8,16 +8,17 @@ import pandas as pd
 
 W = Path("/mnt/data/yingli/counterprovenance")
 SETS = "concrete,light_tunnel,ailerons,pol,elevators,jdk,postgres,baf,mslr,census1990,susy,methane,higgs,airline,nyc_taxi".split(",")
-START_GB = 400
+START_GB = 600
 BIG = {"nyc_taxi", "airline", "higgs", "methane", "susy", "census1990", "mslr", "baf", "postgres"}
-MAX_RUNNING = {True: 30, False: 40}   # processes of ours and of the baselines
+MAX_RUNNING = {True: 30, False: 30}   # processes of ours and of the baselines
 anc = {ds: json.loads((W / "data/causal" / ds / "meta.json").read_text())["target_ancestors"] for ds in SETS}
 jobs = [(ds, f, d) for ds in SETS for d in (1, 2, 4, 8, 16) if d <= anc[ds] for f in ("LGBM", "XGB", "HGB", "RF", "GBR")]
 
 
 def ours_gb():
-    out = subprocess.run(["ps", "-u", "yingli", "-o", "rss="], capture_output=True, text=True).stdout.split()
-    return sum(int(x) for x in out) / 1048576
+    # only the processes of this experiment: the account also runs other work on the machine
+    out = subprocess.run(["ps", "-u", "yingli", "-o", "rss=,args="], capture_output=True, text=True).stdout.splitlines()
+    return sum(int(l.split()[0]) for l in out if "counterprovenance/env/bin/python" in l) / 1048576
 
 
 def running_units(ours_only):
