@@ -40,7 +40,7 @@ def _load():
     lib.tw_cg_ncuts.restype = C.c_int64
     lib.tw_cg_ncuts.argtypes = [C.c_void_p, C.c_int]
     lib.tw_cg_cuts.argtypes = [C.c_void_p, C.c_int, _I64]
-    lib.tw_cg_take.argtypes = [C.c_void_p, _U32, _F64, _I32, _U8, _I32, _I32]
+    lib.tw_cg_take.argtypes = [C.c_void_p, _U32, _F64, _I32, _U8, _I32, _I32, _F64]
     lib.tw_cg_free.argtypes = [C.c_void_p]
     _LIB = lib
     return lib
@@ -85,9 +85,46 @@ class _Overlay:
 class _Pft:
     """Read-only persistent factor tree: a version is a root node."""
 
-    def __init__(self, left: np.ndarray, right: np.ndarray, width: int) -> None:
-        self.left, self.right, self.width = left, right, width
+    def __init__(self, left: np.ndarray, right: np.ndarray, sums: np.ndarray, width: int, values: np.ndarray) -> None:
+        self.left, self.right, self.sums, self.width = left, right, sums, width
         self.height = width.bit_length() - 1
+        self.values = values
+        self._left, self._right, self._sums = left.tolist(), right.tolist(), sums.tolist()
+        self._vals = values.tolist()
+
+    def _total(self, child: int) -> float:
+        if child >= 0:
+            return self._sums[child]
+        item = -child - 2
+        return 0.0 if item < 0 else self._vals[item]
+
+    def prefix(self, root: int, p: int) -> float:
+        """Sum of the leaf values of the slots below ``p``: one root-to-leaf path, O(log M)."""
+        if p <= 0:
+            return 0.0
+        if p >= self.width:
+            return self._sums[root]
+        left, right = self._left, self._right
+        node, lo, span, out = root, 0, self.width, 0.0
+        for _ in range(self.height):
+            span //= 2
+            if p >= lo + span:
+                out += self._total(left[node])
+                node = right[node]
+                lo += span
+            else:
+                node = left[node]
+            if lo == p:
+                return out
+        return out
+
+    def items(self, root: int) -> np.ndarray:
+        """The items of the active slots, one numpy step per level."""
+        f = np.array([root], dtype=np.int32)
+        for _ in range(self.height):
+            f = np.concatenate((self.left[f], self.right[f]))
+        f = -f.astype(np.int64) - 2
+        return f[f >= 0]
 
     def active(self, root: int) -> list[int]:
         out, stack = [], [(int(root), 0)]
@@ -150,13 +187,16 @@ class NativeCellIndex:
             self.face_version = np.empty(faces, dtype=np.int32)
             self.face_empty = np.empty(faces, dtype=bool)
             left, right = np.empty(nodes, dtype=np.int32), np.empty(nodes, dtype=np.int32)
+            sums = np.empty(nodes, dtype=np.float64)
             lib.tw_cg_take(h, face_of_cell.ctypes.data_as(_U32), self.face_value.ctypes.data_as(_F64),
                            self.face_version.ctypes.data_as(_I32), self.face_empty.ctypes.data_as(_U8),
-                           left.ctypes.data_as(_I32), right.ctypes.data_as(_I32))
+                           left.ctypes.data_as(_I32), right.ctypes.data_as(_I32), sums.ctypes.data_as(_F64))
         finally:
             lib.tw_cg_free(h)
         self.overlay = _Overlay(cuts, slab_counts, face_of_cell, faces)
-        self.pft = _Pft(left, right, int(width))
+        self.pft = _Pft(left, right, sums, int(width), vals)
+        self.slot_trees = sorted(dense)   # the tree of every slot, ascending
+        self.item_trees = np.asarray(slots, dtype=np.int64)
         self.stats = CellStats(grid_cells=K, faces=faces, face_edges=n_edges, slots=len(dense),
                                tree_weight=weight.value, walk_cost=weight.value, sources=roots, pft_nodes=nodes,
                                pft_entries=0, node_copies=0, path_nodes=nodes, locator_words=self.overlay.locator_words,

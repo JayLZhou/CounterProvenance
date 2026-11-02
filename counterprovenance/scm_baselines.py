@@ -301,3 +301,36 @@ class ScmThreeStepPy:
             leaves = self._leaves(cast([values[p] for p in parents]), trees)
             values[node] = unit[node] + math.fsum(tr[4][n] - tr[4][o] for tr, n, o in zip(trees, leaves, obs))
         return values[self.outcome], leaves
+
+    def query_weighted(self, t: Sequence[float], w) -> float:
+        """The three steps with weights on the outcome's trees; the mediators keep their full models."""
+        unit = self.unit
+        observed = [self._leaves(cast([unit[p] for p in parents]), trees)
+                    for _, parents, cast, trees in self.mechs]
+        values = dict(unit)
+        for name, v in zip(self.treatments, t):
+            values[name] = float(v)
+        for (node, parents, cast, trees), obs in zip(self.mechs, observed):
+            leaves = self._leaves(cast([values[p] for p in parents]), trees)
+            if node == self.outcome:
+                values[node] = unit[node] + math.fsum(float(u) * (tr[4][n] - tr[4][o])
+                                                      for u, tr, n, o in zip(w, trees, leaves, obs))
+            else:
+                values[node] = unit[node] + math.fsum(tr[4][n] - tr[4][o] for tr, n, o in zip(trees, leaves, obs))
+        return values[self.outcome]
+
+    def query_prefix(self, t: Sequence[float], n: int) -> float:
+        """The three steps with the first ``n`` trees of the outcome; it walks only those trees of it."""
+        unit = self.unit
+        observed = []
+        for node, parents, cast, trees in self.mechs:
+            use = trees[:n] if node == self.outcome else trees
+            observed.append(self._leaves(cast([unit[p] for p in parents]), use))
+        values = dict(unit)
+        for name, v in zip(self.treatments, t):
+            values[name] = float(v)
+        for (node, parents, cast, trees), obs in zip(self.mechs, observed):
+            use = trees[:n] if node == self.outcome else trees
+            leaves = self._leaves(cast([values[p] for p in parents]), use)
+            values[node] = unit[node] + math.fsum(tr[4][a] - tr[4][o] for tr, a, o in zip(use, leaves, obs))
+        return values[self.outcome]

@@ -7,7 +7,7 @@ while true; do
   avail=$(awk '/MemAvailable/ {print int($2/1048576)}' /proc/meminfo)
   ours=$(ps -u yingli -o rss= | awk '{s+=$1} END {print int(s/1048576)}')
   if [ "$ours" -gt "$LIMIT" ] || [ "$avail" -lt 80 ]; then
-    line=$(ps -u yingli -o pid=,rss=,etimes=,args= --sort=-rss | grep -E "python (scm_full|beta_probe|box_scan)" | grep -v -E "bash|timeout" | head -1)
+    line=$(ps -u yingli -o pid=,rss=,etimes=,args= --sort=-rss | grep -E "python (scm_full|beta_probe|box_scan|weighted_bench)" | grep -v -E "bash|timeout" | head -1)
     pid=$(echo "$line" | awk '{print $1}')
     if [ -n "$pid" ]; then
       echo "$(date '+%F %T') ours=${ours}GB avail=${avail}GB kill $(echo "$line" | awk '{printf "%s %dGB age=%dh", $1, $2/1048576, $3/3600}') $(echo "$line" | grep -o -- '--tag [^ ]*') $(echo "$line" | grep -o -- '--unit-ids [^ ]*') $(echo "$line" | grep -o ours-only)" >> $LOG

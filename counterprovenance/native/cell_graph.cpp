@@ -77,6 +77,7 @@ struct Graph {
     std::vector<int32_t> face_root;
     std::vector<uint8_t> face_empty;
     std::vector<int32_t> left, right;
+    std::vector<double> node_sum;   // of the leaf values under a node of the persistent tree
 };
 
 // calls fn(flat cell) for the cells at coordinate `coord` on axis k inside the item's range on the other axes
@@ -122,7 +123,7 @@ struct Raw { int64_t edge; int32_t slot, side, item; };
 
 class Pft {
 public:
-    Pft(Graph& g, int height) : g_(g), height_(height) {}
+    Pft(Graph& g, int height, const double* values) : g_(g), height_(height), values_(values) {}
     int32_t build(const std::vector<int32_t>& state) {
         std::vector<int32_t> level(g_.width, -1);
         for (size_t i = 0; i < state.size(); ++i) level[i] = encode(state[i]);
@@ -141,9 +142,16 @@ public:
     bool full() const { return g_.left.size() >= 2147483000ull; }
 private:
     static int32_t encode(int32_t item) { return -(item + 2); }
+    double total(int32_t child) const {
+        if (child >= 0) return g_.node_sum[child];
+        int32_t item = -child - 2;
+        return item < 0 ? 0.0 : values_[item];
+    }
     int32_t make(int32_t l, int32_t r) {
+        const double t = total(l) + total(r);
         g_.left.push_back(l);
         g_.right.push_back(r);
+        g_.node_sum.push_back(t);
         return static_cast<int32_t>(g_.left.size() - 1);
     }
     int32_t rec(int32_t node, int depth, int64_t lo, size_t i, size_t j, const std::vector<std::pair<int32_t, int32_t>>& to) {
@@ -158,6 +166,7 @@ private:
     }
     Graph& g_;
     int height_;
+    const double* values_;
 };
 
 }  // namespace
@@ -435,7 +444,7 @@ void* tw_cell_graph(int d, int64_t n, const int64_t* ranges, const int64_t* slot
     g.face_root.assign(g.n_faces, -1);
     g.face_empty.assign(g.n_faces, 0);
     std::vector<uint8_t> seen(g.n_faces, 0);
-    Pft pft(g, height);
+    Pft pft(g, height, values);
     struct Frame { uint32_t face; int64_t next; int64_t parent_edge; Neumaier acc; int64_t active; };
     std::vector<Frame> stack;
     std::vector<std::pair<int32_t, int32_t>> to;
@@ -505,7 +514,7 @@ void tw_cg_cuts(void* h, int k, int64_t* out) {
 }
 // each copy releases the C++ array, so that memory is not held twice
 void tw_cg_take(void* h, uint32_t* face_of_cell, double* face_value, int32_t* face_root, uint8_t* face_empty,
-                int32_t* left, int32_t* right) {
+                int32_t* left, int32_t* right, double* node_sum) {
     auto* g = static_cast<Graph*>(h);
     std::memcpy(face_of_cell, g->face_of_cell.data(), g->face_of_cell.size() * sizeof(uint32_t));
     std::vector<uint32_t>().swap(g->face_of_cell);
@@ -514,6 +523,7 @@ void tw_cg_take(void* h, uint32_t* face_of_cell, double* face_value, int32_t* fa
     std::memcpy(face_empty, g->face_empty.data(), g->face_empty.size());
     std::memcpy(left, g->left.data(), g->left.size() * sizeof(int32_t));
     std::memcpy(right, g->right.data(), g->right.size() * sizeof(int32_t));
+    std::memcpy(node_sum, g->node_sum.data(), g->node_sum.size() * sizeof(double));
 }
 void tw_cg_free(void* h) { delete static_cast<Graph*>(h); }
 
