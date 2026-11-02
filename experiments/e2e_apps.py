@@ -25,6 +25,7 @@ from scipy.optimize import differential_evolution
 from common import RESULTS, write_csv
 from counterprovenance import ProvenanceIndex
 from counterprovenance.scm import Infeasible, ancestors, bind_scm, fit_scm, parents_of, relevant_nodes
+from counterprovenance.scm_baselines import ScmThreeStepPy
 from scm_bench import choose_treatments, zoo
 from scm_full import dowhy_model
 
@@ -127,6 +128,104 @@ class Online:
             X = np.column_stack([values.get(p, np.full(len(Q), float(self.unit[p]))) for p in self.scm.parents[node]])
             values[node] = float(self.unit[node]) + (self.scm.models[node].predict(X) - self.observed[node])
         return values[self.y]
+
+
+class GeCo:
+    """The classifier evaluation of GeCo (Schleich et al., PVLDB 2021) in Python: candidates are grouped by the variables
+    they change, and for every such set the forest is partially evaluated once, so that the tests on the other variables
+    are folded away and only the changed variables are read.  GeCo stores the folded forest in the layout of QuickScorer;
+    here it is walked level by level with NumPy, as the query of TWIN is read with NumPy.  Without mediators."""
+
+    def __init__(self, scm, unit, T, y, chunk=1024):
+        t0 = time.perf_counter()
+        if relevant_nodes(scm.parents, T, y) != [y]:
+            raise Infeasible("GeCo has no causal model: mediators are not supported")
+        ens = scm.ensembles[y]
+        self.ens, self.T, self.chunk = ens, T, chunk
+        sizes = [len(t.feature) for t in ens.trees]
+        off = np.cumsum([0] + sizes[:-1])
+        self.roots = off.copy()
+        self.feat = np.concatenate([t.feature for t in ens.trees]).astype(np.int64)
+        self.thr = np.concatenate([t.threshold for t in ens.trees]).astype(np.float64)
+        shift = np.repeat(off, sizes)
+        left = np.concatenate([t.left for t in ens.trees]).astype(np.int64)
+        right = np.concatenate([t.right for t in ens.trees]).astype(np.int64)
+        leaf = self.feat < 0
+        self.left, self.right = np.where(leaf, np.arange(len(left)), left + shift), np.where(leaf, np.arange(len(left)), right + shift)
+        self.value = np.concatenate([t.value for t in ens.trees]).astype(np.float64)
+        parents = list(scm.parents[y])
+        self.x0 = self._cast(np.array([[float(unit[p]) for p in parents]]))[0]
+        self.col = np.array([parents.index(t) for t in T], dtype=np.int64)
+        self.cache = {}
+        self.y0, self.obs = float(unit[y]), self._walk(self._fold(frozenset()), self.x0[None, :])[0]
+        self.build_s = time.perf_counter() - t0
+        self.info = {}
+
+    def _cast(self, X):
+        if self.ens.input_dtype == np.float32:
+            X = X.astype(np.float32).astype(np.float64)
+        if self.ens.zero_threshold > 0.0:
+            X = np.where(np.abs(X) <= self.ens.zero_threshold, 0.0, X)
+        return X
+
+    def _fold(self, changed):
+        """The forest for one set of changed parents: a test on any other parent becomes a jump to the unit's branch."""
+        if changed in self.cache:
+            return self.cache[changed]
+        free = np.zeros(len(self.x0), dtype=bool)
+        free[list(changed)] = True
+        internal = self.feat >= 0
+        fixed = internal & ~free[np.maximum(self.feat, 0)]
+        jump = np.arange(len(self.feat))
+        at = np.flatnonzero(fixed)
+        jump[at] = np.where(self.x0[self.feat[at]] <= self.thr[at], self.left[at], self.right[at])
+        for _ in range(32):
+            nxt = jump[jump]
+            if np.array_equal(nxt, jump):
+                break
+            jump = nxt
+        out = (jump[self.roots], jump[self.left], jump[self.right])
+        self.cache[changed] = out
+        return out
+
+    def _walk(self, forest, X):
+        roots, left, right = forest
+        nodes = np.tile(roots, (len(X), 1))
+        rows = np.arange(len(X))[:, None]
+        while True:
+            f = self.feat[nodes]
+            active = f >= 0
+            if not active.any():
+                return self.value[nodes].sum(axis=1)
+            go = X[rows, np.maximum(f, 0)] <= self.thr[nodes]
+            nodes = np.where(active, np.where(go, left[nodes], right[nodes]), nodes)
+
+    def __call__(self, Q):
+        X = np.tile(self.x0, (len(Q), 1))
+        X[:, self.col] = Q
+        X = self._cast(X)
+        out = np.empty(len(Q))
+        code = ((X != self.x0) @ (1 << np.arange(X.shape[1], dtype=np.int64)))
+        for c in np.unique(code):
+            at = np.flatnonzero(code == c)
+            forest = self._fold(frozenset(np.flatnonzero((int(c) >> np.arange(X.shape[1])) & 1).tolist()))
+            for lo in range(0, len(at), self.chunk):
+                part = at[lo:lo + self.chunk]
+                out[part] = self._walk(forest, X[part])
+        return self.y0 + (out - self.obs)
+
+
+class ThreeStep:
+    """ThreeStep (Algorithm 1) in pure Python: every query walks every tree, nothing is cached."""
+
+    def __init__(self, scm, unit, T, y):
+        t0 = time.perf_counter()
+        self.scm = ScmThreeStepPy(scm, unit, T, y)
+        self.build_s = time.perf_counter() - t0
+        self.info = {}
+
+    def __call__(self, Q):
+        return np.array([self.scm.query(t)[0] for t in Q])
 
 
 class Ctx:
@@ -561,6 +660,10 @@ def main() -> None:
     if "twin" in args.backends:
         for b in args.budgets.split(","):
             backends[f"twin_{b}"] = lambda b=b: Twin(scm, unit, T, y, float(b), args.build_threads)
+    if "geco" in args.backends:
+        backends["geco"] = lambda: GeCo(scm, unit, T, y)
+    if "three_step" in args.backends:
+        backends["three_step"] = lambda: ThreeStep(scm, unit, T, y)
     if "online" in args.backends:
         backends["online"] = lambda: Online(scm, unit, T, y)
     if "dowhy" in args.backends:
