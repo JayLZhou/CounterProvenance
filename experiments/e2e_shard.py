@@ -45,7 +45,7 @@ def main() -> None:
     ap.add_argument("--dataset", required=True)
     ap.add_argument("--family", required=True)
     ap.add_argument("--app", required=True)
-    ap.add_argument("--backend", required=True, choices=["twin", "geco", "three_step", "dowhy"])
+    ap.add_argument("--backend", required=True, choices=["twin", "geco", "three_step", "dowhy", "treeshap"])
     ap.add_argument("--start", type=int, default=0)
     ap.add_argument("--stop", type=int, default=-1)
     ap.add_argument("--build-threads", type=int, default=8)
@@ -84,6 +84,14 @@ def main() -> None:
         f0 = float(twin(first[T].to_numpy(dtype=float))[0])
     elif args.backend == "dowhy":
         gcm, cg = dowhy_model(scm, edges)
+    elif args.backend == "treeshap":
+        # the same quantity by the algorithm for trees: interventional Shapley values against the same background
+        import shap
+        t0 = time.perf_counter()
+        # the library samples 100 rows of a background unless it is told otherwise
+        masker = shap.maskers.Independent(base.bg, max_samples=len(base.bg))
+        explainer = shap.TreeExplainer(scm.models[y], data=masker, feature_perturbation="interventional")
+        build_s = time.perf_counter() - t0
     base_row = dict(dataset=args.dataset, family=args.family, app=args.app, backend=args.backend, d=len(T), table_rows=len(df),
                     start=args.start, stop=stop, build_s=build_s)
 
@@ -94,6 +102,18 @@ def main() -> None:
     for i in order[args.start + done:stop]:
         row = df.iloc[[int(i)]]
         unit = row.iloc[0].to_dict()
+        if args.backend == "treeshap":
+            c = at(base, row)
+            t0 = time.perf_counter()
+            phi = explainer.shap_values(c.u[None, :], check_additivity=False)
+            spent = time.perf_counter() - t0
+            outs.append(float(np.abs(phi).sum()))
+            q_s += spent
+            run_s += spent
+            done += 1
+            if done % 20 == 0:
+                save()
+            continue
         if args.backend == "twin":
             shift = float(row[y].iloc[0]) - float(first[y].iloc[0]) - (float(twin(row[T].to_numpy(dtype=float))[0]) - f0)
             backend = Shifted(twin, shift)
