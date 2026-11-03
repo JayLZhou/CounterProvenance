@@ -66,6 +66,8 @@ for repo, ours_only, ds, f, d, tag, u in todo:
     cmd = [str(W / "env/bin/python"), "scm_full.py", "--data", str(W / "data/causal"), "--dataset", ds, "--family", f,
            "--dims", str(d), "--tag", tag, "--unit-ids", str(u), "--build-threads", "16" if ds in BIG else "4",
            "--ours-only" if ours_only else "--baselines-only"]
+    if not ours_only:   # the slow forests: 1,000 queries per unit are enough for a mean, as the first 729 units with 10,000 show
+        cmd += ["--queries", "1000", "--dowhy-queries", "1000"]
     subprocess.Popen(cmd, cwd=W / repo / "experiments", env=env, stdout=open(log, "w"), stderr=subprocess.STDOUT,
                      stdin=subprocess.DEVNULL, start_new_session=True)
     print(time.strftime("%F %T"), "started", repo, tag, "unit", u, flush=True)
