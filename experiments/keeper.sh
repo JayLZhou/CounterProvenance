@@ -15,5 +15,9 @@ while [ $(date +%s) -lt $end ]; do
       fi
     fi
   done
+  if ! pgrep -f "run_shards[.]py" > /dev/null && ! grep -q "all launched" logs/run_shards.txt; then
+    setsid nohup env/bin/python run_shards.py 30 >> logs/run_shards.txt 2>&1 < /dev/null &
+    echo "$(date '+%F %T') shards restarted" >> $LOG
+  fi
   sleep 600
 done
