@@ -480,6 +480,12 @@ class ProvenanceIndex:
             for a, groups in sorted(groups_of_axis.items()):
                 pick = [c for g, ax, c in self._contrib if ax == a]
                 self._naxes.append((a, th[a], np.array(groups, dtype=np.int64), np.stack(pick, axis=1)))
+            # the same rank rows over all groups: adding a whole row is cheaper than assigning into some of its fields
+            self._nwide = []
+            for a, thresholds, groups, rows in self._naxes:
+                wide = np.zeros((rows.shape[0], len(leaves)), dtype=np.int64)
+                wide[:, groups] = rows
+                self._nwide.append((a, thresholds, wide))
         self._paxes = [(a, th[a], rows[a]) for a in range(d) if any(rows[a])]
         self._groups_of_axis = groups_of_axis
         self._nbytes = 4 * len(leaves)
@@ -488,8 +494,8 @@ class ProvenanceIndex:
 
     def _query_vector(self, x) -> LazyAnswer:
         c = self._nbase.copy()
-        for a, th, groups, rows in self._naxes:
-            c[groups] += rows[bisect_left(th, x[a])]
+        for a, th, rows in self._nwide:
+            c += rows[bisect_left(th, x[a])]
         value = self._const + float(self._ntable[c].sum())
         leaves = ()
         if self._baxes:
@@ -776,9 +782,9 @@ class ProvenanceIndex:
 class PartialRead:
     """Reads of an index in which only some axes vary, as when the other parents of a mechanism keep a unit's values.
 
-    A group that splits on none of the varying axes keeps its cell, and it is read once per unit; a query adds the rank
-    vectors of the varying axes and reads only the other groups.  The rank vectors depend on the varying axes only, so
-    they are built once and serve every unit."""
+    The rank rows of the other axes are added once per unit; a query adds those of the varying axes.  A group that splits
+    on none of the varying axes keeps its cell, so it is read once per unit and not by a query.  The rows depend on the
+    varying axes only, so they are built once and serve every unit."""
 
     def __init__(self, index: "ProvenanceIndex", varying: Sequence[int]) -> None:
         if not index._fast:
@@ -786,30 +792,27 @@ class PartialRead:
         self.index = index
         self.cast = index._cast
         vary = set(varying)
-        th = [list(map(float, t)) for t in index.slabs.thresholds]
         self.touched = sorted({g for g, a, _ in index._contrib if a in vary})
-        field = {g: i for i, g in enumerate(self.touched)}
-        self.field = field
-        self.fixed = [(g, a, c, th[a]) for g, a, c in index._contrib if a not in vary]
-        if index._nbase is not None:
-            self.tables = [memoryview(index._ntable[index._nbase[g]:index._nbase[g] + leaf.cells.overlay.grid_cells])
-                           for g, leaf in enumerate(index._fast_leaves)]
+        self.dense = index._nbase is not None
+        th = [list(map(float, t)) for t in index.slabs.thresholds]
+        if self.dense:
+            picked = np.array(self.touched, dtype=np.int64)
+            mask = np.ones(len(index._fast_leaves), dtype=bool)
+            mask[picked] = False
+            self.others = np.flatnonzero(mask)
+            self.picked = picked
+            self.fixed = [(a, t, rows) for a, t, rows in index._nwide if a not in vary]
+            self.axes = [(a, t, rows[:, picked]) for a, t, rows in index._nwide if a in vary]
+            self.tables = None
         else:
+            field = {g: i for i, g in enumerate(self.touched)}
+            self.field = field
+            self.fixed = [(g, a, c, th[a]) for g, a, c in index._contrib if a not in vary]
             self.tables = [memoryview(t) for t in index._tables]
-        self.others = [g for g in range(len(self.tables)) if g not in field]
-        self.vector = len(self.touched) > index.np_read_groups
-        self.axes = []
-        if self.vector:
-            self.table = index._ntable
-            self.base = index._nbase[self.touched]
-            for a in sorted(vary):
-                pick = [(field[g], c) for g, ax, c in index._contrib if ax == a]
-                if pick:
-                    self.axes.append((a, th[a], np.array([f for f, _ in pick], dtype=np.int64),
-                                      np.stack([c for _, c in pick], axis=1)))
-        else:
+            self.others = [g for g in range(len(self.tables)) if g not in field]
             self.nbytes = 4 * len(self.touched)
             self.touched_tables = [self.tables[g] for g in self.touched]
+            self.axes = []
             for a in sorted(vary):
                 row = [0] * index.slabs.counts[a]
                 for g, ax, contrib in index._contrib:
@@ -822,24 +825,28 @@ class PartialRead:
     def bind(self, x: Sequence[float]):
         """The cells that the axes outside ``varying`` give, for values ``x``: what stays the same for a unit."""
         cast = self.cast(x)
+        index = self.index
+        if self.dense:
+            c = index._nbase.copy()
+            for a, t, rows in self.fixed:
+                c += rows[bisect_left(t, cast[a])]
+            constant = index._const + (float(index._ntable[c[self.others]].sum()) if len(self.others) else 0.0)
+            return c[self.picked], constant
         cells = [0] * len(self.tables)
         for g, a, contrib, th in self.fixed:
             cells[g] += int(contrib[bisect_left(th, cast[a])])
-        constant = math.fsum([self.index._const] + [self.tables[g][cells[g]] for g in self.others])
-        if self.vector:
-            return np.array([cells[g] for g in self.touched], dtype=np.int64) + self.base, constant
         packed = 0
         for g, i in self.field.items():
             packed += cells[g] << (32 * i)
-        return packed, constant
+        return packed, math.fsum([index._const] + [self.tables[g][cells[g]] for g in self.others])
 
     def value(self, x: Sequence[float], bound) -> float:
         cast = self.cast(x)
-        if self.vector:
+        if self.dense:
             c = bound[0].copy()
-            for a, th, fields, rows in self.axes:
-                c[fields] += rows[bisect_left(th, cast[a])]
-            return bound[1] + float(self.table[c].sum())
+            for a, t, rows in self.axes:
+                c += rows[bisect_left(t, cast[a])]
+            return bound[1] + float(self.index._ntable[c].sum())
         packed = bound[0]
         for a, th, row in self.axes:
             packed += row[bisect_left(th, cast[a])]
