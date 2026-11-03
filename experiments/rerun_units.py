@@ -8,7 +8,7 @@ import pandas as pd
 
 W = Path("/mnt/data/yingli/counterprovenance")
 SETS = "concrete,light_tunnel,ailerons,pol,elevators,jdk,postgres,baf,mslr,census1990,susy,methane,higgs,airline,nyc_taxi".split(",")
-START_GB = 600
+START_GB = 1000
 BIG = {"nyc_taxi", "airline", "higgs", "methane", "susy", "census1990", "mslr", "baf", "postgres"}
 MAX_RUNNING = {True: 30, False: 30}   # processes of ours and of the baselines
 anc = {ds: json.loads((W / "data/causal" / ds / "meta.json").read_text())["target_ancestors"] for ds in SETS}

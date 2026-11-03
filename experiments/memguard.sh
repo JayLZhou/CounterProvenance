@@ -1,12 +1,12 @@
 #!/bin/bash
 # Keep our memory within the limit on the shared machine: whenever the processes of this experiment hold more than
-# 800 GB, or the machine has less than 200 GB available, kill our largest job.  Other work of the account is not counted.
+# 1200 GB, or the machine has less than 150 GB available, kill our largest job.  Other work of the account is not counted.
 LOG=/mnt/data/yingli/counterprovenance/logs/memguard.txt
-LIMIT=800
+LIMIT=1200
 while true; do
   avail=$(awk '/MemAvailable/ {print int($2/1048576)}' /proc/meminfo)
   ours=$(ps -u yingli -o rss=,args= | grep "counterprovenance/env/bin/python" | awk '{s+=$1} END {print int(s/1048576)}')
-  if [ "$ours" -gt "$LIMIT" ] || [ "$avail" -lt 200 ]; then
+  if [ "$ours" -gt "$LIMIT" ] || [ "$avail" -lt 150 ]; then
     line=$(ps -u yingli -o pid=,rss=,etimes=,args= --sort=-rss | grep -E "python (scm_full|e2e_apps|e2e_table|e2e_shard|beta_probe|box_scan|weighted_bench)" | grep -v -E "bash|timeout" | head -1)
     pid=$(echo "$line" | awk '{print $1}')
     if [ -n "$pid" ]; then
