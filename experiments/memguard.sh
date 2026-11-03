@@ -1,8 +1,8 @@
 #!/bin/bash
 # Keep our memory within the limit on the shared machine: whenever the processes of this experiment hold more than
-# 1200 GB, or the machine has less than 150 GB available, kill our largest job.  Other work of the account is not counted.
+# 1400 GB, or the machine has less than 150 GB available, kill our largest job.  Other work of the account is not counted.
 LOG=/mnt/data/yingli/counterprovenance/logs/memguard.txt
-LIMIT=1200
+LIMIT=1400
 while true; do
   avail=$(awk '/MemAvailable/ {print int($2/1048576)}' /proc/meminfo)
   ours=$(ps -u yingli -o rss=,args= | grep -E "env/bin/python (scm_full|e2e_)" | awk '{s+=$1} END {print int(s/1048576)}')
