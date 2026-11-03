@@ -62,8 +62,11 @@ def main() -> None:
             if name in pos:
                 vals = [t.threshold[t.feature == pos[name]] for t in scm.ensembles[y].trees]
                 cuts[a] = np.unique(np.concatenate(vals)) if vals else np.zeros(0)
-        q_abduct = q_mech = q_three = q_dowhy = 0.0
-        n = wrong = 0
+        q_abduct = q_mech = q_three = q_dowhy = q_bind = q_partial = 0.0
+        n = wrong = wrong_partial = 0
+        t0 = time.perf_counter()
+        plan = mech.plan(T, order)
+        plan_s = time.perf_counter() - t0
         rng = np.random.default_rng([2028, d])
         for i in rows:
             row = df.iloc[[int(i)]]
@@ -81,6 +84,14 @@ def main() -> None:
                 t0 = time.perf_counter()
                 got.append(mech.query(unit, T, t, order, observed))
                 q_mech += time.perf_counter() - t0
+            t0 = time.perf_counter()
+            bound = mech.bind(plan, unit, observed)
+            q_bind += time.perf_counter() - t0
+            got_partial = []
+            for t in Q:
+                t0 = time.perf_counter()
+                got_partial.append(mech.query_partial(unit, T, t, bound))
+                q_partial += time.perf_counter() - t0
             three = ScmThreeStepPy(scm, unit, T, y)
             ref = []
             for t in Q:
@@ -93,10 +104,12 @@ def main() -> None:
                 gcm.counterfactual_samples(cg, iv, observed_data=row)
                 q_dowhy += time.perf_counter() - t0
             wrong += int((np.abs(np.array(got) - np.array(ref)) > 1e-6 * (1 + np.abs(np.array(ref)))).sum())
+            wrong_partial += int((np.abs(np.array(got_partial) - np.array(ref)) > 1e-6 * (1 + np.abs(np.array(ref)))).sum())
             n += len(Q)
         r = dict(dataset=args.dataset, family=args.family, d=d, units=args.units, per_unit=args.per_unit, queries=n, path=len(order),
                  build_s=build_s, sum_groups=sum(mech.info[x]["groups"] for x in order), wrong=wrong,
-                 abduct_us=q_abduct / args.units * 1e6, mech_us=q_mech / n * 1e6, three_step_us=q_three / n * 1e6, dowhy_us=q_dowhy / n * 1e6)
+                 plan_s=plan_s, read_groups=sum(len(pl[2].touched) for pl in plan), wrong_partial=wrong_partial, bind_us=q_bind / args.units * 1e6,
+                 partial_us=q_partial / n * 1e6, abduct_us=q_abduct / args.units * 1e6, mech_us=q_mech / n * 1e6, three_step_us=q_three / n * 1e6, dowhy_us=q_dowhy / n * 1e6)
         pd.DataFrame([r]).to_csv(out_dir / f"{args.dataset}_{args.family}_d{d}.csv", index=False)
         print(json.dumps({k: (round(v, 1) if isinstance(v, float) else v) for k, v in r.items() if k not in ("dataset", "family")}), flush=True)
 

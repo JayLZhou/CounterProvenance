@@ -47,6 +47,26 @@ class MechanismIndex:
             values[x] = unit[x] + (y - observed[x])
         return values[order[-1]]
 
+    def plan(self, T, order):
+        """The partial reads of these intervened variables: a parent varies if it is intervened or a mediator."""
+        vary = set(T) | set(order)
+        return [(x, list(self.scm.parents[x]), self.indexes[x].partial([i for i, p in enumerate(self.scm.parents[x]) if p in vary]))
+                for x in order]
+
+    def bind(self, plan, unit, observed):
+        """What stays the same for a unit: its noise, and the groups that no varying parent reaches."""
+        return [(x, pa, partial, partial.bind([unit[p] for p in pa]), float(unit[x]), observed[x]) for x, pa, partial in plan]
+
+    def query_partial(self, unit, T, t, bound):
+        """One query that only reads the groups of the varying parents."""
+        values = dict(unit)
+        for name, v in zip(T, t):
+            values[name] = float(v)
+        x = None
+        for x, pa, partial, b, ux, obs in bound:
+            values[x] = ux + (partial.value([values[p] for p in pa], b) - obs)
+        return values[x]
+
     def observed(self, unit, order):
         return {x: self.indexes[x].query([unit[p] for p in self.scm.parents[x]]).value for x in order}
 

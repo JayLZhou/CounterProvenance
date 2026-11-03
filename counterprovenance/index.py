@@ -497,6 +497,10 @@ class ProvenanceIndex:
             value += deep
         return LazyAnswer(value, self, c - self._nbase, leaves)
 
+    def partial(self, varying: Sequence[int]) -> "PartialRead":
+        """A query that only reads the groups of the axes in ``varying``; see :class:`PartialRead`."""
+        return PartialRead(self, varying)
+
     def _read_as_model(self, X: np.ndarray) -> np.ndarray:
         """Interventions as the model reads them (input precision, LightGBM's zero threshold)."""
         ens = self.bound.ensemble
@@ -767,6 +771,82 @@ class ProvenanceIndex:
     @property
     def compiled(self) -> bool:
         return self._fast
+
+
+class PartialRead:
+    """Reads of an index in which only some axes vary, as when the other parents of a mechanism keep a unit's values.
+
+    A group that splits on none of the varying axes keeps its cell, and it is read once per unit; a query adds the rank
+    vectors of the varying axes and reads only the other groups.  The rank vectors depend on the varying axes only, so
+    they are built once and serve every unit."""
+
+    def __init__(self, index: "ProvenanceIndex", varying: Sequence[int]) -> None:
+        if not index._fast:
+            raise ValueError("a partial read needs the compiled index")
+        self.index = index
+        self.cast = index._cast
+        vary = set(varying)
+        th = [list(map(float, t)) for t in index.slabs.thresholds]
+        self.touched = sorted({g for g, a, _ in index._contrib if a in vary})
+        field = {g: i for i, g in enumerate(self.touched)}
+        self.field = field
+        self.fixed = [(g, a, c, th[a]) for g, a, c in index._contrib if a not in vary]
+        if index._nbase is not None:
+            self.tables = [memoryview(index._ntable[index._nbase[g]:index._nbase[g] + leaf.cells.overlay.grid_cells])
+                           for g, leaf in enumerate(index._fast_leaves)]
+        else:
+            self.tables = [memoryview(t) for t in index._tables]
+        self.others = [g for g in range(len(self.tables)) if g not in field]
+        self.vector = len(self.touched) > index.np_read_groups
+        self.axes = []
+        if self.vector:
+            self.table = index._ntable
+            self.base = index._nbase[self.touched]
+            for a in sorted(vary):
+                pick = [(field[g], c) for g, ax, c in index._contrib if ax == a]
+                if pick:
+                    self.axes.append((a, th[a], np.array([f for f, _ in pick], dtype=np.int64),
+                                      np.stack([c for _, c in pick], axis=1)))
+        else:
+            self.nbytes = 4 * len(self.touched)
+            self.touched_tables = [self.tables[g] for g in self.touched]
+            for a in sorted(vary):
+                row = [0] * index.slabs.counts[a]
+                for g, ax, contrib in index._contrib:
+                    if ax == a:
+                        for s in np.flatnonzero(contrib).tolist():
+                            row[s] += int(contrib[s]) << (32 * field[g])
+                if any(row):
+                    self.axes.append((a, th[a], row))
+
+    def bind(self, x: Sequence[float]):
+        """The cells that the axes outside ``varying`` give, for values ``x``: what stays the same for a unit."""
+        cast = self.cast(x)
+        cells = [0] * len(self.tables)
+        for g, a, contrib, th in self.fixed:
+            cells[g] += int(contrib[bisect_left(th, cast[a])])
+        constant = math.fsum([self.index._const] + [self.tables[g][cells[g]] for g in self.others])
+        if self.vector:
+            return np.array([cells[g] for g in self.touched], dtype=np.int64) + self.base, constant
+        packed = 0
+        for g, i in self.field.items():
+            packed += cells[g] << (32 * i)
+        return packed, constant
+
+    def value(self, x: Sequence[float], bound) -> float:
+        cast = self.cast(x)
+        if self.vector:
+            c = bound[0].copy()
+            for a, th, fields, rows in self.axes:
+                c[fields] += rows[bisect_left(th, cast[a])]
+            return bound[1] + float(self.table[c].sum())
+        packed = bound[0]
+        for a, th, row in self.axes:
+            packed += row[bisect_left(th, cast[a])]
+        if not self.nbytes:
+            return bound[1]
+        cells = memoryview(packed.to_bytes(self.nbytes, "little")).cast("I")
+        return math.fsum(chain((bound[1],), map(getitem, self.touched_tables, cells)))
 
 
 class QuerySession:
