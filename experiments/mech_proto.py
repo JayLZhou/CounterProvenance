@@ -74,8 +74,9 @@ def main() -> None:
     units = [df.iloc[[int(i)]].iloc[0].to_dict() for i in unit_idx]
     dims = [d for d in (int(v) for v in args.dims.split(",")) if choose_treatments(scm, y, d)]
     nodes = sorted({x for d in dims for x in relevant_nodes(scm.parents, choose_treatments(scm, y, d), y)})
-    tag = RESULTS / f"mech_{args.dataset}_{args.family}.csv"
-    base = dict(dataset=args.dataset, family=args.family, mechanisms=len(nodes))
+    tag = RESULTS / "mech" / f"{args.dataset}_{args.family}_{args.budget:.0e}.csv"
+    tag.parent.mkdir(parents=True, exist_ok=True)
+    base = dict(dataset=args.dataset, family=args.family, budget=args.budget, mechanisms=len(nodes))
     t0 = time.perf_counter()
     try:
         mech = MechanismIndex(scm, units[0], nodes, args.budget, args.threads)
@@ -95,8 +96,19 @@ def main() -> None:
         order = relevant_nodes(scm.parents, T, y)
         lo, hi = df[T].quantile(0.01).to_numpy(), df[T].quantile(0.99).to_numpy()
         for u, unit in enumerate(units):
+            # the same queries as the main experiment: 3/4 uniform, 1/4 with one coordinate on a leaf-box boundary
             rng = np.random.default_rng([2028, u, d])
-            Q = rng.uniform(lo, hi, size=(args.queries, d))
+            per_unit = bind_scm(scm, unit, T, y, threads=args.threads, native=True)
+            n_unif = args.queries * 3 // 4
+            pts = list(rng.uniform(lo, hi, size=(n_unif, d)))
+            th = [[b.hi[a] for b in per_unit.boxes if np.isfinite(b.hi[a])] for a in range(d)]
+            for _ in range(args.queries - n_unif):
+                p = rng.uniform(lo, hi)
+                a = int(rng.integers(d))
+                if th[a]:
+                    p[a] = th[a][int(rng.integers(len(th[a])))]
+                pts.append(p)
+            Q = np.ascontiguousarray(pts, dtype=np.float64)
             t0 = time.perf_counter()
             observed = mech.observed(unit, order)
             noise_us = (time.perf_counter() - t0) * 1e6
@@ -108,18 +120,14 @@ def main() -> None:
                 lat.append(time.perf_counter() - t0)
             lat = np.array(lat) * 1e6
             three = ScmThreeStepPy(scm, unit, T, y)
-            k = min(200, len(Q))
+            k = len(Q)
             ref = np.array([three.query(t)[0] for t in Q[:k]])
             wrong = int((np.abs(np.array(got[:k]) - ref) > 1e-6 * (1 + np.abs(ref))).sum())
             r = dict(base, d=d, unit=u, path=len(order), noise_us=noise_us, mech_us=float(lat.mean()), mech_p50_us=float(np.median(lat)),
                      mech_p95_us=float(np.quantile(lat, .95)), checked=k, wrong=wrong)
-            f = RESULTS / f"scm_full_{args.dataset}_{args.family}_d{d}_u{u}.csv"
-            if f.exists():
-                o = pd.read_csv(f).iloc[0]
-                r.update(unit_us=float(o.ours_py_us), unit_p50_us=float(o.ours_py_p50_us), unit_build_s=float(o.build_s), unit_bytes=float(o.bytes), unit_groups=int(o.groups))
             rows.append(r)
             pd.DataFrame(rows).to_csv(tag, index=False)
-            print(json.dumps({k: r.get(k) for k in ("d", "unit", "path", "mech_p50_us", "unit_p50_us", "wrong")}), flush=True)
+            print(json.dumps({k: r.get(k) for k in ("d", "unit", "path", "mech_us", "mech_p50_us", "wrong")}), flush=True)
 
 
 if __name__ == "__main__":
