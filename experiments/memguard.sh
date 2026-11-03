@@ -5,7 +5,7 @@ LOG=/mnt/data/yingli/counterprovenance/logs/memguard.txt
 LIMIT=1200
 while true; do
   avail=$(awk '/MemAvailable/ {print int($2/1048576)}' /proc/meminfo)
-  ours=$(ps -u yingli -o rss=,args= | grep "counterprovenance/env/bin/python" | awk '{s+=$1} END {print int(s/1048576)}')
+  ours=$(ps -u yingli -o rss=,args= | grep -E "env/bin/python (scm_full|e2e_)" | awk '{s+=$1} END {print int(s/1048576)}')
   if [ "$ours" -gt "$LIMIT" ] || [ "$avail" -lt 150 ]; then
     line=$(ps -u yingli -o pid=,rss=,etimes=,args= --sort=-rss | grep -E "python (scm_full|e2e_apps|e2e_table|e2e_shard|beta_probe|box_scan|weighted_bench)" | grep -v -E "bash|timeout" | head -1)
     pid=$(echo "$line" | awk '{print $1}')

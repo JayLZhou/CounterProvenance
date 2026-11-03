@@ -29,6 +29,8 @@ if "ts" in sys.argv:    # the interventional TreeSHAP of the shap library, again
     PLAN = [(d, f, R, "treeshap", None) for d, f in (("german_full", "HGB100"), ("heloc", "HGB100"), ("give_credit", "HGB100"),
                                                      ("adult", "HGB100"), ("adult", "RF100"), ("adult", "RF200"),
                                                      ("give_credit", "RF100"), ("give_credit", "RF200"))]
+if "notwin" in sys.argv:    # an index of this table is already being built or read
+    TWIN = []
 env = dict(os.environ, OMP_NUM_THREADS="1", CUDA_VISIBLE_DEVICES="", PYTHONPATH=f"{W / 'shap_pkgs'}:{W / 'chirho_pkgs'}")
 jobs = [(d, f, a, "twin", 0, -1) for d, f, a in TWIN]
 for d, f, a, b, cap in PLAN:
