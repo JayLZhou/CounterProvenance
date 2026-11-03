@@ -21,6 +21,9 @@ PLAN = [("german_full", "HGB100", R, "dowhy", None), ("german_full", "HGB100", R
 TWIN = [("german_full", "HGB100", R), ("adult", "RF200", M1), ("adult", "RF200", M2), ("adult", "RF500D10", G), ("heloc", "HGB100", R),
         ("adult", "HGB100", R), ("give_credit", "HGB100", R), ("adult", "RF100", R), ("adult", "RF200", R)]
 LIMIT = int(sys.argv[1]) if len(sys.argv) > 1 else 30
+if "gc" in sys.argv:    # Give Me Credit with forests: one index of hundreds of GB
+    PLAN = [("give_credit", "RF100", R, "dowhy", None), ("give_credit", "RF200", R, "dowhy", None)]
+    TWIN = [("give_credit", "RF100", R), ("give_credit", "RF200", R)]
 env = dict(os.environ, OMP_NUM_THREADS="1", CUDA_VISIBLE_DEVICES="", PYTHONPATH=str(W / "chirho_pkgs"))
 jobs = [(d, f, a, "twin", 0, -1) for d, f, a in TWIN]
 for d, f, a, b, cap in PLAN:
