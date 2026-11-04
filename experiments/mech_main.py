@@ -55,23 +55,11 @@ def prepare(args):
 
 
 def queries(state, d, per_unit):
-    """For every unit, in order: 3/4 of the values uniform between the 1st and 99th percentiles, 1/4 with one coordinate on
-    a threshold of the outcome's trees (when the outcome's mechanism splits on that variable)."""
-    scm, y, w = state["scm"], state["y"], state["work"][d]
-    pos = {p: i for i, p in enumerate(scm.parents[y])}
-    cuts = {}
-    for a, name in enumerate(w["T"]):
-        if name in pos:
-            vals = [t.threshold[t.feature == pos[name]] for t in scm.ensembles[y].trees]
-            cuts[a] = np.unique(np.concatenate(vals)) if vals else np.zeros(0)
+    """For every unit, in order: values drawn uniformly between the 1st and 99th percentiles."""
+    w = state["work"][d]
     rng = np.random.default_rng([2028, d])
     for _ in range(len(state["rows"])):
-        Q = rng.uniform(w["lo"], w["hi"], size=(per_unit, d))
-        for j in range(per_unit * 3 // 4, per_unit):
-            a = int(rng.integers(d))
-            if a in cuts and len(cuts[a]):
-                Q[j, a] = cuts[a][int(rng.integers(len(cuts[a])))]
-        yield Q
+        yield rng.uniform(w["lo"], w["hi"], size=(per_unit, d))
 
 
 def run_twin(args, state, out):
