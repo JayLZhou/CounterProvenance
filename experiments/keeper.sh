@@ -6,18 +6,9 @@ LOG=$W/logs/keeper.txt
 end=$(( $(date +%s) + 3600 * ${1:-24} ))
 while [ $(date +%s) -lt $end ]; do
   pgrep -f "memguard[.]sh" > /dev/null || { setsid nohup ./memguard.sh > /dev/null 2>&1 < /dev/null & echo "$(date '+%F %T') memguard restarted" >> $LOG; }
-  for side in ours base; do
-    if ! pgrep -f "rerun_units[.]py --$side" > /dev/null; then
-      left=$(env/bin/python rerun_units.py --$side --dry 2>/dev/null | head -1 | cut -d' ' -f1)
-      if [ "${left:-0}" -gt 0 ]; then
-        setsid nohup env/bin/python rerun_units.py --$side >> logs/rerun_keeper_$side.txt 2>&1 < /dev/null &
-        echo "$(date '+%F %T') $side restarted, $left units left" >> $LOG
-      fi
-    fi
-  done
-  if ! pgrep -f "run_shards[.]py" > /dev/null && ! grep -q "all launched" logs/run_shards.txt; then
-    setsid nohup env/bin/python run_shards.py 30 >> logs/run_shards.txt 2>&1 < /dev/null &
-    echo "$(date '+%F %T') shards restarted" >> $LOG
+  if ! pgrep -f "run_main[.]py" > /dev/null && ! tail -1 logs/run_main.txt 2>/dev/null | grep -q "all launched"; then
+    setsid nohup env/bin/python run_main.py 40 >> logs/run_main.txt 2>&1 < /dev/null &
+    echo "$(date '+%F %T') main restarted" >> $LOG
   fi
   sleep 600
 done
