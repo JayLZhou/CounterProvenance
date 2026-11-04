@@ -25,9 +25,13 @@ from scm_bench import choose_treatments, zoo
 DIMS = (1, 2, 4, 8, 16)
 
 
+def results_dir(args):
+    return RESULTS / "main" if args.trees == 1000 else RESULTS / "trees" / str(args.trees)
+
+
 def prepare(args):
     """The fitted SCM and the workload of a table and a family, kept so that every process sees the same ones."""
-    cache = RESULTS / "main" / "cache" / f"{args.dataset}_{args.family}.pkl"
+    cache = results_dir(args) / "cache" / f"{args.dataset}_{args.family}.pkl"
     if cache.exists():
         return pickle.loads(cache.read_bytes())
     d0 = Path(args.data) / args.dataset
@@ -37,7 +41,7 @@ def prepare(args):
     edges = [tuple(r) for r in pd.read_csv(d0 / "graph.csv", dtype=str).itertuples(index=False)]
     y = str(meta["target"])
     t0 = time.perf_counter()
-    scm = fit_scm(df, edges, y, [sorted(ancestors(parents_of(edges), y))[0]], zoo(1000, 1)[args.family], max_rows=50_000,
+    scm = fit_scm(df, edges, y, [sorted(ancestors(parents_of(edges), y))[0]], zoo(args.trees, 1)[args.family], max_rows=50_000,
                   seed=0, n_jobs=4)
     fit_s = time.perf_counter() - t0
     idx = np.random.default_rng(2028).integers(len(df), size=args.units)
@@ -168,12 +172,13 @@ def main() -> None:
     ap.add_argument("--family", required=True)
     ap.add_argument("--backend", required=True, choices=["twin", "three_step", "chirho", "dowhy"])
     ap.add_argument("--d", type=int, default=0)
+    ap.add_argument("--trees", type=int, default=1000)
     ap.add_argument("--units", type=int, default=1000)
     ap.add_argument("--per-unit", type=int, default=10)
     ap.add_argument("--budget", type=float, default=2e7)
     ap.add_argument("--hours", type=float, default=24.0)
     args = ap.parse_args()
-    out = RESULTS / "main"
+    out = results_dir(args)
     out.mkdir(parents=True, exist_ok=True)
     state = prepare(args)
     if args.backend == "twin":
