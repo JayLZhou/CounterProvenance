@@ -41,6 +41,9 @@ def finished(ds, f, backend, d):
 
 jobs = [(ds, f, "twin", 0) for ds in SETS for f in FAMILIES]
 jobs += [(ds, f, b, d) for b in ("three_step", "chirho", "dowhy") for ds in SETS for d in (1, 2, 4, 8, 16) if d <= anc[ds] for f in FAMILIES]
+# the forests are the slowest baselines: they come last, so that the other families finish first
+jobs += [(ds, "RF", "twin", 0) for ds in SETS]
+jobs += [(ds, "RF", b, d) for b in ("three_step", "chirho", "dowhy") for ds in SETS for d in (1, 2, 4, 8, 16) if d <= anc[ds]]
 print(len(jobs), "jobs", flush=True)
 for ds, f, b, d in jobs:
     if finished(ds, f, b, d):
