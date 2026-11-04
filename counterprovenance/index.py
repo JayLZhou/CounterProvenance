@@ -490,6 +490,8 @@ class ProvenanceIndex:
         self._groups_of_axis = groups_of_axis
         self._nbytes = 4 * len(leaves)
         self._pack_words = sum(counts[a] for a, _, _ in self._paxes) * len(leaves)
+        if vector:
+            self._pack_words = 2 * sum(wide.size for _, _, wide in self._nwide)
         self._const = math.fsum([self.bound.offset] + [float(leaf.cells.face_value[0]) for leaf in self._const_leaves])
 
     def _query_vector(self, x) -> LazyAnswer:
