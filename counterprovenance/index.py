@@ -482,9 +482,9 @@ class ProvenanceIndex:
                 self._naxes.append((a, th[a], np.array(groups, dtype=np.int64), np.stack(pick, axis=1)))
             # the same rank rows over all groups: adding a whole row is cheaper than assigning into some of its fields
             self._nwide = []
-            for a, thresholds, groups, rows in self._naxes:
-                wide = np.zeros((rows.shape[0], len(leaves)), dtype=np.int64)
-                wide[:, groups] = rows
+            for a, thresholds, groups, ranks in self._naxes:
+                wide = np.zeros((ranks.shape[0], len(leaves)), dtype=np.int64)
+                wide[:, groups] = ranks
                 self._nwide.append((a, thresholds, wide))
         self._paxes = [(a, th[a], rows[a]) for a in range(d) if any(rows[a])]
         self._groups_of_axis = groups_of_axis
