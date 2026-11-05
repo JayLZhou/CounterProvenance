@@ -186,7 +186,7 @@ class NumbaIndex:
         contrib = np.zeros((d, C, g), dtype=np.int64)
         for gi, a, c in index._contrib:
             contrib[a, : len(c), gi] = c
-        tables = [np.frombuffer(t, dtype=np.float64) for t in index._tables]
+        tables = [t.dense() for t in index._tables]
         offs = np.zeros(g, dtype=np.int64)
         if g:
             offs[1:] = np.cumsum([len(t) for t in tables])[:-1]

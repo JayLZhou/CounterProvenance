@@ -103,6 +103,30 @@ class AtomPiece:
         return arena.atom(label(self.box))
 
 
+def _short_cells(cells: int):
+    """The shortest type that numbers this many cells: most groups have at most 256."""
+    return np.uint8 if cells <= 1 << 8 else np.uint16 if cells <= 1 << 16 else np.uint32
+
+
+class _Table:
+    """The values of a group: grid cell -> cell -> value."""
+
+    __slots__ = ("map", "values", "_map", "_values")
+
+    def __init__(self, map_: np.ndarray, values: np.ndarray) -> None:
+        self.map, self.values = map_, values
+        self._map, self._values = memoryview(map_), memoryview(values)
+
+    def __getitem__(self, cell: int) -> float:
+        return self._values[self._map[cell]]
+
+    def take(self, cells: np.ndarray) -> np.ndarray:
+        return self.values[self.map[cells]]
+
+    def dense(self) -> np.ndarray:
+        return self.values[self.map]
+
+
 class LazyAnswer:
     """Result of a compiled query: the exact value now, the provenance pieces on
     demand (from the per-group cell numbers and the bitmask leaves)."""
@@ -185,6 +209,7 @@ class IndexStats:
     bitmask_trees: int = 0
     bitmask_words: int = 0   # 64-bit words of the per-slab leaf masks
     table_cells: int = 0     # dense value tables of the compiled query
+    map_bytes: int = 0       # the maps from grid cells to cells, with the shortest cell numbers
     pack_words: int = 0      # 32-bit fields of the per-slab packed contributions
 
     @property
@@ -199,6 +224,7 @@ class IndexStats:
             + self.assignments
             + self.segment_nodes
             + self.table_cells
+            + self.map_bytes // 4
             + self.pack_words
             + self.bitmask_words
         )
@@ -207,7 +233,7 @@ class IndexStats:
     def packed_bytes(self) -> int:
         """Estimated packed layout: 8 B per PFT node (two int32 children), 12 B per
         entry, 16 B per face (root, version, float64 value), 4 B per locator word
-        and item reference, 16 B per segment-tree node, 8 B per table cell,
+        and item reference, the bytes of the maps, 16 B per segment-tree node, 8 B per table cell,
         4 B per packed field, 8 B per bitmask word."""
         return (
             8 * self.pft_nodes
@@ -216,6 +242,7 @@ class IndexStats:
             + 4 * (self.locator_words + self.assignments)
             + 16 * self.segment_nodes
             + 8 * self.table_cells
+            + self.map_bytes
             + 4 * self.pack_words
             + 8 * self.bitmask_words
         )
@@ -322,7 +349,7 @@ class ProvenanceIndex:
         self._fast_leaves: list[_Leaf] = []
         self._const_leaves: list[_Leaf] = []
         self._tables: list = []
-        self._table_cells = self._pack_words = 0
+        self._table_cells = self._pack_words = self._map_bytes = 0
         if self._fast:
             self._compile()
         self.build_seconds = time.perf_counter() - t0
@@ -443,26 +470,40 @@ class ProvenanceIndex:
         groups_of_axis: dict[int, list[int]] = {}
         # many groups: all tables in one array, read with one fancy index
         vector = len(leaves) > self.np_read_groups
+        for leaf in leaves:
+            cells = leaf.cells
+            if isinstance(cells, LeanCellIndex):
+                cells.overlay.face_of_cell = np.arange(len(cells.table), dtype=np.uint32)
+                cells.overlay.n_faces = len(cells.table)
         if vector:
-            sizes = np.array([leaf.cells.overlay.grid_cells for leaf in leaves], dtype=np.int64)
-            self._nbase = np.concatenate(([0], np.cumsum(sizes)[:-1])).astype(np.int64)
-            self._ntable = np.empty(int(sizes.sum()), dtype=np.float64)
+            # by the width of the cell numbers: a read takes one slice per width
+            leaves.sort(key=lambda leaf: np.dtype(_short_cells(leaf.cells.overlay.n_faces)).itemsize)
+            types = [_short_cells(leaf.cells.overlay.n_faces) for leaf in leaves]
+            self._nmaps, self._nbase = [], np.zeros(len(leaves), dtype=np.int64)
+            self._n1, self._n12 = sum(t == np.uint8 for t in types), sum(t != np.uint32 for t in types)
+            for kind in (np.uint8, np.uint16, np.uint32):
+                at = [gi for gi, t in enumerate(types) if t == kind]
+                sizes = np.array([leaves[gi].cells.overlay.grid_cells for gi in at], dtype=np.int64)
+                self._nbase[at] = np.concatenate(([0], np.cumsum(sizes)[:-1])).astype(np.int64) if len(at) else 0
+                self._nmaps.append(np.empty(int(sizes.sum()), dtype=kind))
+            faces = np.array([leaf.cells.overlay.n_faces for leaf in leaves], dtype=np.int64)
+            self._nfaces = np.concatenate(([0], np.cumsum(faces)[:-1])).astype(np.int64)
+            self._nvalue = np.empty(int(faces.sum()), dtype=np.float64)
         for gi, leaf in enumerate(leaves):
             cells, overlay = leaf.cells, leaf.cells.overlay
-            if isinstance(cells, LeanCellIndex):
-                dense = cells.table
-                cells.table = cells.face_value = None
-            else:
-                dense = np.ascontiguousarray(cells.face_value[overlay.face_of_cell], dtype=np.float64)
+            kind = _short_cells(overlay.n_faces)
+            n = overlay.grid_cells
             if vector:
-                self._ntable[self._nbase[gi]:self._nbase[gi] + len(dense)] = dense
-                self._table_cells += len(dense)
+                m = self._nmaps[0 if kind == np.uint8 else 1 if kind == np.uint16 else 2][self._nbase[gi]:self._nbase[gi] + n]
+                m[:] = overlay.face_of_cell
+                values = self._nvalue[self._nfaces[gi]:self._nfaces[gi] + overlay.n_faces]
+                values[:] = cells.face_value
             else:
-                table = array("d")
-                table.frombytes(dense.tobytes())
-                self._tables.append(table)
-                self._table_cells += len(table)
-            del dense
+                m = np.asarray(overlay.face_of_cell, dtype=kind)
+                values = np.ascontiguousarray(cells.face_value, dtype=np.float64)
+                self._tables.append(_Table(m, values))
+            overlay.face_of_cell, cells.face_value = m, values
+            self._map_bytes += n * m.itemsize
             shift = 32 * gi
             for k, a in enumerate(leaf.axes):
                 if not overlay.cuts[k]:
@@ -494,11 +535,27 @@ class ProvenanceIndex:
             self._pack_words = 2 * sum(wide.size for _, _, wide in self._nwide)
         self._const = math.fsum([self.bound.offset] + [float(leaf.cells.face_value[0]) for leaf in self._const_leaves])
 
+    def _read_cells(self, c: np.ndarray, faces: np.ndarray, n1: int, n12: int) -> np.ndarray:
+        """The values at positions ``c`` of groups sorted by width, of which ``n1`` use one byte and ``n12`` at most two."""
+        maps = self._nmaps
+        if c.ndim == 1:
+            if n1 == len(c):
+                return self._nvalue.take(maps[0].take(c) + faces)
+            if n12 == n1 and n12 == 0:
+                return self._nvalue.take(maps[2].take(c) + faces)
+        f = np.empty_like(c)
+        f[:n1] = maps[0].take(c[:n1])
+        if n1 < len(c):
+            f[n1:n12] = maps[1].take(c[n1:n12])
+            f[n12:] = maps[2].take(c[n12:])
+        f += faces.reshape((-1,) + (1,) * (c.ndim - 1))
+        return self._nvalue.take(f)
+
     def _query_vector(self, x) -> LazyAnswer:
         c = self._nbase.copy()
         for a, th, rows in self._nwide:
             c += rows[bisect_left(th, x[a])]
-        value = self._const + float(self._ntable[c].sum())
+        value = self._const + float(self._read_cells(c, self._nfaces, self._n1, self._n12).sum())
         leaves = ()
         if self._baxes:
             leaves, deep = self._bitmask_np(x)
@@ -605,14 +662,14 @@ class ProvenanceIndex:
                 c = np.repeat(self._nbase[:, None], len(x), axis=1)
                 for a, _, groups, rows in self._naxes:
                     c[groups] += rows[np.searchsorted(th[a], x[:, a], side="left")].T
-                out[lo:lo + chunk] = self._const + self._ntable[c].sum(axis=0)
+                out[lo:lo + chunk] = self._const + self._read_cells(c, self._nfaces, self._n1, self._n12).sum(axis=0)
             else:
                 c = np.zeros((len(x), n_groups), dtype=np.int64)
                 for g, a, contrib in self._contrib:
                     c[:, g] += contrib[np.searchsorted(th[a], x[:, a], side="left")]
                 v = np.full(len(x), self._const)
                 for g, table in enumerate(self._tables):
-                    v += np.frombuffer(table, dtype=np.float64)[c[:, g]]
+                    v += table.take(c[:, g])
                 out[lo:lo + chunk] = v
         return out
 
@@ -763,12 +820,14 @@ class ProvenanceIndex:
             grid_cells=sum(c.stats.grid_cells for c in cells),
             pft_nodes=sum(c.stats.pft_nodes for c in cells),
             pft_entries=sum(c.stats.pft_entries for c in cells),
-            locator_words=sum(c.stats.locator_words for c in cells),
+            # a compiled map is counted in ``map_bytes``: only the cuts remain here
+            locator_words=sum(sum(map(len, c.overlay.cuts)) for c in cells) if self._map_bytes else sum(c.stats.locator_words for c in cells),
             build_seconds=self.build_seconds,
             leaf_depths=dict(sorted(self._leaf_depths.items())),
             bitmask_trees=len(self.deep),
             bitmask_words=self._bitmask_words,
             table_cells=self._table_cells,
+            map_bytes=self._map_bytes,
             pack_words=self._pack_words,
         )
 
@@ -803,6 +862,9 @@ class PartialRead:
             mask[picked] = False
             self.others = np.flatnonzero(mask)
             self.picked = picked
+            self.widths_others = np.searchsorted(self.others, [index._n1, index._n12]).tolist()
+            self.widths_picked = np.searchsorted(picked, [index._n1, index._n12]).tolist()
+            self.faces_others, self.faces_picked = index._nfaces[self.others], index._nfaces[picked]
             self.fixed = [(a, t, rows) for a, t, rows in index._nwide if a not in vary]
             self.axes = [(a, t, rows[:, picked]) for a, t, rows in index._nwide if a in vary]
             self.tables = None
@@ -810,7 +872,7 @@ class PartialRead:
             field = {g: i for i, g in enumerate(self.touched)}
             self.field = field
             self.fixed = [(g, a, c, th[a]) for g, a, c in index._contrib if a not in vary]
-            self.tables = [memoryview(t) for t in index._tables]
+            self.tables = list(index._tables)
             self.others = [g for g in range(len(self.tables)) if g not in field]
             self.nbytes = 4 * len(self.touched)
             self.touched_tables = [self.tables[g] for g in self.touched]
@@ -832,7 +894,7 @@ class PartialRead:
             c = index._nbase.copy()
             for a, t, rows in self.fixed:
                 c += rows[bisect_left(t, cast[a])]
-            constant = index._const + (float(index._ntable[c[self.others]].sum()) if len(self.others) else 0.0)
+            constant = index._const + (float(index._read_cells(c[self.others], self.faces_others, *self.widths_others).sum()) if len(self.others) else 0.0)
             return c[self.picked], constant
         cells = [0] * len(self.tables)
         for g, a, contrib, th in self.fixed:
@@ -848,7 +910,7 @@ class PartialRead:
             c = bound[0].copy()
             for a, t, rows in self.axes:
                 c += rows[bisect_left(t, cast[a])]
-            return bound[1] + float(self.index._ntable[c].sum())
+            return bound[1] + float(self.index._read_cells(c, self.faces_picked, *self.widths_picked).sum())
         packed = bound[0]
         for a, th, row in self.axes:
             packed += row[bisect_left(th, cast[a])]
