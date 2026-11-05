@@ -217,6 +217,8 @@ class _Mediator:
     cut, at a boundary of the mediator's own boxes inside it.
     """
 
+    dominance = True  # False (for the experiment): a box is cut at every boundary inside it, even when it is decided
+
     def __init__(self, boxes: list[LeafBox], observed: float, observed_leaf: np.ndarray, d: int) -> None:
         trees = np.array([b.tree for b in boxes], dtype=np.int64)
         counts = np.bincount(trees, minlength=len(observed_leaf)) if len(boxes) else np.zeros(0, dtype=np.int64)
@@ -237,6 +239,9 @@ class _Mediator:
         hi = self.observed + math.fsum(np.maximum.reduceat(df, starts).tolist())
         return lo, hi
 
+    def _has_boundary(self, idx: np.ndarray, blo: np.ndarray, bhi: np.ndarray) -> bool:
+        return bool((((self.lo[idx] > blo) & (self.lo[idx] < bhi)) | ((self.hi[idx] > blo) & (self.hi[idx] < bhi))).any())
+
     def split(self, theta: float, lo: list[float], hi: list[float],
               cast: Callable[[np.ndarray], np.ndarray]) -> list[tuple[bool, list[float], list[float]]]:
         """Pieces ``(Z <= theta, lo, hi)`` of the box ``(lo, hi]``, as read through ``cast``."""
@@ -248,12 +253,13 @@ class _Mediator:
             idx = idx[(self.lo[idx] < bhi).all(1) & (self.hi[idx] > blo).all(1)]
             vlo, vhi = self._range(idx)
             vlo, vhi = cast(np.array([vlo, vhi]))
-            if vhi <= theta:
-                out.append((True, lo, hi))
-                continue
-            if vlo > theta:
-                out.append((False, lo, hi))
-                continue
+            if self.dominance or not self._has_boundary(idx, blo, bhi):
+                if vhi <= theta:
+                    out.append((True, lo, hi))
+                    continue
+                if vlo > theta:
+                    out.append((False, lo, hi))
+                    continue
             # some tree still has two boxes in the current box: cut at the median of the
             # boundaries strictly inside it, on the axis that has the most of them
             best = None
