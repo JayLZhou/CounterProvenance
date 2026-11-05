@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """How small the map from grid cells to cells can get: cell numbers of the shortest width, identical slices merged along one
-or two axes, and a full decision diagram; and the read in which single trees are walked in one batch instead of having a grid.
+axis, and a full decision diagram; and the read in which single trees are walked in one batch instead of having a grid.
 Output: ``results/map2/<dataset>_<family>_map.csv`` and ``_read.csv``."""
 
 from __future__ import annotations
@@ -23,34 +23,30 @@ def width(cells):
     return 1 if cells <= 1 << 8 else 2 if cells <= 1 << 16 else 4
 
 
+def distinct(rows):
+    """The number of distinct rows and the row number of each, by a random hash of the rows (sorting them is too slow)."""
+    r = np.random.default_rng(0).integers(1, 1 << 63, size=rows.shape[1], dtype=np.uint64) | np.uint64(1)
+    h = (rows.astype(np.uint64) * r).sum(axis=1, dtype=np.uint64)
+    u, inv = np.unique(h, return_inverse=True)
+    return len(u), np.asarray(inv)
+
+
 def merged(a, w):
-    """Bytes with identical slices merged: along the best axis, then again in the kept slices; and at every level."""
-    best1 = best2 = None
+    """Bytes with identical slices merged along the best axis; and at every level, which is a decision diagram."""
+    best = None
     for k in range(a.ndim):
-        s = np.moveaxis(a, k, 0).reshape(a.shape[k], -1)
-        u, inv = np.unique(s, axis=0, return_inverse=True)
-        one = 4 * a.shape[k] + w * u.size
-        if best1 is None or one < best1:
-            best1 = one
-        two = one
-        if a.ndim > 1 and len(u) > 0:
-            rest = u.reshape((len(u),) + tuple(n for i, n in enumerate(a.shape) if i != k))
-            for j in range(1, rest.ndim):
-                r = np.moveaxis(rest, j, 0).reshape(rest.shape[j], -1)
-                v = np.unique(r, axis=0)
-                two = min(two, 4 * a.shape[k] + 4 * len(u) * rest.shape[j] // rest.shape[j] + 4 * rest.shape[j] + w * v.size)
-        if best2 is None or two < best2:
-            best2 = two
-    # a decision diagram: from the last axis up, every distinct slice is one node with one pointer per slab
+        n, _ = distinct(np.moveaxis(a, k, 0).reshape(a.shape[k], -1))
+        one = 4 * a.shape[k] + w * n * (a.size // a.shape[k])
+        best = one if best is None else min(best, one)
     level = a.reshape(-1, a.shape[-1])
     total = 0
     for k in range(a.ndim - 1, -1, -1):
-        u, inv = np.unique(level, axis=0, return_inverse=True)
-        total += u.size * (w if k == a.ndim - 1 else 4)
+        n, inv = distinct(level)
+        total += n * a.shape[k] * (w if k == a.ndim - 1 else 4)
         if k == 0:
             break
-        level = np.asarray(inv).reshape(-1, a.shape[k - 1])
-    return best1, best2, total
+        level = inv.reshape(-1, a.shape[k - 1])
+    return best, total
 
 
 class Walk:
@@ -158,8 +154,8 @@ def main() -> None:
             w = width(o.n_faces)
             kind = np.uint8 if w == 1 else np.uint16 if w == 2 else np.uint32
             a = np.asarray(o.face_of_cell, dtype=kind).reshape(o.shape)
-            one, two, dd = merged(a, w) if a.size <= 300_000_000 else (a.size * w, a.size * w, a.size * w)
-            maps.append(dict(dataset=args.dataset, family=args.family, node=node, trees=len(leaf.cells.slot_trees), cells=o.n_faces, grid=a.size, axes=a.ndim, four=4 * a.size, short=w * a.size, merge1=one, merge2=two, diagram=dd))
+            one, dd = merged(a, w) if a.size <= 300_000_000 else (a.size * w, a.size * w)
+            maps.append(dict(dataset=args.dataset, family=args.family, node=node, trees=len(leaf.cells.slot_trees), cells=o.n_faces, grid=a.size, axes=a.ndim, four=4 * a.size, short=w * a.size, merge1=one, diagram=dd))
         pd.DataFrame(maps).to_csv(out / f"{args.dataset}_{args.family}_map.csv", index=False)
         points = rows[pa].to_numpy(dtype=float)[:300]
         r = read_row(args, node, index, scm.ensembles[node], points)
