@@ -102,6 +102,7 @@ def main() -> None:
         bound = mech.bind(plan, unit, observed)
         for k, t in enumerate(Q):
             # alternate the order, so that neither read always comes first after the other has filled the cache
+            got = {}
             for i in (0, 1) if k % 2 == 0 else (1, 0):
                 use(i)
                 name = "one" if i == 0 else "two"
@@ -111,10 +112,8 @@ def main() -> None:
                 t0 = time.perf_counter()
                 b = mech.query_partial(unit, T, t, bound)
                 lat["partial_" + name].append(time.perf_counter() - t0)
-                if i == 0:
-                    a0 = a
-                elif abs(a - a0) > 1e-9:
-                    wrong += 1
+                got[i] = (a, b)
+            wrong += abs(got[0][0] - got[1][0]) > 1e-9 or abs(got[0][1] - got[1][1]) > 1e-9
     r = dict(dataset=args.dataset, family=args.family, d=d, path=len(order), queries=len(lat["full_one"]), groups=sum(len(mech.indexes[x]._fast_leaves) for x in order), wrong=wrong,
              **{k + "_us": float(np.mean(v)) * 1e6 for k, v in lat.items()})
     pd.DataFrame([r]).to_csv(out / f"{args.dataset}_{args.family}_time.csv", index=False)
