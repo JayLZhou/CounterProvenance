@@ -7,7 +7,9 @@ from __future__ import annotations
 
 import argparse
 import gc
+import os
 import pickle
+import resource
 import time
 
 import numpy as np
@@ -16,6 +18,11 @@ import pandas as pd
 from common import RESULTS
 from counterprovenance import ProvenanceIndex
 from counterprovenance.scm import bind_scm
+
+
+def rss() -> int:
+    with open("/proc/self/statm") as f:
+        return int(f.read().split()[1]) * os.sysconf("SC_PAGE_SIZE")
 
 
 def fill(index, ens):
@@ -72,15 +79,20 @@ def main() -> None:
     got = []
     for node in nodes:
         pa = list(scm.parents[node])
+        gc.collect()
+        rss0 = rss()
         t0 = time.perf_counter()
         bound = bind_scm(scm, unit0, pa, node, threads=1, native=True)
         index = ProvenanceIndex(bound, grouping="tables", budget=int(args.budget), build_threads=1)
         build_s = time.perf_counter() - t0
+        gc.collect()
+        rss1 = rss()
         st = index.stats
         ens = scm.ensembles[node]
         t0 = time.perf_counter()
         tables, checked = fill(index, ens)
         fill_s = time.perf_counter() - t0
+        rss2 = rss()
         points = rows[pa].to_numpy(dtype=float)[:args.points]
         faces_of = [leaf.cells.overlay.face_of_cell for leaf in index._fast_leaves]
         value, mst, table = [], [], []
@@ -101,7 +113,7 @@ def main() -> None:
         leaf_bytes = sum(s.nbytes for s in tables)
         cells_bytes = 8 * st.pft_nodes + 16 * st.faces
         got.append(dict(dataset=args.dataset, family=args.family, node=node, groups=len(tables), cells=st.faces, map_bytes=st.map_bytes, ranks_bytes=st.packed_bytes - cells_bytes - st.map_bytes, twin_bytes=st.packed_bytes, twin_leaf_bytes=cells_bytes,
-                        table_leaf_bytes=leaf_bytes, table_value_bytes=8 * st.faces, table_bytes=st.packed_bytes - cells_bytes + leaf_bytes + 8 * st.faces, build_s=build_s, fill_s=fill_s, value_us=float(np.mean(value)) * 1e6,
+                        table_leaf_bytes=leaf_bytes, table_value_bytes=8 * st.faces, table_bytes=st.packed_bytes - cells_bytes + leaf_bytes + 8 * st.faces, build_s=build_s, fill_s=fill_s, rss_base=rss0, rss_index=rss1 - rss0, rss_rows=rss2 - rss1, peak=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024, value_us=float(np.mean(value)) * 1e6,
                         mst_leaves_us=float(np.mean(mst)) * 1e6, table_leaves_us=float(np.mean(table)) * 1e6, checked=checked, same=same))
         pd.DataFrame(got).to_csv(out / f"{args.dataset}_{args.family}.csv", index=False)
         del index, bound, tables, faces_of
