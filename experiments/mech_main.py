@@ -26,12 +26,14 @@ DIMS = (1, 2, 4, 8, 16)
 
 
 def results_dir(args):
+    if args.out:
+        return RESULTS / args.out
     return RESULTS / "main" if args.trees == 1000 else RESULTS / "trees" / str(args.trees)
 
 
 def prepare(args):
     """The fitted SCM and the workload of a table and a family, kept so that every process sees the same ones."""
-    cache = results_dir(args) / "cache" / f"{args.dataset}_{args.family}.pkl"
+    cache = (RESULTS / "main" if args.trees == 1000 else results_dir(args)) / "cache" / f"{args.dataset}_{args.family}.pkl"
     if cache.exists():
         return pickle.loads(cache.read_bytes())
     d0 = Path(args.data) / args.dataset
@@ -109,6 +111,7 @@ def run_twin(args, state, out):
                  full_us=float(f.mean()), full_p50_us=float(np.median(f)), full_p95_us=float(np.quantile(f, .95)),
                  partial_us=float(p.mean()), partial_p50_us=float(np.median(p)), partial_p95_us=float(np.quantile(p, .95)), status="ok")
         np.save(out / f"{args.dataset}_{args.family}_d{d}_twin.npy", np.array(got))
+        np.save(out / f"{args.dataset}_{args.family}_d{d}_twin_lat.npy", np.stack([f, p]).astype(np.float32))
         pd.DataFrame([r]).to_csv(out / f"{args.dataset}_{args.family}_d{d}_twin.csv", index=False)
         print(json.dumps({k: (round(v, 1) if isinstance(v, float) else v) for k, v in r.items() if k not in ("dataset", "family", "backend", "status")}), flush=True)
 
@@ -125,10 +128,13 @@ def run_baseline(args, state, out):
     done = n = 0
     spent = 0.0
     got: list[float] = []
+    lat: list[float] = []
+    lat_path = tag.with_name(tag.name + "_lat.npy")
     if tag.with_suffix(".csv").exists():
         s = pd.read_csv(tag.with_suffix(".csv")).iloc[0]
         done, n, spent = int(s.units_done), int(s.queries), float(s.query_s)
         got = np.load(tag.with_suffix(".npy")).tolist()
+        lat = np.load(lat_path).tolist() if lat_path.exists() else []
     start = time.perf_counter()
     status = "ok"
 
@@ -136,6 +142,7 @@ def run_baseline(args, state, out):
         pd.DataFrame([dict(dataset=args.dataset, family=args.family, d=d, backend=args.backend, units=len(rows), units_done=done, queries=n, query_s=spent,
                            mean_us=spent / max(n, 1) * 1e6, status=status)]).to_csv(tag.with_suffix(".csv"), index=False)
         np.save(tag.with_suffix(".npy"), np.array(got))
+        np.save(lat_path, np.array(lat, dtype=np.float32))
 
     for u, Q in enumerate(queries(state, d, args.per_unit)):
         if u < done:
@@ -156,7 +163,9 @@ def run_baseline(args, state, out):
         for t in Q:
             t0 = time.perf_counter()
             v = call(t)
-            spent += time.perf_counter() - t0
+            took = time.perf_counter() - t0
+            spent += took
+            lat.append(took * 1e6)
             got.append(float(v))
             n += 1
         done = u + 1
@@ -173,6 +182,7 @@ def main() -> None:
     ap.add_argument("--backend", required=True, choices=["twin", "three_step", "chirho", "dowhy"])
     ap.add_argument("--d", type=int, default=0)
     ap.add_argument("--trees", type=int, default=1000)
+    ap.add_argument("--out", default="", help="directory under results, for a rerun on the cached models")
     ap.add_argument("--units", type=int, default=1000)
     ap.add_argument("--per-unit", type=int, default=10)
     ap.add_argument("--budget", type=float, default=2e7)

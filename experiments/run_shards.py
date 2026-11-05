@@ -21,6 +21,9 @@ PLAN = [("german_full", "HGB100", R, "dowhy", None), ("german_full", "HGB100", R
 TWIN = [("german_full", "HGB100", R), ("adult", "RF200", M1), ("adult", "RF200", M2), ("adult", "RF500D10", G), ("heloc", "HGB100", R),
         ("adult", "HGB100", R), ("give_credit", "HGB100", R), ("adult", "RF100", R), ("adult", "RF200", R)]
 LIMIT = int(sys.argv[1]) if len(sys.argv) > 1 else 30
+if "norel200" in sys.argv:    # no feature relevance on the forest of 200 trees
+    PLAN = [j for j in PLAN if not (j[1] == "RF200" and j[2] == R)]
+    TWIN = [j for j in TWIN if not (j[1] == "RF200" and j[2] == R)]
 if "gc" in sys.argv:    # Give Me Credit with forests: one index of hundreds of GB
     PLAN = [("give_credit", "RF100", R, "dowhy", None), ("give_credit", "RF200", R, "dowhy", None)]
     TWIN = [("give_credit", "RF100", R), ("give_credit", "RF200", R)]
