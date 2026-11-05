@@ -120,10 +120,7 @@ class _Table:
     def __getitem__(self, cell: int) -> float:
         return self._values[self._map[cell]]
 
-    def take(self, cells: np.ndarray) -> np.ndarray:
-        return self.values[self.map[cells]]
-
-    def dense(self) -> np.ndarray:
+    def __array__(self, dtype=None, copy=None) -> np.ndarray:
         return self.values[self.map]
 
 
@@ -274,6 +271,7 @@ class ProvenanceIndex:
         lean_cells: bool = False,
         build_threads: int = 1,
         np_read_groups: int = 30,
+        dense_limit: float = 1e8,
     ) -> None:
         """``grouping``: ``"auto"`` (one cell graph for the whole forest when the slab grid of all
         axes has at most ``one_cells`` cells; otherwise the greedy cell graphs or leaf bitmasks for
@@ -286,6 +284,7 @@ class ProvenanceIndex:
         self.slabs = Slabs(bound)
         self.choice = None
         self.np_read_groups = np_read_groups
+        self.dense_limit = dense_limit
         self._nbase = None
         if grouping == "tables":
             # every tree in a cell graph with its persistent tree: one for the whole forest when its grid is small,
@@ -475,6 +474,9 @@ class ProvenanceIndex:
             if isinstance(cells, LeanCellIndex):
                 cells.overlay.face_of_cell = np.arange(len(cells.table), dtype=np.uint32)
                 cells.overlay.n_faces = len(cells.table)
+        # a small index keeps one value per grid cell: a read is one step; a large one reads through the map
+        self._ndense = None
+        dense = 8 * sum(leaf.cells.overlay.grid_cells for leaf in leaves) <= self.dense_limit
         if vector:
             # by the width of the cell numbers: a read takes one slice per width
             leaves.sort(key=lambda leaf: np.dtype(_short_cells(leaf.cells.overlay.n_faces)).itemsize)
@@ -501,9 +503,14 @@ class ProvenanceIndex:
             else:
                 m = np.asarray(overlay.face_of_cell, dtype=kind)
                 values = np.ascontiguousarray(cells.face_value, dtype=np.float64)
-                self._tables.append(_Table(m, values))
+                self._tables.append(memoryview(values[m]) if dense else _Table(m, values))
+                self._table_cells += n if dense else 0
             overlay.face_of_cell, cells.face_value = m, values
             self._map_bytes += n * m.itemsize
+            if vector and dense and gi == len(leaves) - 1:
+                self._ndense = np.concatenate([leaf.cells.face_value[leaf.cells.overlay.face_of_cell] for leaf in leaves])
+                self._table_cells = len(self._ndense)
+                self._nbase = np.concatenate(([0], np.cumsum([leaf.cells.overlay.grid_cells for leaf in leaves])[:-1])).astype(np.int64)
             shift = 32 * gi
             for k, a in enumerate(leaf.axes):
                 if not overlay.cuts[k]:
@@ -537,6 +544,8 @@ class ProvenanceIndex:
 
     def _read_cells(self, c: np.ndarray, faces: np.ndarray, n1: int, n12: int) -> np.ndarray:
         """The values at positions ``c`` of groups sorted by width, of which ``n1`` use one byte and ``n12`` at most two."""
+        if self._ndense is not None:
+            return self._ndense.take(c)
         maps = self._nmaps
         if c.ndim == 1:
             if n1 == len(c):
@@ -669,7 +678,7 @@ class ProvenanceIndex:
                     c[:, g] += contrib[np.searchsorted(th[a], x[:, a], side="left")]
                 v = np.full(len(x), self._const)
                 for g, table in enumerate(self._tables):
-                    v += table.take(c[:, g])
+                    v += np.asarray(table)[c[:, g]]
                 out[lo:lo + chunk] = v
         return out
 

@@ -9,16 +9,17 @@ from pathlib import Path
 import pandas as pd
 
 W = Path("/mnt/data/yingli/counterprovenance")
-Q = W / "repo_compact"
+Q = W / (sys.argv[2] if len(sys.argv) > 2 else "repo_compact")
+OUT = sys.argv[3] if len(sys.argv) > 3 else "compact"
 M = W / "repo_dev2/results/main"
-R = Q / "results/compact"
+R = Q / "results" / OUT
 SETS = "concrete,light_tunnel,ailerons,pol,elevators,jdk,postgres,baf,mslr,census1990,susy,methane,higgs,airline,nyc_taxi".split(",")
 FAMILIES = ("LGBM", "XGB", "HGB", "GBR", "RF")
 LIMIT = int(sys.argv[1]) if len(sys.argv) > 1 else 20
 RESERVE_GB = 200
 anc = {ds: json.loads((W / "data/causal" / ds / "meta.json").read_text())["target_ancestors"] for ds in SETS}
 env = dict(os.environ, OMP_NUM_THREADS="1", CUDA_VISIBLE_DEVICES="", PYTHONPATH=f"{Q}:{W / 'chirho_pkgs'}")
-(W / "logs/compact").mkdir(parents=True, exist_ok=True)
+(W / "logs" / OUT).mkdir(parents=True, exist_ok=True)
 
 
 def need_gb(ds, f):
@@ -28,7 +29,7 @@ def need_gb(ds, f):
 
 def running():
     out = subprocess.run(["ps", "-u", "yingli", "-o", "args="], capture_output=True, text=True).stdout.splitlines()
-    return sum("env/bin/python mech_main.py" in l and "--out compact" in l for l in out)
+    return sum("env/bin/python mech_main.py" in l and f"--out {OUT}" in l for l in out)
 
 
 def available_gb():
@@ -46,8 +47,8 @@ for ds, f in jobs:
     need = need_gb(ds, f)
     while running() >= LIMIT or available_gb() < need + RESERVE_GB:
         time.sleep(30)
-    subprocess.Popen([str(W / "env/bin/python"), "mech_main.py", "--data", str(W / "data/causal"), "--dataset", ds, "--family", f, "--backend", "twin", "--out", "compact"],
-                     cwd=Q / "experiments", env=env, stdout=open(W / "logs/compact" / f"{ds}_{f}.log", "a"), stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
+    subprocess.Popen([str(W / "env/bin/python"), "mech_main.py", "--data", str(W / "data/causal"), "--dataset", ds, "--family", f, "--backend", "twin", "--out", OUT],
+                     cwd=Q / "experiments", env=env, stdout=open(W / "logs" / OUT / f"{ds}_{f}.log", "a"), stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
     print(time.strftime("%F %T"), "started", ds, f, round(need, 1), flush=True)
     time.sleep(3 if need < 50 else 60)
 print("all launched", flush=True)
