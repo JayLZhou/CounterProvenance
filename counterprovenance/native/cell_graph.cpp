@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <cstring>
 #include <thread>
+#include <type_traits>
 #include <vector>
 
 namespace {
@@ -169,11 +170,57 @@ private:
     const double* values_;
 };
 
+// cells of the graph = components of the unlabelled grid edges; the root of a component is its first grid cell, so
+// numbering them in order of the root is the numbering of the Python overlay.  T numbers the grid cells: 32 bits while
+// they fit, 64 bits beyond.  Returns the cell of every grid cell; ``ok`` is false if the cells do not fit in 32 bits.
+template <class T, class Wall>
+std::vector<uint32_t> components(const Graph& g, Wall is_wall, std::vector<int64_t>& representative, bool& ok) {
+    const int64_t K = g.K;
+    const int d = g.d;
+    std::vector<T> uf(K);
+    for (int64_t i = 0; i < K; ++i) uf[i] = static_cast<T>(i);
+    auto find = [&](T x) {
+        while (uf[x] != x) { uf[x] = uf[uf[x]]; x = uf[x]; }
+        return x;
+    };
+    {
+        std::vector<int64_t> at(d, 0);
+        for (int64_t u = 0; u < K; ++u) {
+            for (int k = 0; k < d; ++k) {
+                if (at[k] > 0 && !is_wall(k, u)) {
+                    T a = find(static_cast<T>(u)), b = find(static_cast<T>(u - g.strides[k]));
+                    if (a != b) { if (a < b) uf[b] = a; else uf[a] = b; }
+                }
+            }
+            for (int k = d - 1; k >= 0; --k) { if (++at[k] < g.shape[k]) break; at[k] = 0; }
+        }
+    }
+    for (int64_t u = 0; u < K; ++u) uf[u] = uf[uf[u]];   // parents have smaller indices: fully compressed
+    for (int64_t u = 0; u < K; ++u) {
+        if (uf[u] == static_cast<T>(u)) {
+            uf[u] = static_cast<T>(representative.size());
+            representative.push_back(u);
+        } else {
+            uf[u] = uf[uf[u]];
+        }
+    }
+    ok = representative.size() < (static_cast<size_t>(1) << 32) - 1;
+    if constexpr (std::is_same<T, uint32_t>::value) {
+        return uf;
+    } else {
+        std::vector<uint32_t> out;
+        if (!ok) return out;
+        out.resize(K);
+        for (int64_t u = 0; u < K; ++u) out[u] = static_cast<uint32_t>(uf[u]);
+        return out;
+    }
+}
+
 }  // namespace
 
 extern "C" {
 
-// status: 0 ok, 1 more than max_cells grid cells, 2 more persistent nodes than fit in 32 bits
+// status: 0 ok, 1 more than max_cells grid cells or more cells than fit in 32 bits, 2 more persistent nodes than fit in 32 bits
 void* tw_cell_graph(int d, int64_t n, const int64_t* ranges, const int64_t* slots, const double* values,
                     const int64_t* slab_counts, double offset, int threads, int64_t max_cells, int64_t* status) {
     auto* gp = new Graph();
@@ -205,7 +252,7 @@ void* tw_cell_graph(int d, int64_t n, const int64_t* ranges, const int64_t* slot
         g.shape[k] = static_cast<int64_t>(c.size()) + 1;
         K128 *= g.shape[k];
     }
-    if (K128 > max_cells || K128 >= (static_cast<__int128>(1) << 32) - 1) {
+    if (K128 > max_cells) {
         *status = 1;
         return gp;
     }
@@ -249,37 +296,17 @@ void* tw_cell_graph(int d, int64_t n, const int64_t* ranges, const int64_t* slot
         return (wall[e >> 6].load(std::memory_order_relaxed) >> (e & 63)) & 1;
     };
 
-    // 2. cells of the graph = components of the unlabelled grid edges; the root of a component is its first
-    //    grid cell, so numbering them in order of the root is the numbering of the Python overlay
-    std::vector<uint32_t> uf(K);
-    for (int64_t i = 0; i < K; ++i) uf[i] = static_cast<uint32_t>(i);
-    auto find = [&](uint32_t x) {
-        while (uf[x] != x) { uf[x] = uf[uf[x]]; x = uf[x]; }
-        return x;
-    };
-    {
-        std::vector<int64_t> at(d, 0);
-        for (int64_t u = 0; u < K; ++u) {
-            for (int k = 0; k < d; ++k) {
-                if (at[k] > 0 && !is_wall(k, u)) {
-                    uint32_t a = find(static_cast<uint32_t>(u)), b = find(static_cast<uint32_t>(u - g.strides[k]));
-                    if (a != b) { if (a < b) uf[b] = a; else uf[a] = b; }
-                }
-            }
-            for (int k = d - 1; k >= 0; --k) { if (++at[k] < g.shape[k]) break; at[k] = 0; }
-        }
-    }
-    for (int64_t u = 0; u < K; ++u) uf[u] = uf[uf[u]];   // parents have smaller indices: fully compressed
+    // 2. cells of the graph (see components)
     std::vector<int64_t> representative;
-    for (int64_t u = 0; u < K; ++u) {
-        if (uf[u] == static_cast<uint32_t>(u)) {
-            uf[u] = static_cast<uint32_t>(representative.size());
-            representative.push_back(u);
-        } else {
-            uf[u] = uf[uf[u]];
-        }
+    bool fits = true;
+    if (K < (static_cast<int64_t>(1) << 32) - 1)
+        g.face_of_cell = components<uint32_t>(g, is_wall, representative, fits);
+    else
+        g.face_of_cell = components<uint64_t>(g, is_wall, representative, fits);
+    if (!fits) {
+        *status = 1;
+        return gp;
     }
-    g.face_of_cell.swap(uf);
     g.n_faces = static_cast<int64_t>(representative.size());
     const auto& fc = g.face_of_cell;
 
