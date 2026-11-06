@@ -61,7 +61,7 @@ for ds, f in jobs:
     big = GRID.get((ds, f), 0) > 1e9
     while len(procs()) >= LIMIT or available_gb() < (600 if big else 100):
         wait(30)
-    subprocess.Popen(["timeout", "86400", str(W / "env/bin/python"), "mech_rss.py", "--dataset", ds, "--family", f, "--grouping", "none"], cwd=Q / "experiments", env=env,
+    subprocess.Popen(["timeout", "86400", str(W / "env/bin/python"), "mech_rss.py", "--dataset", ds, "--family", f, "--grouping", "none", "--threads", "8"], cwd=Q / "experiments", env=env,
                      stdout=open(log, "a"), stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
     print(time.strftime("%F %T"), "started", ds, f, f"{GRID.get((ds, f), 0):.3g}", flush=True)
     wait(120 if big else 0)

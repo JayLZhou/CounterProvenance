@@ -28,6 +28,7 @@ def main() -> None:
     ap.add_argument("--dataset", required=True)
     ap.add_argument("--family", required=True)
     ap.add_argument("--grouping", default="tables", choices=["tables", "none"])
+    ap.add_argument("--threads", type=int, default=1, help="build threads: more only when the memory is the question, not the time")
     args = ap.parse_args()
     state = pickle.loads((RESULTS / "main" / "cache" / f"{args.dataset}_{args.family}.pkl").read_bytes())
     scm, rows = state["scm"], state["rows"]
@@ -37,18 +38,18 @@ def main() -> None:
     unit0 = rows.iloc[0].to_dict()
     got, kept = [], []
     for node in nodes:
-        bound = bind_scm(scm, unit0, list(scm.parents[node]), node, threads=1, native=True)
+        bound = bind_scm(scm, unit0, list(scm.parents[node]), node, threads=args.threads, native=True)
         gc.collect()
         before = rss()
         t0 = time.perf_counter()
         if args.grouping == "tables":
-            index = ProvenanceIndex(bound, grouping="tables", budget=int(2e7), build_threads=1)
+            index = ProvenanceIndex(bound, grouping="tables", budget=int(2e7), build_threads=args.threads)
         else:  # one group over all inputs: the index without grouping
-            index = ProvenanceIndex(bound, grouping="none", native_cells=True, max_leaf_cells=10**15, build_threads=1)
+            index = ProvenanceIndex(bound, grouping="none", native_cells=True, max_leaf_cells=10**15, build_threads=args.threads)
         build_s = time.perf_counter() - t0
         gc.collect()
         got.append(dict(dataset=args.dataset, family=args.family, node=node, groups=len(index.groups), grid=index.stats.grid_cells, formula=index.stats.packed_bytes, real=rss() - before, total=rss(),
-                        peak=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024, build_s=build_s))
+                        peak=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024, build_s=build_s, threads=args.threads))
         kept.append(index)  # every index of the model stays loaded, as when the model serves queries
         pd.DataFrame(got).to_csv(out / f"{args.dataset}_{args.family}.csv", index=False)
     print("done", flush=True)
