@@ -92,8 +92,11 @@ class _Pft:
         self.left, self.right, self.sums, self.width = left, right, sums, width
         self.height = width.bit_length() - 1
         self.values = values
-        self._left, self._right, self._sums = left.tolist(), right.tolist(), sums.tolist()
-        self._vals = values.tolist()
+        self._left = None  # Python lists for the prefix sums of weighted reads, made on their first use
+
+    def _lists(self) -> None:
+        self._left, self._right, self._sums = self.left.tolist(), self.right.tolist(), self.sums.tolist()
+        self._vals = self.values.tolist()
 
     def _total(self, child: int) -> float:
         if child >= 0:
@@ -105,6 +108,8 @@ class _Pft:
         """Sum of the leaf values of the slots below ``p``: one root-to-leaf path, O(log M)."""
         if p <= 0:
             return 0.0
+        if self._left is None:
+            self._lists()
         if p >= self.width:
             return self._sums[root]
         left, right = self._left, self._right
