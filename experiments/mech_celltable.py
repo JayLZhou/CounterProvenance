@@ -43,15 +43,17 @@ def main() -> None:
     ap.add_argument("--dataset", required=True)
     ap.add_argument("--family", required=True)
     ap.add_argument("--cap", type=float, default=1e11)
+    ap.add_argument("--trees", default="10,20,50,100,200,500,1000")
+    ap.add_argument("--out", default="celltable")
     args = ap.parse_args()
     state = pickle.loads((RESULTS / "main" / "cache" / f"{args.dataset}_{args.family}.pkl").read_bytes())
     scm, y, rows = state["scm"], state["y"], state["rows"]
-    out = RESULTS / "celltable"
+    out = RESULTS / args.out
     out.mkdir(parents=True, exist_ok=True)
     bound = bind_scm(scm, rows.iloc[0].to_dict(), list(scm.parents[y]), y, threads=1, native=True)
     points = rows[list(scm.parents[y])].to_numpy(dtype=float)[:300]
     got = []
-    for m in (10, 20, 50, 100, 200, 500, 1000):
+    for m in map(int, args.trees.split(",")):
         sub = dataclasses.replace(bound, boxes=tuple(b for b in bound.boxes if b.tree < m))
         slabs = Slabs(sub)
         grid = math.prod(slabs.counts)
