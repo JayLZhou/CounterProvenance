@@ -56,6 +56,8 @@ for ds, f in jobs:
     log = LOGS / f"{ds}_{f}.log"
     if log.exists() and any(k in log.read_text(errors="ignore") for k in ("done", "over 512 GB")):
         continue
+    if any(p[p.index("--dataset") + 1] == ds and p[p.index("--family") + 1] == f for p in procs()):
+        continue  # already running
     big = GRID.get((ds, f), 0) > 1e9
     while len(procs()) >= LIMIT or available_gb() < (600 if big else 100):
         wait(30)
