@@ -103,6 +103,15 @@ class AtomPiece:
         return arena.atom(label(self.box))
 
 
+def _release_free_memory() -> None:
+    """Return the memory that the build freed to the system (glibc keeps it otherwise); a no-op elsewhere."""
+    try:
+        import ctypes
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except (OSError, AttributeError):
+        pass
+
+
 def _short_cells(cells: int):
     """The shortest type that numbers this many cells: most groups have at most 256."""
     return np.uint8 if cells <= 1 << 8 else np.uint16 if cells <= 1 << 16 else np.uint32
@@ -352,6 +361,7 @@ class ProvenanceIndex:
         if self._fast:
             self._compile()
         self.build_seconds = time.perf_counter() - t0
+        _release_free_memory()
 
     # -- grouping -----------------------------------------------------------
     def _groups(self, grouping: str) -> list[tuple[tuple[int, ...], list[int]]]:
