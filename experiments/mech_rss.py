@@ -27,11 +27,12 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dataset", required=True)
     ap.add_argument("--family", required=True)
+    ap.add_argument("--grouping", default="tables", choices=["tables", "none"])
     args = ap.parse_args()
     state = pickle.loads((RESULTS / "main" / "cache" / f"{args.dataset}_{args.family}.pkl").read_bytes())
     scm, rows = state["scm"], state["rows"]
     nodes = pd.read_csv(RESULTS / "main" / f"{args.dataset}_{args.family}_build.csv").node.tolist()
-    out = RESULTS / "rss"
+    out = RESULTS / ("rss" if args.grouping == "tables" else "rss_none")
     out.mkdir(parents=True, exist_ok=True)
     unit0 = rows.iloc[0].to_dict()
     got, kept = [], []
@@ -40,10 +41,13 @@ def main() -> None:
         gc.collect()
         before = rss()
         t0 = time.perf_counter()
-        index = ProvenanceIndex(bound, grouping="tables", budget=int(2e7), build_threads=1)
+        if args.grouping == "tables":
+            index = ProvenanceIndex(bound, grouping="tables", budget=int(2e7), build_threads=1)
+        else:  # one group over all inputs: the index without grouping
+            index = ProvenanceIndex(bound, grouping="none", native_cells=True, max_leaf_cells=10**15, build_threads=1)
         build_s = time.perf_counter() - t0
         gc.collect()
-        got.append(dict(dataset=args.dataset, family=args.family, node=node, formula=index.stats.packed_bytes, real=rss() - before,
+        got.append(dict(dataset=args.dataset, family=args.family, node=node, groups=len(index.groups), grid=index.stats.grid_cells, formula=index.stats.packed_bytes, real=rss() - before, total=rss(),
                         peak=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024, build_s=build_s))
         kept.append(index)  # every index of the model stays loaded, as when the model serves queries
         pd.DataFrame(got).to_csv(out / f"{args.dataset}_{args.family}.csv", index=False)
