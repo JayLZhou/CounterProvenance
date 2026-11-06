@@ -17,7 +17,8 @@ env = dict(os.environ, OMP_NUM_THREADS="1", CUDA_VISIBLE_DEVICES="", PYTHONPATH=
 
 
 def running():
-    return int(subprocess.run("pgrep -fc 'mech_naive[.]py'", shell=True, capture_output=True, text=True).stdout.strip() or 0)
+    out = subprocess.run(["ps", "-u", "yingli", "-o", "args="], capture_output=True, text=True).stdout.splitlines()
+    return sum("mech_naive.py" in l and not l.startswith("timeout") for l in out)
 
 
 def available_gb():
@@ -40,11 +41,14 @@ def watch():
 
 
 def wait(seconds):
+    watch()
     for _ in range(seconds // 10):
-        watch()
         time.sleep(10)
+        watch()
 
 
+import pandas as pd
+GRID = {(r.ds, r.fam): r.grid for r in pd.read_csv(W / "ct1tb_classes.csv").itertuples()}
 print(len(JOBS), "jobs", flush=True)
 for ds, f in JOBS:
     log = W / "logs/naive" / f"{ds}_{f}.log"
@@ -57,7 +61,8 @@ for ds, f in JOBS:
     cmd = ["timeout", "86400", str(W / "env/bin/python"), "mech_naive.py", "--dataset", ds, "--family", f]
     subprocess.Popen(cmd, cwd=Q / "experiments", env=env, stdout=open(log, "a"), stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
     print(time.strftime("%F %T"), "started", ds, f, flush=True)
-    wait(120)  # let it grow before the next one is judged
+    grid = GRID.get((ds, f), 0)
+    wait(120 if grid > 1e9 else 20 if grid > 1e7 else 0)  # a large one grows before the next one is judged
 print("all launched", flush=True)
 while running():
     wait(60)
