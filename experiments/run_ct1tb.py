@@ -34,8 +34,8 @@ def one_tb():
 print(len(JOBS), "jobs", flush=True)
 for ds, f in JOBS:
     log = W / "logs/ct1tb" / f"{ds}_{f}.log"
-    if log.exists() and "done" in log.read_text(errors="ignore"):
-        continue
+    if log.exists() and any(k in log.read_text(errors="ignore") for k in ("done", "bad_alloc", "MemoryError", "dumped core")):
+        continue  # finished, or out of the 1 TB: a second try would end the same way
     if f"--dataset {ds} --family {f} " in subprocess.run(["ps", "-u", "yingli", "-o", "args="], capture_output=True, text=True).stdout:
         continue
     while running() >= LIMIT or available_gb() < START_GB:
