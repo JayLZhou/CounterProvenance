@@ -25,7 +25,7 @@ from scm_bench import choose_treatments, zoo
 
 
 class MechanismIndex:
-    def __init__(self, scm, unit0, nodes, budget, threads, one_cells=10_000_000):
+    def __init__(self, scm, unit0, nodes, budget, threads, one_cells=50_000_000):
         self.scm, self.indexes, self.info = scm, {}, {}
         for x in nodes:
             pa = list(scm.parents[x])

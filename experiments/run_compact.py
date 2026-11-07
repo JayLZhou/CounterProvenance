@@ -39,7 +39,8 @@ def available_gb():
     return 0.0
 
 
-jobs = sorted(((ds, f) for ds in SETS for f in FAMILIES), key=lambda j: need_gb(*j))
+SKIP = set(tuple(l.split()) for l in (W / "skip_final.txt").read_text().splitlines() if l.strip()) if (W / "skip_final.txt").exists() else set()
+jobs = sorted(((ds, f) for ds in SETS for f in FAMILIES if (ds, f) not in SKIP), key=lambda j: need_gb(*j))
 print(len(jobs), "jobs", flush=True)
 for ds, f in jobs:
     if all((R / f"{ds}_{f}_d{v}_twin_lat.npy").exists() for v in (1, 2, 4, 8, 16) if v <= anc[ds]):

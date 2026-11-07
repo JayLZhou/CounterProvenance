@@ -186,7 +186,7 @@ def main() -> None:
     ap.add_argument("--units", type=int, default=1000)
     ap.add_argument("--per-unit", type=int, default=10)
     ap.add_argument("--budget", type=float, default=2e7)
-    ap.add_argument("--one-cells", type=float, default=1e7, help="an ensemble whose grid has at most this many cells is one group")
+    ap.add_argument("--one-cells", type=float, default=5e7, help="an ensemble whose grid has at most this many cells is one group")
     ap.add_argument("--hours", type=float, default=24.0)
     args = ap.parse_args()
     out = results_dir(args)
