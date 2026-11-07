@@ -272,6 +272,7 @@ class ProvenanceIndex:
         compile: bool = True,
         one_cells: int | None = None,
         one_pairs: float = 5e10,
+        one_max: int = 50_000_000,
         min_group_trees: int = 1,
         cost_lookup: float = 0.15,
         cost_masks_fixed: float = 8.0,
@@ -297,8 +298,9 @@ class ProvenanceIndex:
         self.dense_limit = dense_limit
         self._nbase = None
         if one_cells is None:
-            # one group while the grid times the trees, the cells a table of all leaves would hold, stays within ``one_pairs``
-            one_cells = int(one_pairs / max(1, len(bound.ensemble.trees)))
+            # one group while the grid times the trees, the cells a table of all leaves would hold, stays within ``one_pairs``,
+            # and the grid within ``one_max``: the union-find and the walls of the build grow with the grid alone
+            one_cells = min(one_max, int(one_pairs / max(1, len(bound.ensemble.trees))))
         if grouping == "tables":
             # every tree in a cell graph with its persistent tree: one for the whole forest when its grid is small,
             # otherwise the greedy groups under ``budget``; built in C++
