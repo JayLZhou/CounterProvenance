@@ -25,13 +25,13 @@ from scm_bench import choose_treatments, zoo
 
 
 class MechanismIndex:
-    def __init__(self, scm, unit0, nodes, budget, threads):
+    def __init__(self, scm, unit0, nodes, budget, threads, one_cells=2_000_000):
         self.scm, self.indexes, self.info = scm, {}, {}
         for x in nodes:
             pa = list(scm.parents[x])
             t0 = time.perf_counter()
             bound = bind_scm(scm, unit0, pa, x, threads=threads, native=True)
-            index = ProvenanceIndex(bound, grouping="tables", budget=int(budget), build_threads=threads)
+            index = ProvenanceIndex(bound, grouping="tables", budget=int(budget), build_threads=threads, one_cells=int(one_cells))
             st = index.stats
             self.indexes[x] = index
             self.info[x] = dict(parents=len(pa), boxes=len(bound.boxes), groups=len(index.groups), cells=st.grid_cells,

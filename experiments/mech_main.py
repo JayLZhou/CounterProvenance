@@ -73,7 +73,7 @@ def run_twin(args, state, out):
     nodes = sorted({x for w in work.values() for x in relevant_nodes(scm.parents, w["T"], y)})
     t0 = time.perf_counter()
     try:
-        mech = MechanismIndex(scm, rows.iloc[0].to_dict(), nodes, args.budget, 1)
+        mech = MechanismIndex(scm, rows.iloc[0].to_dict(), nodes, args.budget, 1, args.one_cells)
     except MemoryError as e:
         pd.DataFrame([dict(dataset=args.dataset, family=args.family, status=f"infeasible: {str(e)[:80]}", build_s=time.perf_counter() - t0)]).to_csv(out / f"{args.dataset}_{args.family}_build.csv", index=False)
         return
@@ -186,6 +186,7 @@ def main() -> None:
     ap.add_argument("--units", type=int, default=1000)
     ap.add_argument("--per-unit", type=int, default=10)
     ap.add_argument("--budget", type=float, default=2e7)
+    ap.add_argument("--one-cells", type=float, default=2e6, help="an ensemble whose grid has at most this many cells is one group")
     ap.add_argument("--hours", type=float, default=24.0)
     args = ap.parse_args()
     out = results_dir(args)
