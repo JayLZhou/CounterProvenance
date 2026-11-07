@@ -28,7 +28,7 @@ def need_gb(ds, f):
 
 def running():
     out = subprocess.run(["ps", "-u", "yingli", "-o", "args="], capture_output=True, text=True).stdout.splitlines()
-    return sum("env/bin/python mech_main.py" in l and f"--out {OUT}" in l for l in out)
+    return sum("env/bin/python mech_main.py" in l and "--out beta_twin/" in l and not l.startswith("timeout") for l in out)
 
 
 def available_gb():
