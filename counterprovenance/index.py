@@ -270,7 +270,7 @@ class ProvenanceIndex:
         alpha: float = 1.5,
         max_leaf_cells: int = 20_000_000,
         compile: bool = True,
-        one_cells: int = 2_000_000,
+        one_cells: int = 10_000_000,
         min_group_trees: int = 1,
         cost_lookup: float = 0.15,
         cost_masks_fixed: float = 8.0,
