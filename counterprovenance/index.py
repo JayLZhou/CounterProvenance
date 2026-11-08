@@ -553,16 +553,18 @@ class ProvenanceIndex:
                     for s in np.flatnonzero(contrib).tolist():
                         row[s] += int(contrib[s]) << shift
         if vector:
-            self._naxes = []
+            # the same rank rows over all groups: adding a whole row is cheaper than assigning into some of its fields;
+            # a group off the axis has zeros in its column
+            self._nwide, column = [], {}
             for a, groups in sorted(groups_of_axis.items()):
-                pick = [c for g, ax, c in self._contrib if ax == a]
-                self._naxes.append((a, th[a], np.array(groups, dtype=np.int64), np.stack(pick, axis=1)))
-            # the same rank rows over all groups: adding a whole row is cheaper than assigning into some of its fields
-            self._nwide = []
-            for a, thresholds, groups, ranks in self._naxes:
-                wide = np.zeros((ranks.shape[0], len(leaves)), dtype=np.int64)
-                wide[:, groups] = ranks
-                self._nwide.append((a, thresholds, wide))
+                wide = np.zeros((counts[a], len(leaves)), dtype=np.int64)
+                for g, ax, c in self._contrib:
+                    if ax == a:
+                        wide[:, g] = c
+                self._nwide.append((a, th[a], wide))
+                column[a] = wide
+            # the rank vector of a group on an axis is a column of these rows, not a copy
+            self._contrib = [(g, a, column[a][:, g]) for g, a, _ in self._contrib]
         self._paxes = [(a, th[a], rows[a]) for a in range(d) if any(rows[a])]
         self._groups_of_axis = groups_of_axis
         self._nbytes = 4 * len(leaves)
@@ -698,8 +700,8 @@ class ProvenanceIndex:
             if self._nbase is not None:
                 # one row per group: the reads stay inside one table at a time, which keeps them in the cache
                 c = np.repeat(self._nbase[:, None], len(x), axis=1)
-                for a, _, groups, rows in self._naxes:
-                    c[groups] += rows[np.searchsorted(th[a], x[:, a], side="left")].T
+                for a, _, wide in self._nwide:
+                    c += wide[np.searchsorted(th[a], x[:, a], side="left")].T
                 out[lo:lo + chunk] = self._const + self._read_cells(c, self._nfaces, self._n1, self._n12).sum(axis=0)
             else:
                 c = np.zeros((len(x), n_groups), dtype=np.int64)
