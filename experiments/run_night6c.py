@@ -89,7 +89,7 @@ for ds, f in rss:
                  peak_gb(ds, f) * 1.05 + 5, 1, 8 * 3600, lambda ds=ds, f=f: rss_done(ds, f)))
 for beta, scale in (("2e6", 1.0), ("2e8", None)):
     for ds, f in rss:
-        if not grouped(ds, f):
+        if not grouped(ds, f) or (ds, f) == ("methane", "XGB"):   # beta 2e8 needs 1.8 TB: not in the beta study
             continue
         jobs.append((f"beta{beta}_{ds}_{f}", [PY, "mech_main.py", "--data", DATA, "--dataset", ds, "--family", f, "--backend", "twin",
                                               "--budget", beta, "--out", f"beta_final/{beta}"],
