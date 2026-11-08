@@ -25,6 +25,23 @@ class NativeCells(unittest.TestCase):
             for axes in ([0], [0, 1], [2, 0, 1]):
                 yield bind(ens, self.X[5], axes=axes, noise=0.25)
 
+    def test_subtree_sums(self):
+        # the sums are not stored with the index: derived from the children, a version sums its items
+        for bound in self.binds():
+            sl = Slabs(bound)
+            d = bound.d
+            items = list(range(len(bound.boxes)))
+            kw = dict(items=items, ranges=[[sl.ranges[i][a] for a in range(d)] for i in items],
+                      slots=[bound.boxes[i].tree for i in items], slab_counts=[sl.counts[a] for a in range(d)],
+                      values=[bound.boxes[i].value for i in items])
+            cc = NativeCellIndex(**kw)
+            self.assertIsNone(cc.pft._sums)
+            sums = cc.pft.sums
+            vals = np.asarray(kw["values"], dtype=np.float64)
+            for root in sorted(set(cc.face_version.tolist())):
+                if root >= 0:
+                    self.assertAlmostEqual(sums[root], float(vals[cc.pft.items(root)].sum()), places=9)
+
     def test_same_graph(self):
         for bound in self.binds():
             sl = Slabs(bound)

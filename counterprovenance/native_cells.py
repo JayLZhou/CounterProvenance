@@ -88,11 +88,27 @@ class _Overlay:
 class _Pft:
     """Read-only persistent factor tree: a version is a root node."""
 
-    def __init__(self, left: np.ndarray, right: np.ndarray, sums: np.ndarray, width: int, values: np.ndarray) -> None:
-        self.left, self.right, self.sums, self.width = left, right, sums, width
+    def __init__(self, left: np.ndarray, right: np.ndarray, width: int, values: np.ndarray) -> None:
+        self.left, self.right, self.width = left, right, width
         self.height = width.bit_length() - 1
         self.values = values
+        self._sums = None
         self._left = None  # Python lists for the prefix sums of weighted reads, made on their first use
+
+    @property
+    def sums(self) -> np.ndarray:
+        """Subtree sums of the nodes, only for weighted reads: not stored with the index, but derived on first
+        use from the children in ``height`` vectorized passes, since a node is at most ``height`` levels above
+        the items."""
+        if self._sums is None:
+            vals = np.r_[np.asarray(self.values, dtype=np.float64), 0.0]   # item -1 (no item) reads 0
+            def total(child, sums):
+                return np.where(child >= 0, sums[np.maximum(child, 0)], vals[np.where(child >= 0, -1, -child - 2)])
+            sums = np.zeros(len(self.left), dtype=np.float64)
+            for _ in range(max(1, self.height)):
+                sums = total(self.left, sums) + total(self.right, sums)
+            self._sums = sums
+        return self._sums
 
     def _lists(self) -> None:
         self._left, self._right, self._sums = self.left.tolist(), self.right.tolist(), self.sums.tolist()
@@ -202,7 +218,8 @@ class NativeCellIndex:
         finally:
             lib.tw_cg_free(h)
         self.overlay = _Overlay(cuts, slab_counts, face_of_cell, faces)
-        self.pft = _Pft(left, right, sums, int(width), vals)
+        del sums   # derived again only for weighted reads (``_Pft.sums``)
+        self.pft = _Pft(left, right, int(width), vals)
         self.slot_trees = sorted(dense)   # the tree of every slot, ascending
         self.item_trees = np.asarray(slots, dtype=np.int64)
         self.stats = CellStats(grid_cells=K, faces=faces, face_edges=n_edges, slots=len(dense),
