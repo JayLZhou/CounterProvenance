@@ -51,8 +51,22 @@ def available_gb():
     return 0.0
 
 
+class _Done:
+    """The last latency file, or a build record that says the setting is infeasible (then a rerun gives the same)."""
+    def __init__(self, path):
+        self.path = path
+
+    def exists(self):
+        if self.path.exists():
+            return True
+        b = self.path.parent / (self.path.name.split("_d")[0] + "_build.csv")
+        if self.path.name.startswith(("light_tunnel", "census1990", "nyc_taxi")):
+            b = self.path.parent / ("_".join(self.path.name.split("_")[:3]) + "_build.csv")
+        return b.exists() and str(pd.read_csv(b).status.iloc[0]).startswith("infeasible")
+
+
 def last_lat(out, ds, f):
-    return LEAN / "results" / out / f"{ds}_{f}_d{16 if ds in D16 else 8}_twin_lat.npy"
+    return _Done(LEAN / "results" / out / f"{ds}_{f}_d{16 if ds in D16 else 8}_twin_lat.npy")
 
 
 jobs = []   # (name, cmd, cwd, est_gb, weight, timeout_s, done)
