@@ -59,7 +59,8 @@ def main() -> None:
         grid_all = math.prod(int(c) for c in Slabs(bound).counts)
         got.append(dict(dataset=args.dataset, family=args.family, node=node, groups=len(index.groups), grid=index.stats.grid_cells, formula=index.stats.packed_bytes, real=real, total=rss(),
                         peak=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024, build_s=build_s, threads=args.threads,
-                        trees=len(bound.ensemble.trees), faces=faces, all_leaves=all_leaves, grid_all=grid_all))
+                        trees=len(bound.ensemble.trees), faces=faces, all_leaves=all_leaves, grid_all=grid_all,
+                        pft_nodes=index.stats.pft_nodes, map_bytes=index.stats.map_bytes, table_cells=index.stats.table_cells))
         kept.append(index)  # every index of the model stays loaded, as when the model serves queries
         pd.DataFrame(got).to_csv(out / f"{args.dataset}_{args.family}.csv", index=False)
     print("done", flush=True)
