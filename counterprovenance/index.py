@@ -294,6 +294,7 @@ class ProvenanceIndex:
         self.bound = bound
         self.slabs = Slabs(bound)
         self.choice = None
+        self.one_fallback = False   # one group was chosen but did not fit
         self.np_read_groups = np_read_groups
         self.dense_limit = dense_limit
         self._nbase = None
@@ -348,16 +349,28 @@ class ProvenanceIndex:
         self._leaf_depths: Counter = Counter()
         self._cast = make_cast(bound.ensemble)
         self.deep: list = []
-        groups = self._groups(grouping)
-        if self.choice in ("one", "tables") and self.deep:
-            raise MemoryError(f"{len(self.deep)} trees alone exceed {grid_cap:,} grid cells")
-        if group_budget is not None:
-            merged: dict[tuple[int, ...], list[int]] = {}
-            for axes, items in groups:
-                merged.setdefault(axes, []).extend(items)
-            groups = list(_merge_groups(merged, group_budget, bound).items())
-        self.groups = groups
-        self.roots = [self._build(items, tuple(axes), 0) for axes, items in groups]
+        while True:
+            try:
+                groups = self._groups(grouping)
+                if self.choice in ("one", "tables") and self.deep:
+                    raise MemoryError(f"{len(self.deep)} trees alone exceed {self.grid_cap:,} grid cells")
+                if group_budget is not None:
+                    merged: dict[tuple[int, ...], list[int]] = {}
+                    for axes, items in groups:
+                        merged.setdefault(axes, []).extend(items)
+                    groups = list(_merge_groups(merged, group_budget, bound).items())
+                self.groups = groups
+                self.roots = [self._build(items, tuple(axes), 0) for axes, items in groups]
+                break
+            except MemoryError:
+                if self.choice != "one":
+                    raise
+                # one group did not fit (e.g. its persistent tree needs more than 2^31 nodes): the greedy groups instead
+                grouping, self.choice = "greedy", "tables"
+                self.grid_cap, self.mask_ratio = max(budget, 10**9), math.inf
+                self.max_leaf_cells = max(self.max_leaf_cells, budget, 10**9)
+                self._leaves, self._leaf_depths, self.deep, self._segment_nodes = [], Counter(), [], 0
+                self.one_fallback = True
         self._build_bitmasks()
         self._fast = compile and all(r is None or isinstance(r, _Leaf) for r in self.roots)
         self._fast_leaves: list[_Leaf] = []

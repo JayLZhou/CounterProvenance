@@ -100,6 +100,35 @@ class NativeCells(unittest.TestCase):
                 for t in rng.normal(size=(200, bound.d)):
                     self.assertAlmostEqual(a.query(t).value, b.query(t).value, places=9)
 
+    def test_one_group_fallback(self):
+        # one group that does not fit (as a persistent tree over 2^31 nodes would) falls back to the greedy groups
+        from counterprovenance import index as index_module
+        rng = np.random.default_rng(5)
+        real = index_module.NativeCellIndex
+        n_trees = {}
+
+        class Failing(real):
+            def __init__(self, items, ranges, slots, *args, **kw):
+                if not n_trees.get("failed") and len(set(slots)) == n_trees["all"] and n_trees["all"] > 1:
+                    n_trees["failed"] = True   # only the first build, the one group of all trees
+                    raise MemoryError("cell graph: status 2")
+                super().__init__(items, ranges, slots, *args, **kw)
+
+        for bound in self.binds():
+            a = ProvenanceIndex(bound, grouping="none", max_leaf_cells=10**8)
+            n_trees.clear()
+            n_trees["all"] = len({box.tree for box in bound.boxes})
+            index_module.NativeCellIndex = Failing
+            try:
+                b = ProvenanceIndex(bound, grouping="tables", budget=20000, one_cells=10**9)
+            finally:
+                index_module.NativeCellIndex = real
+            if n_trees["all"] > 1:
+                self.assertTrue(b.one_fallback)
+                self.assertEqual(b.choice, "tables")
+            for t in rng.normal(size=(200, bound.d)):
+                self.assertAlmostEqual(a.query(t).value, b.query(t).value, places=9)
+
     def test_queries(self):
         rng = np.random.default_rng(1)
         for bound in self.binds():
