@@ -99,32 +99,44 @@ class TwinMech:
     built once for the whole table; a unit only abducts its noise on these ensembles, and a call of many
     interventions replays the mediators and the outcome with one batch read per ensemble."""
 
-    def __init__(self, scm, unit0, T, y, budget, threads):
+    def __init__(self, scm, unit0, T, y, budget, threads, max_size=None):
         from mech_proto import MechanismIndex
         t0 = time.perf_counter()
         self.scm, self.T, self.y = scm, list(T), y
         self.order = relevant_nodes(scm.parents, self.T, y)
-        self.mech = MechanismIndex(scm, unit0, self.order, budget, threads)
+        # MINT: an action on a subset S of T leaves the rest of T to the SCM, so the path of S has more mediators
+        self.orders = {None: self.order}
+        if max_size:
+            for size in range(1, min(len(self.T), max_size) + 1):
+                for S in itertools.combinations(range(len(self.T)), size):
+                    self.orders[S] = relevant_nodes(scm.parents, [self.T[i] for i in S], y)
+        nodes = [x for x in dict.fromkeys(x for o in self.orders.values() for x in o)]
+        self.mech = MechanismIndex(scm, unit0, nodes, budget, threads)
         self.build_s = time.perf_counter() - t0
         self.info = dict(path=len(self.order), mediators=len(self.order) - 1,
                          groups=sum(v["groups"] for v in self.mech.info.values()))
 
     def unit(self, unit):
-        return TwinUnit(self, unit, self.mech.observed(unit, self.order))
+        return TwinUnit(self, unit, self.mech.observed(unit, list(self.mech.indexes)))
+
+    def subset(self, unit_backend, S):
+        """The backend of a unit for an action on T[S] only."""
+        return TwinUnit(self, unit_backend.unit, unit_backend.observed, [self.T[i] for i in S], self.orders[S])
 
 
 class TwinUnit:
     """The backend of one unit: its noise is the factual value minus the index at its factual parents."""
 
-    def __init__(self, tw, unit, observed):
+    def __init__(self, tw, unit, observed, T=None, order=None):
         self.tw, self.unit, self.observed = tw, unit, observed
+        self.T, self.order = (T, order) if T is not None else (tw.T, tw.order)
 
     def __call__(self, Q):
         tw = self.tw
         Q = np.atleast_2d(np.asarray(Q, dtype=np.float64))
         n = len(Q)
-        cols = {name: Q[:, i] for i, name in enumerate(tw.T)}
-        for x in tw.order:
+        cols = {name: Q[:, i] for i, name in enumerate(self.T)}
+        for x in self.order:
             X = np.column_stack([cols[p] if p in cols else np.full(n, float(self.unit[p])) for p in tw.scm.parents[x]])
             cols[x] = float(self.unit[x]) + (tw.mech.indexes[x].query_batch(X) - self.observed[x])
         return cols[tw.y]
@@ -264,6 +276,33 @@ class ThreeStep:
         return np.array([self.scm.query(t)[0] for t in Q])
 
 
+class SubsetOracle(Oracle):
+    """An oracle whose calls may intervene on a subset S of the variables of the context only (MINT): the other
+    variables are not intervened and follow the SCM.  ``make(S)`` gives the backend of S; making it is timed too."""
+
+    def __init__(self, make):
+        super().__init__(make(None))
+        self.make, self.cache = make, {}
+
+    def sub(self, S):
+        S = tuple(S)
+        if S not in self.cache:
+            t0 = time.perf_counter()
+            self.cache[S] = self.make(S)
+            self.query_s += time.perf_counter() - t0
+        fn = self.cache[S]
+
+        def call(Q):
+            Q = np.atleast_2d(Q)
+            self.queries += len(Q)
+            self.calls += 1
+            t0 = time.perf_counter()
+            y = fn(Q)
+            self.query_s += time.perf_counter() - t0
+            return y
+        return call
+
+
 class Ctx:
     """What an application knows about a unit: the box of the interventions, the factual point and the scales."""
 
@@ -377,6 +416,26 @@ def recourse_minimal(f, c, levels=20, max_size=3):
                 Q[:, a] = m.ravel()
             y = f(Q)
             cost = (np.abs(Q - c.u) / c.scale).sum(axis=1)
+            for i, tau in enumerate(taus):
+                ok = y >= tau
+                if ok.any():
+                    best[i] = min(best[i], float(cost[ok].min()))
+    return float(np.where(np.isfinite(best), best, 0.0).sum())
+
+
+def recourse_mint(f, c, levels=20, max_size=3):
+    """MINT (Karimi et al., FAccT 2021): the cheapest action on at most three actionable variables that reaches every
+    target, by enumeration of the action sets and a grid of their values.  An action intervenes on its variables only;
+    the other actionable variables follow the SCM, i.e., they are mediators of the action."""
+    taus = _targets(f, c)
+    best = np.full(len(taus), np.inf)
+    grids = [np.linspace(c.lo[a], c.hi[a], levels) for a in range(c.d)]
+    for size in range(1, min(c.d, max_size) + 1):
+        for S in itertools.combinations(range(c.d), size):
+            mesh = np.meshgrid(*[grids[a] for a in S], indexing="ij")
+            Q = np.column_stack([m.ravel() for m in mesh])
+            y = f.sub(S)(Q)
+            cost = (np.abs(Q - c.u[list(S)]) / c.scale[list(S)]).sum(axis=1)
             for i, tau in enumerate(taus):
                 ok = y >= tau
                 if ok.any():
@@ -670,7 +729,7 @@ def _mcce(f, c, k):
 APPS = dict(geco_genetic=geco_genetic, geco_one_query=geco_one_query, dowhy_feature_relevance=dowhy_feature_relevance, kernel_shap=kernel_shap, lime_tabular=lime_tabular,
             mcce_1000=lambda f, c: _mcce(f, c, 1000), mcce_10000=lambda f, c: _mcce(f, c, 10_000),
             mcce_100000=lambda f, c: _mcce(f, c, 100_000), what_if_surface=what_if_surface, what_if_slider=what_if_slider, dose_response=dose_response,
-            recourse_genetic=recourse_genetic, recourse_minimal=recourse_minimal, optimal_evolution=optimal_evolution,
+            recourse_genetic=recourse_genetic, recourse_minimal=recourse_minimal, recourse_mint=recourse_mint, optimal_evolution=optimal_evolution,
             optimal_candidates=optimal_candidates, tipping_points=tipping_points,
             shapley_attribution=shapley_attribution, sobol_sensitivity=sobol_sensitivity,
             monte_carlo_risk=monte_carlo_risk)

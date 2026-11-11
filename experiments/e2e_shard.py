@@ -18,7 +18,7 @@ import pandas as pd
 
 from common import RESULTS
 from counterprovenance.scm import ancestors, fit_scm, parents_of
-from e2e_apps import APPS, Ctx, DoWhy, GeCo, Oracle, ThreeStep, Twin, TwinMech, model_factory
+from e2e_apps import APPS, Ctx, DoWhy, GeCo, Oracle, SubsetOracle, ThreeStep, Twin, TwinMech, model_factory
 from scm_full import dowhy_model
 
 
@@ -82,7 +82,7 @@ def main() -> None:
             return
     build_s = 0.0
     if args.backend == "twin" and args.actionable:
-        twinm = TwinMech(scm, first.iloc[0].to_dict(), T, y, 2e7, args.build_threads)
+        twinm = TwinMech(scm, first.iloc[0].to_dict(), T, y, 2e7, args.build_threads, max_size=3 if args.app == "recourse_mint" else None)
         build_s = twinm.build_s
     elif args.backend == "twin":
         t0 = time.perf_counter()
@@ -132,7 +132,16 @@ def main() -> None:
             backend = GeCo(scm, unit, T, y)
         else:
             backend = ThreeStep(scm, unit, T, y)
-        f = Oracle(backend)
+        if args.app == "recourse_mint":
+            if args.backend == "twin":
+                make = lambda S, b=backend: b if S is None else twinm.subset(b, S)
+            elif args.backend == "dowhy":
+                make = lambda S, b=backend, r=row: b if S is None else DoWhy(gcm, cg, r, [T[i] for i in S], y)
+            else:
+                make = lambda S, b=backend, u=unit: b if S is None else ThreeStep(scm, u, [T[i] for i in S], y)
+            f = SubsetOracle(make)
+        else:
+            f = Oracle(backend)
         t0 = time.perf_counter()
         outs.append(app(f, at(base, row)))
         run_s += time.perf_counter() - t0
