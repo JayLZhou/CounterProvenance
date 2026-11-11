@@ -94,6 +94,42 @@ class Twin:
         return self.index.query_batch(Q)
 
 
+class TwinMech:
+    """TWIN as in the paper: one index per tree ensemble on the path from the intervened variables to the outcome,
+    built once for the whole table; a unit only abducts its noise on these ensembles, and a call of many
+    interventions replays the mediators and the outcome with one batch read per ensemble."""
+
+    def __init__(self, scm, unit0, T, y, budget, threads):
+        from mech_proto import MechanismIndex
+        t0 = time.perf_counter()
+        self.scm, self.T, self.y = scm, list(T), y
+        self.order = relevant_nodes(scm.parents, self.T, y)
+        self.mech = MechanismIndex(scm, unit0, self.order, budget, threads)
+        self.build_s = time.perf_counter() - t0
+        self.info = dict(path=len(self.order), mediators=len(self.order) - 1,
+                         groups=sum(v["groups"] for v in self.mech.info.values()))
+
+    def unit(self, unit):
+        return TwinUnit(self, unit, self.mech.observed(unit, self.order))
+
+
+class TwinUnit:
+    """The backend of one unit: its noise is the factual value minus the index at its factual parents."""
+
+    def __init__(self, tw, unit, observed):
+        self.tw, self.unit, self.observed = tw, unit, observed
+
+    def __call__(self, Q):
+        tw = self.tw
+        Q = np.atleast_2d(np.asarray(Q, dtype=np.float64))
+        n = len(Q)
+        cols = {name: Q[:, i] for i, name in enumerate(tw.T)}
+        for x in tw.order:
+            X = np.column_stack([cols[p] if p in cols else np.full(n, float(self.unit[p])) for p in tw.scm.parents[x]])
+            cols[x] = float(self.unit[x]) + (tw.mech.indexes[x].query_batch(X) - self.observed[x])
+        return cols[tw.y]
+
+
 class DoWhy:
     def __init__(self, gcm, cg, row, T, y):
         from dowhy.gcm._noise import compute_noise_from_data

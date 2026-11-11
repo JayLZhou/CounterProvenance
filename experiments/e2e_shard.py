@@ -18,7 +18,7 @@ import pandas as pd
 
 from common import RESULTS
 from counterprovenance.scm import ancestors, fit_scm, parents_of
-from e2e_apps import APPS, Ctx, DoWhy, GeCo, Oracle, ThreeStep, Twin, model_factory
+from e2e_apps import APPS, Ctx, DoWhy, GeCo, Oracle, ThreeStep, Twin, TwinMech, model_factory
 from scm_full import dowhy_model
 
 
@@ -49,6 +49,7 @@ def main() -> None:
     ap.add_argument("--start", type=int, default=0)
     ap.add_argument("--stop", type=int, default=-1)
     ap.add_argument("--build-threads", type=int, default=8)
+    ap.add_argument("--actionable", action="store_true", help="intervene on the actionable ancestors of the outcome (MINT), with mediators")
     args = ap.parse_args()
     out_dir = RESULTS / "shard"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -62,6 +63,9 @@ def main() -> None:
     scm = fit_scm(df, edges, y, [sorted(ancestors(parents_of(edges), y))[0]], model_factory(args.family),
                   max_rows=50_000, seed=0, n_jobs=1)
     T = list(scm.parents[y])
+    if args.actionable:
+        anc = ancestors(parents_of(edges), y)
+        T = [v for v in meta["actionable"] if v in anc]
     order = np.random.default_rng(2028).permutation(len(df))
     stop = len(df) if args.stop < 0 else min(args.stop, len(df))
     first = df.iloc[[int(order[0])]]
@@ -77,7 +81,10 @@ def main() -> None:
         if done >= stop - args.start:
             return
     build_s = 0.0
-    if args.backend == "twin":
+    if args.backend == "twin" and args.actionable:
+        twinm = TwinMech(scm, first.iloc[0].to_dict(), T, y, 2e7, args.build_threads)
+        build_s = twinm.build_s
+    elif args.backend == "twin":
         t0 = time.perf_counter()
         twin = Twin(scm, first.iloc[0].to_dict(), T, y, 2e7, args.build_threads)
         build_s = time.perf_counter() - t0
@@ -114,7 +121,9 @@ def main() -> None:
             if done % 20 == 0:
                 save()
             continue
-        if args.backend == "twin":
+        if args.backend == "twin" and args.actionable:
+            backend = twinm.unit(unit)
+        elif args.backend == "twin":
             shift = float(row[y].iloc[0]) - float(first[y].iloc[0]) - (float(twin(row[T].to_numpy(dtype=float))[0]) - f0)
             backend = Shifted(twin, shift)
         elif args.backend == "dowhy":
