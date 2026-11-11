@@ -709,7 +709,8 @@ class ProvenanceIndex:
                     c[:, g] += contrib[np.searchsorted(th[a], x[:, a], side="left")]
                 v = np.full(len(x), self._const)
                 for g, table in enumerate(self._tables):
-                    v += np.asarray(table)[c[:, g]]
+                    # a map and its values: read the cells of the rows, never the whole table
+                    v += table.values[table.map[c[:, g]]] if isinstance(table, _Table) else np.asarray(table)[c[:, g]]
                 out[lo:lo + chunk] = v
         return out
 
