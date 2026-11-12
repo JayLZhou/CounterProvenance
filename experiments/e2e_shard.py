@@ -18,7 +18,7 @@ import pandas as pd
 
 from common import RESULTS
 from counterprovenance.scm import ancestors, fit_scm, parents_of
-from e2e_apps import APPS, Ctx, DoWhy, GeCo, Oracle, SubsetOracle, ThreeStep, Twin, TwinMech, model_factory
+from e2e_apps import APPS, Ctx, DoWhy, GeCo, Online, Oracle, SubsetOracle, ThreeStep, Twin, TwinMech, model_factory
 from scm_full import dowhy_model
 
 
@@ -45,7 +45,7 @@ def main() -> None:
     ap.add_argument("--dataset", required=True)
     ap.add_argument("--family", required=True)
     ap.add_argument("--app", required=True)
-    ap.add_argument("--backend", required=True, choices=["twin", "geco", "three_step", "dowhy", "treeshap"])
+    ap.add_argument("--backend", required=True, choices=["twin", "geco", "native", "three_step", "dowhy", "treeshap"])
     ap.add_argument("--start", type=int, default=0)
     ap.add_argument("--stop", type=int, default=-1)
     ap.add_argument("--build-threads", type=int, default=8)
@@ -128,6 +128,9 @@ def main() -> None:
             backend = Shifted(twin, shift)
         elif args.backend == "dowhy":
             backend = DoWhy(gcm, cg, row, T, y)
+        elif args.backend == "native":
+            # the application's own evaluation (e.g. MCCE): the library's predict over the whole call, the noise of the unit once
+            backend = Online(scm, unit, T, y)
         elif args.backend == "geco":
             backend = GeCo(scm, unit, T, y)
         else:
