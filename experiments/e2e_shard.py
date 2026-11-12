@@ -18,8 +18,12 @@ import pandas as pd
 
 from common import RESULTS
 from counterprovenance.scm import ancestors, fit_scm, parents_of
-from e2e_apps import APPS, Ctx, DoWhy, GeCo, Online, Oracle, SubsetOracle, ThreeStep, Twin, TwinMech, model_factory
+from e2e_apps import APPS, SUBSET_APPS, Ctx, DoWhy, GeCo, Online, Oracle, SubsetOracle, ThreeStep, Twin, TwinMech, model_factory
 from scm_full import dowhy_model
+
+
+# the sensitive attributes of counterfactual fairness (binary): sex and birth country on Adult, gender on German (MINT's SCM)
+SENSITIVE = {"adult": ["is_male", "native_us"], "german_mint": ["gender"]}
 
 
 def at(base: Ctx, row: pd.DataFrame) -> Ctx:
@@ -50,6 +54,7 @@ def main() -> None:
     ap.add_argument("--stop", type=int, default=-1)
     ap.add_argument("--build-threads", type=int, default=8)
     ap.add_argument("--actionable", action="store_true", help="intervene on the actionable ancestors of the outcome (MINT), with mediators")
+    ap.add_argument("--sensitive", action="store_true", help="intervene on the sensitive attributes of the table (counterfactual fairness), with mediators")
     args = ap.parse_args()
     out_dir = RESULTS / "shard"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -63,9 +68,9 @@ def main() -> None:
     scm = fit_scm(df, edges, y, [sorted(ancestors(parents_of(edges), y))[0]], model_factory(args.family),
                   max_rows=50_000, seed=0, n_jobs=1)
     T = list(scm.parents[y])
-    if args.actionable:
+    if args.actionable or args.sensitive:
         anc = ancestors(parents_of(edges), y)
-        T = [v for v in meta["actionable"] if v in anc]
+        T = [v for v in (meta["actionable"] if args.actionable else SENSITIVE[args.dataset]) if v in anc]
     order = np.random.default_rng(2028).permutation(len(df))
     stop = len(df) if args.stop < 0 else min(args.stop, len(df))
     first = df.iloc[[int(order[0])]]
@@ -81,8 +86,8 @@ def main() -> None:
         if done >= stop - args.start:
             return
     build_s = 0.0
-    if args.backend == "twin" and args.actionable:
-        twinm = TwinMech(scm, first.iloc[0].to_dict(), T, y, 2e7, args.build_threads, max_size=3 if args.app == "recourse_mint" else None)
+    if args.backend == "twin" and (args.actionable or args.sensitive):
+        twinm = TwinMech(scm, first.iloc[0].to_dict(), T, y, 2e7, args.build_threads, max_size=3 if args.app in SUBSET_APPS else None)
         build_s = twinm.build_s
     elif args.backend == "twin":
         t0 = time.perf_counter()
@@ -121,7 +126,7 @@ def main() -> None:
             if done % 20 == 0:
                 save()
             continue
-        if args.backend == "twin" and args.actionable:
+        if args.backend == "twin" and (args.actionable or args.sensitive):
             backend = twinm.unit(unit)
         elif args.backend == "twin":
             shift = float(row[y].iloc[0]) - float(first[y].iloc[0]) - (float(twin(row[T].to_numpy(dtype=float))[0]) - f0)
@@ -135,7 +140,7 @@ def main() -> None:
             backend = GeCo(scm, unit, T, y)
         else:
             backend = ThreeStep(scm, unit, T, y)
-        if args.app == "recourse_mint":
+        if args.app in SUBSET_APPS:
             if args.backend == "twin":
                 make = lambda S, b=backend: b if S is None else twinm.subset(b, S)
             elif args.backend == "dowhy":

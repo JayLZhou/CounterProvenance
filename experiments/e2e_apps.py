@@ -726,13 +726,37 @@ def _mcce(f, c, k):
     return total
 
 
+# ---- what-if analysis and counterfactual fairness, with mediators (the variables not set follow the SCM) ----------
+def what_if_mediated(f, c, levels=100):
+    """What-if analysis of a BI dashboard: one variable at a time is moved over its range (a slider of ``levels`` values),
+    and the other variables, including the other ones of the context, follow the SCM, i.e., they are mediators."""
+    total = 0.0
+    for a in range(c.d):
+        total += float(f.sub((a,))(np.linspace(c.lo[a], c.hi[a], levels)[:, None]).sum())
+    return total
+
+
+def fairness_cf(f, c):
+    """Counterfactual fairness (Kusner et al., NeurIPS 2017): the outcome of the person had its sensitive attributes
+    (binary) been different, every non-empty subset of them flipped, the other variables following the SCM; the sum of
+    the absolute changes of the outcome."""
+    y0 = float(c.row[c.y].iloc[0])
+    total = 0.0
+    for size in range(1, c.d + 1):
+        for S in itertools.combinations(range(c.d), size):
+            q = np.array([[1.0 - float(c.u[a]) for a in S]])
+            total += abs(float(f.sub(S)(q)[0]) - y0)
+    return total
+
+
 APPS = dict(geco_genetic=geco_genetic, geco_one_query=geco_one_query, dowhy_feature_relevance=dowhy_feature_relevance, kernel_shap=kernel_shap, lime_tabular=lime_tabular,
             mcce_1000=lambda f, c: _mcce(f, c, 1000), mcce_10000=lambda f, c: _mcce(f, c, 10_000),
             mcce_100000=lambda f, c: _mcce(f, c, 100_000), what_if_surface=what_if_surface, what_if_slider=what_if_slider, dose_response=dose_response,
             recourse_genetic=recourse_genetic, recourse_minimal=recourse_minimal, recourse_mint=recourse_mint, optimal_evolution=optimal_evolution,
             optimal_candidates=optimal_candidates, tipping_points=tipping_points,
             shapley_attribution=shapley_attribution, sobol_sensitivity=sobol_sensitivity,
-            monte_carlo_risk=monte_carlo_risk)
+            monte_carlo_risk=monte_carlo_risk, what_if_mediated=what_if_mediated, fairness_cf=fairness_cf)
+SUBSET_APPS = ("recourse_mint", "what_if_mediated", "fairness_cf")
 
 
 def treatments(scm, y, d, meta):
