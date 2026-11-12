@@ -123,10 +123,13 @@ def main() -> None:
     ap.add_argument("--budget", type=float, default=2e7)
     ap.add_argument("--limit", type=int, default=300_000)
     ap.add_argument("--per-mechanism", type=int, default=10)
+    ap.add_argument("--trees", type=int, default=1000, help="the cached models of Exp.4 with this many trees per ensemble")
+    ap.add_argument("--cells-only", action="store_true", help="only the cell statistics (Exp.6), not the greedy against the optimum")
     args = ap.parse_args()
-    state = pickle.loads((RESULTS / "main" / "cache" / f"{args.dataset}_{args.family}.pkl").read_bytes())
+    src = RESULTS / "main" if args.trees == 1000 else RESULTS / "trees" / str(args.trees)
+    state = pickle.loads((src / "cache" / f"{args.dataset}_{args.family}.pkl").read_bytes())
     scm, y, rows = state["scm"], state["y"], state["rows"]
-    out = RESULTS / "structure"
+    out = RESULTS / "structure" if args.trees == 1000 else RESULTS / "structure_trees" / str(args.trees)
     out.mkdir(parents=True, exist_ok=True)
     unit0 = rows.iloc[0].to_dict()
     nodes = [y] + sorted(set(scm.models) - {y})
@@ -134,7 +137,7 @@ def main() -> None:
     for node in nodes:
         bound = bind_scm(scm, unit0, list(scm.parents[node]), node, threads=1, native=True)
         slabs = Slabs(bound)
-        if node == y:
+        if node == y and not args.cells_only:
             grouping = grouping_rows(args, bound, slabs, node)
             pd.DataFrame(grouping).to_csv(out / f"{args.dataset}_{args.family}_grouping.csv", index=False)
         cells += cell_rows(args, bound, slabs, node, int(args.budget), args.limit, args.per_mechanism)
