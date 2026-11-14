@@ -9,7 +9,7 @@ J = lambda f: json.load(open(os.path.join(D, f)))
 ORDER = [("concrete", "CON"), ("light_tunnel", "LT"), ("ailerons", "AIL"), ("pol", "POL"), ("elevators", "ELE"), ("jdk", "JDK"), ("baf", "BAF"),
          ("mslr", "MSLR"), ("postgres", "PG"), ("census1990", "CEN"), ("susy", "SUSY"), ("methane", "MET"), ("higgs", "HIG"), ("airline", "AIR"), ("nyc_taxi", "NYC")]
 ABBR = [a for _, a in ORDER]
-M4 = [("three_step", "cthree", r"{\tt ThreeStep}"), ("chirho", "cchirho", r"{\tt ChiRho}"), ("dowhy", "cdowhy", r"{\tt DoWhy-GCM}"), ("twin", "ctwin", r"\Method")]
+M4 = [("three_step", "cthree", r"{\tt ThreeStep}"), ("chirho", "cchirho", r"{\tt ChiRho}"), ("dowhy", "cdowhy", r"{\tt DoWhy}"), ("twin", "ctwin", r"\Method")]
 US_TICKS = r"ytick={1,10,100,1000,10000,100000,1000000}, yticklabels={1\,$\mu$s,,100\,$\mu$s,,10\,ms,,1\,s}"
 SEC_TICKS = (r"{0.1,1,60,3600,86400}", r"{0.1\,s,1\,s,1\,min,1\,h,1\,day}")
 
@@ -189,13 +189,13 @@ body = [r"\begin{axis}[natbar, width=\columnwidth, height=4.3cm, ybar=0.4pt, /pg
         r"\addplot[area legend, bown] coordinates {%s};" % coords(range(1, 7), [cv(ds, app, own) for app, own, ds, _ in G]),
         r"\addplot[area legend, bdowhy] coordinates {%s};" % coords(range(1, 7), [cv(ds, app, "dowhy") for app, own, ds, _ in G]),
         r"\addplot[area legend, btwin] coordinates {%s};" % coords(range(1, 7), [cv(ds, app, "twin") for app, own, ds, _ in G]),
-        r"\legend{own evaluation, {\tt DoWhy-GCM}, \Method}"]
+        r"\legend{own evaluation, {\tt DoWhy}, \Method}"]
 for x, name in [(1.5, "GeCo"), (3.5, "MCCE"), (5.5, r"MCCE, $K{=}10^4$")]:
     body.append(r"\node[font=\sffamily\scriptsize\bfseries, text=cink, anchor=north] at ([yshift=-23pt]axis cs:%g,0.05) {%s};" % (x, name))
 for x in (2.5, 4.5):
     body.append(r"\draw[cgrid, line width=0.6pt] (axis cs:%g,0.05) -- (axis cs:%g,3e5);" % (x, x))
 body.append(r"\end{axis}")
-write("exp_app_cfe", figure("figure", body, r"Counterfactual explanations: the time of the queries that explain every person, by the application's own evaluation (GeCo's partial evaluation; MCCE's batch {\tt predict}, $K=10^3$ unless noted), by the DoWhy-GCM library, and by \Method, all answering the same queries. Under each pair of bars: the speedup of \Method over the application's own evaluation.", "fig:exp-app-cfe"),
+write("exp_app_cfe", figure("figure", body, r"Counterfactual explanations: the time of the queries that explain every person, by the application's own evaluation (GeCo's partial evaluation; MCCE's batch {\tt predict}, $K=10^3$ unless noted), by the DoWhy library, and by \Method, all answering the same queries. Under each pair of bars: the speedup of \Method over the application's own evaluation.", "fig:exp-app-cfe"),
       "Exp.7, results/shard (repo_lean for TWIN and the native/GeCo backends on German and MCCE native; repo_dev2 for the rest).")
 
 # ---------------------------------------------------------------- Exp.8: feature relevance
@@ -207,19 +207,19 @@ body = [r"\begin{axis}[natbar, width=\columnwidth, height=4.2cm, ybar=0.6pt, /pg
         r"\addplot[area legend, bthree] coordinates {%s};" % coords(range(1, 5), [min(r[3], LIM) for r in REL]),
         r"\addplot[area legend, bdowhy] coordinates {%s};" % coords(range(1, 5), [r[2] for r in REL]),
         r"\addplot[area legend, btwin] coordinates {%s};" % coords(range(1, 5), [r[1] for r in REL]),
-        r"\legend{{\tt ThreeStep},{\tt DoWhy-GCM},\Method}",
+        r"\legend{{\tt ThreeStep},{\tt DoWhy},\Method}",
         r"\draw[cmuted, dashed, line width=0.5pt] (axis cs:0.5,%d) -- (axis cs:4.5,%d);" % (LIM, LIM)]
 for i, r in enumerate(REL, 1):
     if not r[4]:
         body.append(r"\node[vlab, anchor=south, font=\sffamily\tiny\bfseries, text=cthree] at ([xshift=-8.6pt]axis cs:%d,%d) {INF};" % (i, LIM))
 body.append(r"\end{axis}")
-write("exp_app_relevance", figure("figure", body, r"Feature relevance: the time of the queries that attribute the prediction of every row. Dashed: the limit of 5 days; INF: more than the limit. Bold: the speedup of \Method over DoWhy-GCM.", "fig:exp-app-relevance"),
+write("exp_app_relevance", figure("figure", body, r"Feature relevance: the time of the queries that attribute the prediction of every row. Dashed: the limit of 5 days; INF: more than the limit. Bold: the speedup of \Method over DoWhy.", "fig:exp-app-relevance"),
       "Exp.8, results/shard (TWIN: repo_lean; others: repo_dev2); ThreeStep projected from 100 to 1,000 rows.")
 
 # ---------------------------------------------------------------- Exp.9 what-if (dot plot) and Exp.10 fairness (columns)
 wf = J("whatif_fairness.json")
 WR = [("adult", "HGB100", "Adult, HGB", 400), ("adult", "RF100", "Adult, RF", 400), ("german_mint", "HGB100", "German, HGB", 200), ("german_mint", "RF100", "German, RF", 200)]
-B3 = [("three_step", "cthree", "square*", r"{\tt ThreeStep}"), ("dowhy", "cdowhy", "triangle*", r"{\tt DoWhy-GCM}"), ("twin", "ctwin", "*", r"\Method")]
+B3 = [("three_step", "cthree", "square*", r"{\tt ThreeStep}"), ("dowhy", "cdowhy", "triangle*", r"{\tt DoWhy}"), ("twin", "ctwin", "*", r"\Method")]
 body = [r"\begin{axis}[nat, width=0.86\columnwidth, height=3.7cm, xmode=log, xmin=0.0003, xmax=300, ymin=0.4, ymax=4.6, y dir=reverse,",
         r"  xtick={0.001,0.01,0.1,1,10,100}, xticklabels={1\,ms,10\,ms,100\,ms,1\,s,10\,s,100\,s}, ytick={1,2,3,4}, yticklabels={" + ",".join("{%s}" % r[2] for r in WR) + r"}, ytick style={draw=none},",
         r"  xmajorgrids, xlabel={wait for one position of the slider}, legend style={at={(0.5,1.14)}, anchor=south}, legend columns=-1]"]
@@ -244,7 +244,7 @@ for b, col, _, name in B3:
     body.append(r"\addplot[area legend, b%s] coordinates {%s};" % (col[1:], coords(range(1, 5), [wf[f"{ds}|{fam}|fairness_cf"][b]["query_s"] for ds, fam, _, _ in WR])))
 body.append(r"\legend{" + ",".join(n for *_, n in B3) + "}")
 body.append(r"\end{axis}")
-write("exp_app_fairness", figure("figure", body, r"Counterfactual fairness: the time of the queries that audit every row, flipping every non-empty set of the sensitive attributes. Bold: the speedup of \Method over DoWhy-GCM.", "fig:exp-app-fairness"),
+write("exp_app_fairness", figure("figure", body, r"Counterfactual fairness: the time of the queries that audit every row, flipping every non-empty set of the sensitive attributes. Bold: the speedup of \Method over DoWhy.", "fig:exp-app-fairness"),
       "Exp.10, results/shard of repo_lean (app fairness_cf).")
 
 # ---------------------------------------------------------------- appendix: MINT
@@ -266,6 +266,6 @@ for i, (ds, fam, lab) in enumerate(MR, 1):
     body.append(r"\node[vlab, text=ctwin, anchor=north, yshift=-2.2pt] at (axis cs:%.4g,%d) {%s};" % (v["twin"], i, human_s(v["twin"])))
     body.append(r"\node[slab, anchor=west] at (axis cs:2e6,%d) {%.0f$\times$};" % (i, v["dowhy"] / v["twin"]))
 body.append(r"\end{axis}")
-write("exp_app_mint", figure("figure", body, r"MINT on whole tables: the time of all queries of each backend. INF: more than the limit of 5 days. On the right: the speedup of \Method over DoWhy-GCM.", "fig:exp-app-mint"),
+write("exp_app_mint", figure("figure", body, r"MINT on whole tables: the time of all queries of each backend. INF: more than the limit of 5 days. On the right: the speedup of \Method over DoWhy.", "fig:exp-app-mint"),
       "Appendix, MINT: results/shard (repo_lean), app recourse_mint.")
 print("done")
