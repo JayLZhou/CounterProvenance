@@ -55,7 +55,7 @@ def dots(rows, labels, width, height, legend_at):
         b.append(r"\addlegendimage{only marks, mark=%s, mark size=%gpt, mark options={fill=%s, draw=white, line width=0.25pt}}" % (marks[k], msize[k], col))
     b.append(r"\legend{" + ",".join(nm for _, _, nm in M5) + "}")
     for i, r in enumerate(rows, 1):
-        b.append(r"\draw[cstem, line width=1.3pt, line cap=round] (axis cs:%d,%.4g) -- (axis cs:%d,%.4g);" % (i, r["twin"], i, max(r[k] for k, *_ in M5)))
+        b.append(r"\draw[cstem, line width=1pt, line cap=round] (axis cs:%d,%.4g) -- (axis cs:%d,%.4g);" % (i, r["twin"], i, max(r[k] for k, *_ in M5)))
         for k, col, _ in M5:
             b.append(r"\addplot[only marks, forget plot, mark=%s, mark size=%gpt, mark options={fill=%s, draw=white, line width=0.25pt}] coordinates {(%d,%.4g)};" % (marks[k], msize[k], col, i, r[k]))
     b.append(r"\end{axis}")
@@ -229,7 +229,7 @@ body.append(r"\legend{" + ",".join(n for *_, n in B3) + "}")
 body.append(r"\draw[ctwin, dashed, line width=0.6pt] (axis cs:0.1,0.4) -- (axis cs:0.1,4.6); \node[vlab, text=ctwin, anchor=south] at (axis cs:0.1,0.4) {interactive (100\,ms)};")
 for i, (ds, fam, lab, pos) in enumerate(WR, 1):
     r = wf[f"{ds}|{fam}|what_if_mediated"]; v = {b: r[b]["query_s"] / pos for b, *_ in B3}
-    body.append(r"\draw[cstem, line width=1.3pt, line cap=round] (axis cs:%.4g,%d) -- (axis cs:%.4g,%d);" % (v["twin"], i, max(v["dowhy"], v["three_step"]), i))
+    body.append(r"\draw[cstem, line width=1pt, line cap=round] (axis cs:%.4g,%d) -- (axis cs:%.4g,%d);" % (v["twin"], i, max(v["dowhy"], v["three_step"]), i))
     for b, col, mk, _ in B3:
         body.append(r"\addplot[only marks, mark=%s, mark size=2.2pt, mark options={fill=%s, draw=white, line width=0.2pt}, forget plot] coordinates {(%.4g,%d)};" % (mk, col, v[b], i))
     body.append(r"\node[vlab, text=ctwin, anchor=east, xshift=-3pt] at (axis cs:%.4g,%d) {%s};" % (v["twin"], i, human_s(v["twin"])))
@@ -258,7 +258,7 @@ for b, col, mk, name in B3:
 body.append(r"\legend{" + ",".join(n for *_, n in B3) + "}")
 for i, (ds, fam, lab) in enumerate(MR, 1):
     v = {b: (mt[f"{ds}|{fam}|{b}"]["query_s"] if mt[f"{ds}|{fam}|{b}"]["full"] else mt[f"{ds}|{fam}|{b}"]["projected_s"]) for b, *_ in B3}
-    body.append(r"\draw[cstem, line width=1.3pt, line cap=round] (axis cs:%.4g,%d) -- (axis cs:%.4g,%d);" % (v["twin"], i, v["dowhy"], i))
+    body.append(r"\draw[cstem, line width=1pt, line cap=round] (axis cs:%.4g,%d) -- (axis cs:%.4g,%d);" % (v["twin"], i, v["dowhy"], i))
     for b, col, mk, _ in B3:
         if v[b] > LIM:
             body.append(r"\node[vlab, font=\sffamily\scriptsize\bfseries, text=cthree, anchor=west] at (axis cs:%.4g,%d) {INF};" % (v["dowhy"] * 2.2, i)); continue
