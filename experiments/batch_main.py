@@ -39,6 +39,7 @@ def main() -> None:
     ap.add_argument("--budget", type=float, default=2e7)
     ap.add_argument("--one-pairs", type=float, default=5e10)
     ap.add_argument("--one-max", type=float, default=5e7)
+    ap.add_argument("--fused", action="store_true", help="also the compiled kernel (batch_kernel.py); no faster than query_batch")
     ap.add_argument("--build-threads", type=int, default=4, help="threads of the offline build only")
     args = ap.parse_args()
     out = RESULTS / args.out
@@ -66,24 +67,39 @@ def run_twin(args, state, out):
                 out / f"{args.dataset}_{args.family}_d{d}_twin.csv", index=False)
         return
     build_s = time.perf_counter() - t0
+    from counterprovenance.batch_kernel import FusedBatch
+    t0 = time.perf_counter()
+    fused = {x: FusedBatch(mech.indexes[x]) for x in nodes} if args.fused else {}
+    prep_s = time.perf_counter() - t0
     V = {c: rows[c].to_numpy(dtype=float) for c in rows.columns}
     n = len(rows)
+    warm = True
     for d in dims:
         T = work[d]["T"]
         order = relevant_nodes(scm.parents, T, y)
 
-        def solve(points):
-            obs = {x: mech.indexes[x].query_batch(np.column_stack([V[p] for p in scm.parents[x]])) for x in order}
-            res = []
-            for t in points:
-                W = dict(V)
-                for k, name in enumerate(T):
-                    W[name] = np.full(n, float(t[k]))
-                for x in order:
-                    W[x] = V[x] + (mech.indexes[x].query_batch(np.column_stack([W[p] for p in scm.parents[x]])) - obs[x])
-                res.append(W[order[-1]])
-            return res
-        run(args, state, out, d, "twin", solve=solve, extra=dict(build_s=build_s))
+        def solver(read):
+            def solve(points):
+                obs = {x: read(x, np.column_stack([V[p] for p in scm.parents[x]])) for x in order}
+                res = []
+                for t in points:
+                    W = dict(V)
+                    for k, name in enumerate(T):
+                        W[name] = np.full(n, float(t[k]))
+                    for x in order:
+                        W[x] = V[x] + (read(x, np.column_stack([W[p] for p in scm.parents[x]])) - obs[x])
+                    res.append(W[order[-1]])
+                return res
+            return solve
+        numpy_read = lambda x, X: mech.indexes[x].query_batch(X)
+        fused_read = lambda x, X: fused[x](X)
+        if warm and args.fused:  # compile the kernel once, outside the timer
+            solver(fused_read)(next(queries(state, d, 1)))
+            warm = False
+        extra = dict(build_s=build_s, prep_s=prep_s, fused_groups=sum(f.ok for f in fused.values()), mechanisms=len(fused))
+        run(args, state, out, d, "twin", solve=solver(numpy_read), extra=extra)
+        if args.fused:
+            run(args, state, out, d, "twin_fused", solve=solver(fused_read), extra=extra)
 
 
 def run(args, state, out, d, backend, solve=None, extra=None):
