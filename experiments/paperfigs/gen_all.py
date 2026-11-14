@@ -40,37 +40,38 @@ def figure(env, body, caption, label):
 
 main = J("main.json")
 
-# ---------------------------------------------------------------- Exp.1: mean time per query on each table
+# ---------------------------------------------------------------- Exp.1: mean time per query, dot plots (each table; each d)
+marks = {"three_step": "square*", "chirho": "diamond*", "dowhy": "triangle*", "twin": "*"}
+msize = {"three_step": 2.2, "chirho": 2.9, "dowhy": 2.9, "twin": 2.4}
+US_TICKS2 = r"ytick={10,100,1000,10000,100000}, yticklabels={10\,$\mu$s,100\,$\mu$s,1\,ms,10\,ms,100\,ms}"
+def dots(rows, labels, width, height, legend_at):
+    n = len(rows)
+    ticks = ["{%s\\\\\\textcolor{ctwin}{\\bfseries %.0f$\\times$}}" % (l, r["three_step"] / r["twin"]) for l, r in zip(labels, rows)]
+    b = [r"\begin{axis}[nat, width=%s, height=%s, ymode=log, ymin=3, ymax=4e5, " % (width, height) + US_TICKS2 + r", ymajorgrids,",
+         r"  xmin=0.4, xmax=%g, xtick={1,...,%d}, xticklabels={%s}, xticklabel style={align=center}, xtick style={draw=none}," % (n + 0.6, n, ",".join(ticks)),
+         r"  ylabel={mean time per query}, legend style={at={%s}, anchor=south}, legend columns=-1]" % legend_at]
+    for k, col, name in M4:
+        b.append(r"\addlegendimage{only marks, mark=%s, mark size=%gpt, mark options={fill=%s, draw=white, line width=0.25pt}}" % (marks[k], msize[k], col))
+    b.append(r"\legend{" + ",".join(nm for _, _, nm in M4) + "}")
+    for i, r in enumerate(rows, 1):
+        b.append(r"\draw[cgrid, line width=2.6pt, line cap=round] (axis cs:%d,%.4g) -- (axis cs:%d,%.4g);" % (i, r["twin"], i, max(r[k] for k, *_ in M4)))
+        for k, col, _ in M4:
+            b.append(r"\addplot[only marks, forget plot, mark=%s, mark size=%gpt, mark options={fill=%s, draw=white, line width=0.25pt}] coordinates {(%d,%.4g)};" % (marks[k], msize[k], col, i, r[k]))
+    b.append(r"\end{axis}")
+    return b
 rows = main["overall"]
-body = [r"\begin{axis}[natbar, width=\textwidth, height=4.2cm, ybar=0.3pt, /pgf/bar width=4.6pt, ymode=log, log origin=infty, ymin=1, ymax=2e6,",
-        "  " + US_TICKS + r", ymajorgrids, xmin=0.45, xmax=15.55, xtick={1,...,15}, xticklabels={" + ",".join(ABBR) + r"}, xtick style={draw=none},",
-        r"  ylabel={mean time per query}, legend style={at={(0,1.02)}, anchor=south west}, legend columns=-1]"]
-for k, col, name in M4:
-    body.append(r"\addplot[area legend, b%s] coordinates {%s};" % (col[1:], coords(range(1, 16), [r[k] for r in rows])))
-body.append(r"\legend{" + ",".join(n for _, _, n in M4) + "}")
-for i, r in enumerate(rows, 1):
-    body.append(r"\node[slab, anchor=south, rotate=90, anchor=west] at ([xshift=6.9pt]axis cs:%d,%.4g) {%.0f$\times$};" % (i, r["twin"] * 1.25, r["three_step"] / r["twin"]))
-body.append(r"\end{axis}")
-write("exp_overall", figure("figure*", body, r"Mean time per query on each table, over all models and all $d$. The number above \Method is its speedup over {\tt ThreeStep}.", "fig:exp-overall"),
+write("exp_overall", figure("figure*", dots(rows, ABBR, r"\textwidth", "4.3cm", "{(0.5,1.03)}"),
+      r"Mean time per query on each table, over all models and all $d$. Bold: the speedup of \Method over {\tt ThreeStep}.", "fig:exp-overall"),
       "Exp.1, data from results/final (TWIN) and results/main (competitors), RF from repo_lrf/results/main.")
-
-# ---------------------------------------------------------------- by d
 rows = main["by_d"]
-body = [r"\begin{axis}[natbar, width=\columnwidth, height=4.0cm, ybar=0.3pt, /pgf/bar width=5.2pt, ymode=log, log origin=infty, ymin=1, ymax=2e6,",
-        "  " + US_TICKS + r", ymajorgrids, xmin=0.45, xmax=5.55, xtick={1,...,5}, xticklabels={$d{=}1$,$d{=}2$,$d{=}4$,$d{=}8$,$d{=}16^{\ast}$}, xtick style={draw=none},",
-        r"  ylabel={mean time per query}, legend style={at={(0.5,1.02)}, anchor=south}, legend columns=-1]"]
-for k, col, name in M4:
-    body.append(r"\addplot[area legend, b%s] coordinates {%s};" % (col[1:], coords(range(1, 6), [r[k] for r in rows])))
-body.append(r"\legend{" + ",".join(n for _, _, n in M4) + "}")
-body += [r"\draw[cgrid, line width=0.6pt] (axis cs:4.5,1) -- (axis cs:4.5,2e6);", r"\end{axis}"]
-write("exp_d", figure("figure", body, r"Mean time per query for each $d$, over all tables and models. $^{\ast}$Only AIL, CEN, MSLR, and POL have $d=16$.", "fig:exp-d"), "Exp.1 by d.")
+write("exp_d", figure("figure", dots(rows, ["$d{=}1$", "$d{=}2$", "$d{=}4$", "$d{=}8$", "$d{=}16^{\\ast}$"], r"\columnwidth", "4.3cm", "{(0.5,1.03)}"),
+      r"Mean time per query for each $d$, over all tables and models. Bold: the speedup of \Method over {\tt ThreeStep}. $^{\ast}$Only AIL, CEN, MSLR, and POL have $d=16$.", "fig:exp-d"), "Exp.1 by d.")
 
 # ---------------------------------------------------------------- by d, each table
 body = [r"\begin{groupplot}[natline, group style={group size=5 by 3, horizontal sep=6pt, vertical sep=24pt, yticklabels at=edge left, xticklabels at=edge bottom},",
         r"  width=0.235\textwidth, height=2.9cm, xmode=log, log basis x=2, xmin=0.8, xmax=20, xtick={1,2,4,8,16}, xticklabels={1,2,4,8,16},",
         r"  ymode=log, ymin=1, ymax=1e6, ytick={1,100,10000,1000000}, yticklabels={1\,$\mu$s,100\,$\mu$s,10\,ms,1\,s}, ymajorgrids,",
         r"  every axis plot/.append style={line width=0.9pt, mark size=1.4pt}, legend columns=-1]"]
-marks = {"three_step": "square*", "chirho": "diamond*", "dowhy": "triangle*", "twin": "*"}
 for j, (ds, ab) in enumerate(ORDER):
     t = main["d_line"]["ExpOneL" + ab]
     opt = "title={%s}" % ab + (", xlabel={$d$}" if j >= 10 else "") + (", legend to name=dline" if j == 0 else "")
