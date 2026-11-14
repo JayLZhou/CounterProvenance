@@ -10,6 +10,7 @@ ORDER = [("concrete", "CON"), ("light_tunnel", "LT"), ("ailerons", "AIL"), ("pol
          ("mslr", "MSLR"), ("postgres", "PG"), ("census1990", "CEN"), ("susy", "SUSY"), ("methane", "MET"), ("higgs", "HIG"), ("airline", "AIR"), ("nyc_taxi", "NYC")]
 ABBR = [a for _, a in ORDER]
 M4 = [("three_step", "cthree", r"{\tt ThreeStep}"), ("chirho", "cchirho", r"{\tt ChiRho}"), ("dowhy", "cdowhy", r"{\tt DoWhy}"), ("twin", "ctwin", r"\Method")]
+M5 = M4[:3] + [("causalai", "ccausal", r"{\tt CausalAI}")] + M4[3:]  # Exp.1 and Exp.2
 US_TICKS = r"ytick={1,10,100,1000,10000,100000,1000000}, yticklabels={1\,$\mu$s,,100\,$\mu$s,,10\,ms,,1\,s}"
 SEC_TICKS = (r"{0.1,1,60,3600,86400}", r"{0.1\,s,1\,s,1\,min,1\,h,1\,day}")
 
@@ -41,8 +42,8 @@ def figure(env, body, caption, label):
 main = J("main.json")
 
 # ---------------------------------------------------------------- Exp.1: mean time per query, dot plots (each table; each d)
-marks = {"three_step": "square*", "chirho": "diamond*", "dowhy": "triangle*", "twin": "*"}
-msize = {"three_step": 2.2, "chirho": 2.9, "dowhy": 2.9, "twin": 2.4}
+marks = {"three_step": "square*", "chirho": "diamond*", "dowhy": "triangle*", "causalai": "pentagon*", "twin": "*"}
+msize = {"three_step": 2.2, "chirho": 2.9, "dowhy": 2.9, "causalai": 2.7, "twin": 2.4}
 US_TICKS2 = r"ytick={10,100,1000,10000,100000}, yticklabels={10\,$\mu$s,100\,$\mu$s,1\,ms,10\,ms,100\,ms}"
 def dots(rows, labels, width, height, legend_at):
     n = len(rows)
@@ -50,12 +51,12 @@ def dots(rows, labels, width, height, legend_at):
     b = [r"\begin{axis}[nat, width=%s, height=%s, ymode=log, ymin=3, ymax=4e5, " % (width, height) + US_TICKS2 + r", ymajorgrids,",
          r"  xmin=0.4, xmax=%g, xtick={1,...,%d}, xticklabels={%s}, xticklabel style={align=center}, xtick style={draw=none}," % (n + 0.6, n, ",".join(ticks)),
          r"  ylabel={mean time per query}, legend style={at={%s}, anchor=south}, legend columns=-1]" % legend_at]
-    for k, col, name in M4:
+    for k, col, name in M5:
         b.append(r"\addlegendimage{only marks, mark=%s, mark size=%gpt, mark options={fill=%s, draw=white, line width=0.25pt}}" % (marks[k], msize[k], col))
-    b.append(r"\legend{" + ",".join(nm for _, _, nm in M4) + "}")
+    b.append(r"\legend{" + ",".join(nm for _, _, nm in M5) + "}")
     for i, r in enumerate(rows, 1):
-        b.append(r"\draw[cgrid, line width=2.6pt, line cap=round] (axis cs:%d,%.4g) -- (axis cs:%d,%.4g);" % (i, r["twin"], i, max(r[k] for k, *_ in M4)))
-        for k, col, _ in M4:
+        b.append(r"\draw[cgrid, line width=2.6pt, line cap=round] (axis cs:%d,%.4g) -- (axis cs:%d,%.4g);" % (i, r["twin"], i, max(r[k] for k, *_ in M5)))
+        for k, col, _ in M5:
             b.append(r"\addplot[only marks, forget plot, mark=%s, mark size=%gpt, mark options={fill=%s, draw=white, line width=0.25pt}] coordinates {(%d,%.4g)};" % (marks[k], msize[k], col, i, r[k]))
     b.append(r"\end{axis}")
     return b
@@ -76,10 +77,10 @@ for j, (ds, ab) in enumerate(ORDER):
     t = main["d_line"]["ExpOneL" + ab]
     opt = "title={%s}" % ab + (", xlabel={$d$}" if j >= 10 else "") + (", legend to name=dline" if j == 0 else "")
     body.append(r"\nextgroupplot[%s]" % opt)
-    for k, col, name in M4:
+    for k, col, name in M5:
         body.append(r"\addplot[color=%s, mark=%s, mark options={fill=%s, draw=white, line width=0.2pt}] coordinates {%s};" % (col, marks[k], col, coords([r["d"] for r in t], [r[k] for r in t])))
     if j == 0:
-        body.append(r"\legend{" + ",".join(n for _, _, n in M4) + "}")
+        body.append(r"\legend{" + ",".join(n for _, _, n in M5) + "}")
 body += [r"\end{groupplot}", r"\node[anchor=south] at ([yshift=10pt]$(group c1r1.north)!0.5!(group c5r1.north)$) {\pgfplotslegendfromname{dline}};"]
 write("exp_d_line", figure("figure*", body, r"Mean time per query against $d$ on each table, over all models. Only AIL, CEN, MSLR, and POL have $d=16$.", "fig:exp-d-line"), "Exp.1 by d and table.")
 
@@ -87,15 +88,15 @@ write("exp_d_line", figure("figure*", body, r"Mean time per query against $d$ on
 box = J("box.json")["stats"]
 body = [r"\begin{axis}[natbar, width=\textwidth, height=5.0cm, ymode=log, ymin=1, ymax=1e6, xmin=0.45, xmax=15.55, xtick={1,...,15}, xticklabels={" + ",".join(ABBR) + "},",
         r"  ytick={1,100,10000,1000000}, yticklabels={1\,$\mu$s,100\,$\mu$s,10\,ms,1\,s}, ymajorgrids, xtick style={draw=none}, ylabel={time per query},",
-        r"  boxplot/draw direction=y, boxplot/box extend=0.18, boxplot/whisker extend=0, legend style={at={(0,1.02)}, anchor=south west}, legend columns=-1]"]
-for k, col, name in M4:
+        r"  boxplot/draw direction=y, boxplot/box extend=0.15, boxplot/whisker extend=0, legend style={at={(0,1.02)}, anchor=south west}, legend columns=-1]"]
+for k, col, name in M5:
     body.append(r"\addlegendimage{area legend, fill=%s, draw=%s}" % (col, col))
-body.append(r"\legend{" + ",".join(n for _, _, n in M4) + "}")
+body.append(r"\legend{" + ",".join(n for _, _, n in M5) + "}")
 for i, (ds, ab) in enumerate(ORDER, 1):
-    for j, (k, col, _) in enumerate(M4):
+    for j, (k, col, _) in enumerate(M5):
         q = box[f"{ds}|{k}"]["q"]
         body.append(r"\addplot+[forget plot, solid, mark=none, fill=%s, draw=%s, line width=0.4pt, boxplot prepared={draw position=%.2f, lower whisker=%.4g, lower quartile=%.4g, median=%.4g, upper quartile=%.4g, upper whisker=%.4g, every median/.style={draw=white, line width=0.8pt}, every whisker/.style={draw=%s, line width=0.5pt}}] coordinates {};"
-                    % (col, col, i + (j - 1.5) * 0.205, q[0], q[1], q[2], q[3], q[4], col))
+                    % (col, col, i + (j - 2) * 0.17, q[0], q[1], q[2], q[3], q[4], col))
 body.append(r"\end{axis}")
 write("exp_box", figure("figure*", body, r"Distribution of the time per query on each table, over all models and all $d$. Box: quartiles; white line: median; whiskers: 1st and 99th percentiles.", "fig:exp-box"),
       "Exp.2, every query of every setting of a table.")
