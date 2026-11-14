@@ -9,7 +9,7 @@ J = lambda f: json.load(open(os.path.join(D, f)))
 ORDER = [("concrete", "CON"), ("light_tunnel", "LT"), ("ailerons", "AIL"), ("pol", "POL"), ("elevators", "ELE"), ("jdk", "JDK"), ("baf", "BAF"),
          ("mslr", "MSLR"), ("postgres", "PG"), ("census1990", "CEN"), ("susy", "SUSY"), ("methane", "MET"), ("higgs", "HIG"), ("airline", "AIR"), ("nyc_taxi", "NYC")]
 ABBR = [a for _, a in ORDER]
-M4 = [("three_step", "cthree", "ThreeStep"), ("chirho", "cchirho", "ChiRho"), ("dowhy", "cdowhy", "DoWhy"), ("twin", "ctwin", "TWIN")]  # sans in figures
+M4 = [("three_step", "cthree", "ThreeStep"), ("chirho", "cchirho", "ChiRho"), ("dowhy", "cdowhy", "DoWhy"), ("twin", "ctwin", "CellForest")]  # sans in figures
 M5 = M4[:3] + [("causalai", "ccausal", "CausalAI")] + M4[3:]  # Exp.1 and Exp.2
 US_TICKS = r"ytick={1,10,100,1000,10000,100000,1000000}, yticklabels={1\,$\mu$s,,100\,$\mu$s,,10\,ms,,1\,s}"
 SEC_TICKS = (r"{0.1,1,60,3600,86400}", r"{0.1\,s,1\,s,1\,min,1\,h,1\,day}")
@@ -181,7 +181,7 @@ body = [r"\begin{groupplot}[nat, group style={group size=2 by 1, horizontal sep=
         r"}, xtick style={draw=none}, legend to name=recleg, legend columns=-1]",
         r"\addlegendimage{only marks, mark=square*, mark size=2.2pt, mark options={mk=cown}}",
         r"\addlegendimage{only marks, mark=*, mark size=2.3pt, mark options={mkours}}",
-        r"\legend{CellTable, TWIN}"]
+        r"\legend{CellTable, CellForest}"]
 for i, (k, _) in enumerate(ORDER, 1):  # a dumbbell per table: what CellTable stores, down to what TWIN stores
     body.append(r"\draw[cstem, line width=1pt, line cap=round] (axis cs:%d,%.4g) -- (axis cs:%d,%.4g);" % (i, rc[k]["mst"], i, rc[k]["table"]))
     body.append(r"\addplot[only marks, forget plot, mark=square*, mark size=2.2pt, mark options={mk=cown}] coordinates {(%d,%.4g)};" % (i, rc[k]["table"]))
@@ -212,7 +212,7 @@ body = [r"\begin{axis}[nat, width=0.78\columnwidth, height=5.0cm, xmode=log, xmi
         r"\addlegendimage{only marks, mark=square*, mark size=2.2pt, mark options={mk=cown}}",
         r"\addlegendimage{only marks, mark=triangle*, mark size=2.6pt, mark options={mk=cdowhy}}",
         r"\addlegendimage{only marks, mark=*, mark size=2.3pt, mark options={mkours}}",
-        r"\legend{Own evaluation, DoWhy, TWIN}"]
+        r"\legend{Own evaluation, DoWhy, CellForest}"]
 for name, y in GN:
     body.append(r"\node[font=\figfont\scriptsize\bfseries, text=cink, anchor=east] at ([xshift=-27pt]axis cs:0.003,%g) {%s};" % (y, name))
 for y, (app, own, ds, _) in zip(YS, G):
@@ -230,7 +230,7 @@ write("exp_app_cfe", figure("figure", body, r"Counterfactual explanations: the t
 # ---------------------------------------------------------------- Exp.8: feature relevance
 REL = [("Adult\\\\HGB", 1259.5, 196341.4, 6.05 * 86400, False), ("Adult\\\\RF", 1505.7, 371691.7, 63.4 * 86400, False), ("German\\\\HGB", 1.5, 1242.5, 1932.0, True), ("Credit\\\\HGB", 1735.8, 263618.9, 6.0 * 86400, False)]
 LIM = 5 * 86400
-RM = [("three_step", 3, "cthree", "square*", "ThreeStep"), ("dowhy", 2, "cdowhy", "triangle*", "DoWhy"), ("twin", 1, "ctwin", "*", "TWIN")]
+RM = [("three_step", 3, "cthree", "square*", "ThreeStep"), ("dowhy", 2, "cdowhy", "triangle*", "DoWhy"), ("twin", 1, "ctwin", "*", "CellForest")]
 body = [r"\begin{axis}[nat, width=\columnwidth, height=4.4cm, ymode=log, ymin=0.5, ymax=3e6, xmin=0.5, xmax=4.5,",
         r"  xtick={1,...,4}, xticklabels={" + ",".join("{%s%s}" % (r[0], r"\\\textcolor{ctwin}{\bfseries %.0f$\times$}" % (r[2] / r[1])) for r in REL) + r"}, xticklabel style={align=center}, xtick style={draw=none},",
         r"  ytick={1,60,3600,86400}, yticklabels={1\,s,1\,min,1\,h,1\,day}, ylabel={time of all queries}, legend style={at={(0.5,1.02)}, anchor=south}, legend columns=-1]"]
@@ -256,7 +256,7 @@ write("exp_app_relevance", figure("figure", body, r"Feature relevance: the time 
 # ---------------------------------------------------------------- Exp.9 what-if (dot plot) and Exp.10 fairness (columns)
 wf = J("whatif_fairness.json")
 WR = [("adult", "HGB100", "Adult, HGB", 400), ("adult", "RF100", "Adult, RF", 400), ("german_mint", "HGB100", "German, HGB", 200), ("german_mint", "RF100", "German, RF", 200)]
-B3 = [("three_step", "cthree", "square*", "ThreeStep"), ("dowhy", "cdowhy", "triangle*", "DoWhy"), ("twin", "ctwin", "*", "TWIN")]
+B3 = [("three_step", "cthree", "square*", "ThreeStep"), ("dowhy", "cdowhy", "triangle*", "DoWhy"), ("twin", "ctwin", "*", "CellForest")]
 body = [r"\begin{axis}[nat, width=0.86\columnwidth, height=3.7cm, xmode=log, xmin=0.0003, xmax=300, ymin=0.4, ymax=4.6, y dir=reverse,",
         r"  xtick={0.001,0.01,0.1,1,10,100}, xticklabels={1\,ms,10\,ms,100\,ms,1\,s,10\,s,100\,s}, ytick={1,2,3,4}, yticklabels={" + ",".join("{%s}" % r[2] for r in WR) + r"}, ytick style={draw=none},",
         r"  xlabel={wait for one position of the slider}, legend style={at={(0.5,1.14)}, anchor=south}, legend columns=-1]"]
@@ -276,7 +276,7 @@ write("exp_app_whatif", figure("figure", body, r"What-if analysis: the wait for 
       "Exp.9, results/shard of repo_lean (app what_if_mediated); time of all queries divided by the positions.")
 SL = [("three_step", 1, "cthree", "square*", 2.2), ("dowhy", 2, "cdowhy", "triangle*", 2.6), ("twin", 3, "ctwin", "*", 2.3)]
 body = [r"\begin{axis}[nat, width=0.6\columnwidth, height=5.0cm, ymode=log, ymin=0.05, ymax=6e4, xmin=0.75, xmax=3.25,",
-        r"  xtick={1,2,3}, xticklabels={ThreeStep,DoWhy,TWIN}, xtick style={draw=none},",
+        r"  xtick={1,2,3}, xticklabels={ThreeStep,DoWhy,CellForest}, xtick style={draw=none},",
         r"  ytick={0.1,1,60,3600}, yticklabels={0.1\,s,1\,s,1\,min,1\,h}, ylabel={time to audit every row}]"]
 for ds, fam, lab, _ in WR:  # one line per workload, through the three backends
     r = wf[f"{ds}|{fam}|fairness_cf"]
