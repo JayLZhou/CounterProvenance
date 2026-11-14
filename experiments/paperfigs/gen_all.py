@@ -103,17 +103,19 @@ write("exp_box", figure("figure*", body, r"Distribution of the time per query on
 
 # ---------------------------------------------------------------- Exp.3: size and build time per table
 g = J("size.json")
-def hbars(title, vals, fmt, xmin, xmax, ticks, labels, col):
-    o = [r"\nextgroupplot[title={%s}, xmin=%g, xmax=%g, xtick=%s, xticklabels=%s]" % (title, xmin, xmax, ticks, labels),
-         r"\addplot[area legend, b%s] coordinates {%s};" % (col[1:], " ".join(f"({v:.6g},{i})" for i, v in enumerate(vals, 1)))]
+def hdots(title, vals, fmt, xmin, xmax, ticks, labels):
+    o = [r"\nextgroupplot[title={%s}, xmin=%g, xmax=%g, xtick=%s, xticklabels=%s]" % (title, xmin, xmax, ticks, labels)]
+    for i, v in enumerate(vals, 1):  # a faint guide per row, then the value
+        o.append(r"\draw[cgrid, line width=0.4pt] (axis cs:%g,%d) -- (axis cs:%g,%d);" % (xmin, i, xmax, i))
+    o.append(r"\addplot[only marks, mark=*, mark size=2pt, mark options={mkours}] coordinates {%s};" % " ".join(f"({v:.6g},{i})" for i, v in enumerate(vals, 1)))
     for i, v in enumerate(vals, 1):
-        o.append(r"\node[vlab, anchor=west] at (axis cs:%.6g,%d) {%s};" % (v, i, fmt(v)))
+        o.append(r"\node[vlab, anchor=west, xshift=2pt] at (axis cs:%.6g,%d) {%s};" % (v, i, fmt(v)))
     return o
 gb = lambda x: f"{x * 1000:.0f}\\,MB" if x < 1 else f"{x:.1f}\\,GB"
-body = [r"\begin{groupplot}[natbar, group style={group size=2 by 1, horizontal sep=30pt, yticklabels at=edge left}, width=0.5\columnwidth, height=5.4cm,",
-        r"  xbar, /pgf/bar width=4pt, xmode=log, log origin=infty, ymin=0.4, ymax=15.6, y dir=reverse, ytick={1,...,15}, yticklabels={" + ",".join(ABBR) + r"}, ytick style={draw=none}]"]
-body += hbars("index size", [g[k]["real"] for k, _ in ORDER], gb, 0.003, 30, "{0.01,1}", r"{10\,MB,1\,GB}", "ctwin")
-body += hbars("build time", [g[k]["build"] for k, _ in ORDER], human_s, 0.5, 20000, "{1,60,3600}", r"{1\,s,1\,min,1\,h}", "ctwin")
+body = [r"\begin{groupplot}[nat, group style={group size=2 by 1, horizontal sep=30pt, yticklabels at=edge left}, width=0.5\columnwidth, height=5.4cm,",
+        r"  xmode=log, ymin=0.4, ymax=15.6, y dir=reverse, ytick={1,...,15}, yticklabels={" + ",".join(ABBR) + r"}, ytick style={draw=none}]"]
+body += hdots("index size", [g[k]["real"] for k, _ in ORDER], gb, 0.003, 30, "{0.01,1}", r"{10\,MB,1\,GB}")
+body += hdots("build time", [g[k]["build"] for k, _ in ORDER], human_s, 0.5, 20000, "{1,60,3600}", r"{1\,s,1\,min,1\,h}")
 body.append(r"\end{groupplot}")
 body += [r"\node[plab, anchor=north west] at (group c1r1.outer north west) {a};", r"\node[plab, anchor=north west] at (group c2r1.outer north west) {b};"]
 write("exp_size", figure("figure", body, r"Index of each table, the mean over its five models with the default parameters: (a) size; (b) build time.", "fig:exp-size"),
@@ -158,14 +160,17 @@ write("exp_beta", figure("figure", body, r"Effect of the merge budget $\beta$ on
 
 # ---------------------------------------------------------------- Exp.6: cell graph + MST against CellTable
 rc = J("records.json"); rt = J("records_trees.json"); MM = ["100", "300", "1000", "3000"]
-body = [r"\begin{groupplot}[natbar, group style={group size=2 by 1, horizontal sep=38pt}, height=4.2cm, ymode=log, log origin=infty, ylabel={\# leaf records}]",
-        r"\nextgroupplot[width=0.62\textwidth, ybar=0.3pt, /pgf/bar width=4.2pt, ymin=1e5, ymax=3e10, ytick={1e6,1e8,1e10}, xmin=0.45, xmax=15.55, xtick={1,...,15}, xticklabels={" + ",".join(ABBR) +
+body = [r"\begin{groupplot}[nat, group style={group size=2 by 1, horizontal sep=38pt}, height=4.2cm, ymode=log, ylabel={\# leaf records}]",
+        r"\nextgroupplot[width=0.62\textwidth, ymin=1e5, ymax=3e10, ytick={1e6,1e8,1e10}, xmin=0.45, xmax=15.55, xtick={1,...,15}, xticklabels={" + ",".join(ABBR) +
         r"}, xtick style={draw=none}, legend to name=recleg, legend columns=-1]",
-        r"\addplot[area legend, bown] coordinates {%s};" % coords(range(1, 16), [rc[k]["table"] for k, _ in ORDER]),
-        r"\addplot[area legend, btwin] coordinates {%s};" % coords(range(1, 16), [rc[k]["mst"] for k, _ in ORDER]),
+        r"\addlegendimage{only marks, mark=square*, mark size=2.2pt, mark options={mk=cown}}",
+        r"\addlegendimage{only marks, mark=*, mark size=2.3pt, mark options={mkours}}",
         r"\legend{CellTable, TWIN}"]
-for i, (k, _) in enumerate(ORDER, 1):
-    body.append(r"\node[slab, anchor=south] at (axis cs:%d,%.4g) {%.0f$\times$};" % (i, rc[k]["table"] * 1.2, rc[k]["ratio"]))
+for i, (k, _) in enumerate(ORDER, 1):  # a dumbbell per table: what CellTable stores, down to what TWIN stores
+    body.append(r"\draw[cstem, line width=1pt, line cap=round] (axis cs:%d,%.4g) -- (axis cs:%d,%.4g);" % (i, rc[k]["mst"], i, rc[k]["table"]))
+    body.append(r"\addplot[only marks, forget plot, mark=square*, mark size=2.2pt, mark options={mk=cown}] coordinates {(%d,%.4g)};" % (i, rc[k]["table"]))
+    body.append(r"\addplot[only marks, forget plot, mark=*, mark size=2.3pt, mark options={mkours}] coordinates {(%d,%.4g)};" % (i, rc[k]["mst"]))
+    body.append(r"\node[slab, anchor=south, yshift=2pt] at (axis cs:%d,%.4g) {%.0f$\times$};" % (i, rc[k]["table"], rc[k]["ratio"]))
 body.append(r"\nextgroupplot[natline, width=0.33\textwidth, xmode=log, xmin=70, xmax=4500, xtick={100,300,1000,3000}, xticklabels={100,300,{1,000},{3,000}}, ymin=1e7, ymax=1e11, ytick={1e7,1e9,1e11}, xlabel={trees per ensemble $M$ (73 models)}]")
 body.append(r"\addplot[color=cown, mark=square*, mark options={mk=cown}] coordinates {%s};" % coords([int(m) for m in MM], [rt[m]["table"] for m in MM]))
 body.append(r"\addplot[color=ctwin, mark=*, mark options={mk=ctwin}] coordinates {%s};" % coords([int(m) for m in MM], [rt[m]["mst"] for m in MM]))
@@ -183,19 +188,27 @@ def cv(ds, app, b):
 G = [("geco_genetic", "geco", "adult", "Adult"), ("geco_genetic", "geco", "german_full", "German"), ("mcce_1000", "native", "adult", "Adult"),
      ("mcce_1000", "native", "german_full", "German"), ("mcce_10000", "native", "adult", "Adult"), ("mcce_10000", "native", "german_full", "German")]
 GT = ["{%s%s}" % (l, r"\\\textcolor{ctwin}{\bfseries %.0f$\times$}" % (cv(ds, app, own) / cv(ds, app, "twin"))) for app, own, ds, l in G]
-body = [r"\begin{axis}[natbar, width=\columnwidth, height=4.3cm, ybar=0.4pt, /pgf/bar width=5.4pt, ymode=log, log origin=infty, ymin=0.05, ymax=3e5, xmin=0.5, xmax=6.5,",
-        r"  xtick={1,...,6}, xticklabels={" + ",".join(GT) + r"}, xticklabel style={align=center}, xtick style={draw=none},",
-        r"  ytick=%s, yticklabels=%s, ylabel={time of all queries}, legend style={at={(0.5,1.02)}, anchor=south}, legend columns=-1]" % SEC_TICKS,
-        r"\addplot[area legend, bown] coordinates {%s};" % coords(range(1, 7), [cv(ds, app, own) for app, own, ds, _ in G]),
-        r"\addplot[area legend, bdowhy] coordinates {%s};" % coords(range(1, 7), [cv(ds, app, "dowhy") for app, own, ds, _ in G]),
-        r"\addplot[area legend, btwin] coordinates {%s};" % coords(range(1, 7), [cv(ds, app, "twin") for app, own, ds, _ in G]),
+YS = [1, 2, 3.5, 4.5, 6, 7]  # two rows per application, a gap between applications
+GN = [("GeCo", 1.5), ("MCCE", 4.0), (r"MCCE, $K{=}10^4$", 6.5)]
+body = [r"\begin{axis}[nat, width=0.78\columnwidth, height=5.0cm, xmode=log, xmin=0.01, xmax=3e5, ymin=0.4, ymax=7.6, y dir=reverse,",
+        r"  xtick={0.1,1,60,3600,86400}, xticklabels={0.1\,s,1\,s,1\,min,1\,h,1\,day}, ytick={" + ",".join(map(str, YS)) + r"}, yticklabels={" + ",".join(l for *_, l in G) + r"},",
+        r"  ytick style={draw=none}, xlabel={time of all queries}, legend style={at={(0.5,1.03)}, anchor=south}, legend columns=-1]",
+        r"\addlegendimage{only marks, mark=square*, mark size=2.2pt, mark options={mk=cown}}",
+        r"\addlegendimage{only marks, mark=triangle*, mark size=2.6pt, mark options={mk=cdowhy}}",
+        r"\addlegendimage{only marks, mark=*, mark size=2.3pt, mark options={mkours}}",
         r"\legend{own evaluation, DoWhy, TWIN}"]
-for x, name in [(1.5, "GeCo"), (3.5, "MCCE"), (5.5, r"MCCE, $K{=}10^4$")]:
-    body.append(r"\node[font=\sffamily\scriptsize\bfseries, text=cink, anchor=north] at ([yshift=-23pt]axis cs:%g,0.05) {%s};" % (x, name))
-for x in (2.5, 4.5):
-    body.append(r"\draw[cgrid, line width=0.6pt] (axis cs:%g,0.05) -- (axis cs:%g,3e5);" % (x, x))
+for name, y in GN:
+    body.append(r"\node[font=\sffamily\scriptsize\bfseries, text=cink, anchor=east] at ([xshift=-27pt]axis cs:0.01,%g) {%s};" % (y, name))
+for y, (app, own, ds, _) in zip(YS, G):
+    a, w, t = cv(ds, app, own), cv(ds, app, "dowhy"), cv(ds, app, "twin")
+    body.append(r"\draw[-{Stealth[length=3.2pt]}, ctwin!70, line width=0.7pt, shorten >=3pt, shorten <=3pt] (axis cs:%.4g,%g) -- (axis cs:%.4g,%g);" % (a, y, t, y))
+    body.append(r"\addplot[only marks, forget plot, mark=triangle*, mark size=2.6pt, mark options={mk=cdowhy}] coordinates {(%.4g,%g)};" % (w, y))
+    body.append(r"\addplot[only marks, forget plot, mark=square*, mark size=2.2pt, mark options={mk=cown}] coordinates {(%.4g,%g)};" % (a, y))
+    body.append(r"\addplot[only marks, forget plot, mark=*, mark size=2.3pt, mark options={mkours}] coordinates {(%.4g,%g)};" % (t, y))
+    body.append(r"\node[slab, anchor=south, yshift=1pt] at (axis cs:%.4g,%g) {%.0f$\times$};" % ((a * t) ** 0.5, y, a / t))
+    body.append(r"\node[vlab, text=ctwin, anchor=east, xshift=-3pt] at (axis cs:%.4g,%g) {%s};" % (t, y, human_s(t)))
 body.append(r"\end{axis}")
-write("exp_app_cfe", figure("figure", body, r"Counterfactual explanations: the time of the queries that explain every person, by the application's own evaluation (GeCo's partial evaluation; MCCE's batch {\tt predict}, $K=10^3$ unless noted), by the DoWhy library, and by \Method, all answering the same queries. Under each pair of bars: the speedup of \Method over the application's own evaluation.", "fig:exp-app-cfe"),
+write("exp_app_cfe", figure("figure", body, r"Counterfactual explanations: the time of the queries that explain every person, by the application's own evaluation (GeCo's partial evaluation; MCCE's batch {\tt predict}, $K=10^3$ unless noted), by the DoWhy library, and by \Method, all answering the same queries. An arrow goes from the application's own evaluation to \Method; its label is the speedup.", "fig:exp-app-cfe"),
       "Exp.7, results/shard (repo_lean for TWIN and the native/GeCo backends on German and MCCE native; repo_dev2 for the rest).")
 
 # ---------------------------------------------------------------- Exp.8: feature relevance
@@ -245,14 +258,22 @@ for i, (ds, fam, lab, pos) in enumerate(WR, 1):
 body.append(r"\end{axis}")
 write("exp_app_whatif", figure("figure", body, r"What-if analysis: the wait for one position of the slider, i.e., one query for every row with one value of one actionable variable, the other variables following the SCM.", "fig:exp-app-whatif"),
       "Exp.9, results/shard of repo_lean (app what_if_mediated); time of all queries divided by the positions.")
-body = [r"\begin{axis}[natbar, width=0.9\columnwidth, height=4.0cm, ybar=0.6pt, /pgf/bar width=8pt, ymode=log, log origin=infty, ymin=0.05, ymax=1e5, xmin=0.5, xmax=4.5,",
-        r"  xtick={1,2,3,4}, xticklabels={" + ",".join("{%s%s}" % (r[2].replace(", ", r"\\"), r"\\\textcolor{ctwin}{\bfseries %.0f$\times$}" % (wf[f"{r[0]}|{r[1]}|fairness_cf"]["dowhy"]["query_s"] / wf[f"{r[0]}|{r[1]}|fairness_cf"]["twin"]["query_s"])) for r in WR) + r"}, xticklabel style={align=center}, xtick style={draw=none},",
-        r"  ytick={0.1,1,60,3600}, yticklabels={0.1\,s,1\,s,1\,min,1\,h}, ylabel={time to audit every row}, legend style={at={(0.5,1.02)}, anchor=south}, legend columns=-1]"]
-for b, col, _, name in B3:
-    body.append(r"\addplot[area legend, b%s] coordinates {%s};" % (col[1:], coords(range(1, 5), [wf[f"{ds}|{fam}|fairness_cf"][b]["query_s"] for ds, fam, _, _ in WR])))
-body.append(r"\legend{" + ",".join(n for *_, n in B3) + "}")
+SL = [("three_step", 1, "cthree", "square*", 2.2), ("dowhy", 2, "cdowhy", "triangle*", 2.6), ("twin", 3, "ctwin", "*", 2.3)]
+body = [r"\begin{axis}[nat, width=0.6\columnwidth, height=5.0cm, ymode=log, ymin=0.05, ymax=6e4, xmin=0.75, xmax=3.25,",
+        r"  xtick={1,2,3}, xticklabels={ThreeStep,DoWhy,TWIN}, xtick style={draw=none},",
+        r"  ytick={0.1,1,60,3600}, yticklabels={0.1\,s,1\,s,1\,min,1\,h}, ylabel={time to audit every row}]"]
+for ds, fam, lab, _ in WR:  # one line per workload, through the three backends
+    r = wf[f"{ds}|{fam}|fairness_cf"]
+    pts = [(x, r[b]["query_s"]) for b, x, *_ in SL]
+    body.append(r"\draw[cstem, line width=0.9pt] " + " -- ".join("(axis cs:%d,%.4g)" % pt for pt in pts) + ";")
+    for b, x, col, mk, ms in SL:
+        style = "mkours" if b == "twin" else "mk=%s" % col
+        body.append(r"\addplot[only marks, forget plot, mark=%s, mark size=%gpt, mark options={%s}] coordinates {(%d,%.4g)};" % (mk, ms, style, x, r[b]["query_s"]))
+    # the workload and its speedup at the end of its line; the two lines of a table end close, one label above, one below
+    up = {("adult", "HGB100"): 4, ("adult", "RF100"): -4, ("german_mint", "RF100"): 3, ("german_mint", "HGB100"): -3}[(ds, fam)]
+    body.append(r"\node[vlab, text=cink, anchor=west, xshift=4pt, yshift=%dpt] at (axis cs:3,%.4g) {%s\enspace\textcolor{ctwin}{\bfseries %.0f$\times$}};" % (up, r["twin"]["query_s"], lab, r["dowhy"]["query_s"] / r["twin"]["query_s"]))
 body.append(r"\end{axis}")
-write("exp_app_fairness", figure("figure", body, r"Counterfactual fairness: the time of the queries that audit every row, flipping every non-empty set of the sensitive attributes. Bold: the speedup of \Method over DoWhy.", "fig:exp-app-fairness"),
+write("exp_app_fairness", figure("figure", body, r"Counterfactual fairness: the time of the queries that audit every row, flipping every non-empty set of the sensitive attributes; a line is a workload. Bold: the speedup of \Method over DoWhy.", "fig:exp-app-fairness"),
       "Exp.10, results/shard of repo_lean (app fairness_cf).")
 
 # ---------------------------------------------------------------- appendix: MINT
