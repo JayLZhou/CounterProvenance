@@ -125,8 +125,10 @@ def run_baseline(args, state, out):
         gcm, cg = dowhy_model(scm, state["edges"])
     elif args.backend == "chirho":
         from chirho_baseline import ScmChiRho
+    elif args.backend == "causalai":
+        from causalai_baseline import ScmCausalAI
     done = n = 0
-    spent = 0.0
+    spent = setup = 0.0
     got: list[float] = []
     lat: list[float] = []
     lat_path = tag.with_name(tag.name + "_lat.npy")
@@ -139,7 +141,7 @@ def run_baseline(args, state, out):
     status = "ok"
 
     def save():
-        pd.DataFrame([dict(dataset=args.dataset, family=args.family, d=d, backend=args.backend, units=len(rows), units_done=done, queries=n, query_s=spent,
+        pd.DataFrame([dict(dataset=args.dataset, family=args.family, d=d, backend=args.backend, units=len(rows), units_done=done, queries=n, query_s=spent, setup_s=setup,
                            mean_us=spent / max(n, 1) * 1e6, status=status)]).to_csv(tag.with_suffix(".csv"), index=False)
         np.save(tag.with_suffix(".npy"), np.array(got))
         np.save(lat_path, np.array(lat, dtype=np.float32))
@@ -158,6 +160,12 @@ def run_baseline(args, state, out):
         elif args.backend == "chirho":
             ch = ScmChiRho(scm, unit, T, y)
             call = ch.query
+        elif args.backend == "causalai":  # its setup per unit (graph, abduction) counts as query time
+            t0 = time.perf_counter()
+            ca = ScmCausalAI(scm, unit, T, y)
+            spent += time.perf_counter() - t0
+            setup += time.perf_counter() - t0
+            call = ca.query
         else:
             call = lambda t: float(gcm.counterfactual_samples(cg, {name: (lambda _v, value=float(t[k]): value) for k, name in enumerate(T)}, observed_data=row)[y].iloc[0])
         for t in Q:
@@ -179,7 +187,7 @@ def main() -> None:
     ap.add_argument("--data", required=True)
     ap.add_argument("--dataset", required=True)
     ap.add_argument("--family", required=True)
-    ap.add_argument("--backend", required=True, choices=["twin", "three_step", "chirho", "dowhy"])
+    ap.add_argument("--backend", required=True, choices=["twin", "three_step", "chirho", "dowhy", "causalai"])
     ap.add_argument("--d", type=int, default=0)
     ap.add_argument("--trees", type=int, default=1000)
     ap.add_argument("--out", default="", help="directory under results, for a rerun on the cached models")
