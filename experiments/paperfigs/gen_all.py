@@ -177,7 +177,7 @@ write("exp_beta", figure("figure", body, r"Effect of the merge budget $\beta$ on
 # ---------------------------------------------------------------- Exp.6: cell graph + MST against CellTable
 rc = J("records.json"); rt = J("records_trees.json"); MM = ["100", "300", "1000", "3000"]
 body = [r"\begin{groupplot}[nat, group style={group size=2 by 1, horizontal sep=38pt}, height=4.2cm, ymode=log, ylabel={\# leaf records}]",
-        r"\nextgroupplot[width=0.62\textwidth, ymin=1e5, ymax=3e10, ytick={1e6,1e8,1e10}, xmin=0.45, xmax=15.55, xtick={1,...,15}, xticklabels={" + ",".join(ABBR) +
+        r"\nextgroupplot[width=0.62\textwidth, ymin=1e5, ymax=3e10, ytick={1e6,1e8,1e10}, yticklabels={$10^6$,$10^8$,$10^{10}$}, xmin=0.45, xmax=15.55, xtick={1,...,15}, xticklabels={" + ",".join(ABBR) +
         r"}, xtick style={draw=none}, legend to name=recleg, legend columns=-1]",
         r"\addlegendimage{only marks, mark=square*, mark size=2.2pt, mark options={mk=cown}}",
         r"\addlegendimage{only marks, mark=*, mark size=2.3pt, mark options={mkours}}",
@@ -187,7 +187,7 @@ for i, (k, _) in enumerate(ORDER, 1):  # a dumbbell per table: what CellTable st
     body.append(r"\addplot[only marks, forget plot, mark=square*, mark size=2.2pt, mark options={mk=cown}] coordinates {(%d,%.4g)};" % (i, rc[k]["table"]))
     body.append(r"\addplot[only marks, forget plot, mark=*, mark size=2.3pt, mark options={mkours}] coordinates {(%d,%.4g)};" % (i, rc[k]["mst"]))
     body.append(r"\node[slab, anchor=south, yshift=2pt] at (axis cs:%d,%.4g) {%.0f$\times$};" % (i, rc[k]["table"], rc[k]["ratio"]))
-body.append(r"\nextgroupplot[natline, width=0.33\textwidth, xmode=log, xmin=70, xmax=4500, xtick={100,300,1000,3000}, xticklabels={100,300,{1,000},{3,000}}, ymin=1e7, ymax=1e11, ytick={1e7,1e9,1e11}, xlabel={trees per ensemble $M$ (73 models)}]")
+body.append(r"\nextgroupplot[natline, width=0.33\textwidth, xmode=log, xmin=70, xmax=4500, xtick={100,300,1000,3000}, xticklabels={100,300,{1,000},{3,000}}, ymin=1e7, ymax=1e11, ytick={1e7,1e9,1e11}, yticklabels={$10^7$,$10^9$,$10^{11}$}, xlabel={trees per ensemble $M$ (73 models)}]")
 body.append(r"\addplot[color=cown, mark=square*, mark options={mk=cown}] coordinates {%s};" % coords([int(m) for m in MM], [rt[m]["table"] for m in MM]))
 body.append(r"\addplot[color=ctwin, mark=*, mark options={mk=ctwin}] coordinates {%s};" % coords([int(m) for m in MM], [rt[m]["mst"] for m in MM]))
 for m in MM:
@@ -314,3 +314,52 @@ body.append(r"\end{axis}")
 write("exp_app_mint", figure("figure", body, r"MINT on whole tables: the time of all queries of each backend. INF: more than the limit of 5 days. On the right: the speedup of \Method over DoWhy.", "fig:exp-app-mint"),
       "Appendix, MINT: results/shard (repo_lean), app recourse_mint.")
 print("done")
+
+# ---------------------------------------------------------------- appendix: MINT, time per query against the ensembles replayed
+MP = {"HGB": {"adult": {"three_step": [(1, 56.108), (3, 138.174), (4, 205.566)], "dowhy": [(1, 519.565), (3, 552.398), (4, 561.927)], "twin": [(1, 6.796), (3, 11.012), (4, 14.138)]},
+              "german": {"three_step": [(2, 284.830), (3, 470.726)], "dowhy": [(2, 601.243), (3, 620.731)], "twin": [(2, 8.322), (3, 11.187)]}, "add": 2.4},
+      "RF": {"adult": {"three_step": [(1, 2629.073), (3, 5205.967), (4, 5114.092)], "dowhy": [(1, 6055.830), (3, 4965.631), (4, 6339.019)], "twin": [(1, 8.303), (3, 13.045), (4, 16.010)]},
+             "german": {"three_step": [(2, 1025.069), (3, 1378.997)], "dowhy": [(2, 2588.235), (3, 2609.057)], "twin": [(2, 30.765), (3, 33.084)]}, "add": 2.6}}
+MK = [("three_step", "cthree", "square*", "square", "ThreeStep"), ("dowhy", "cdowhy", "triangle*", "triangle", "DoWhy"), ("twin", "ctwin", "*", "o", "CellForest")]
+body = [r"\begin{groupplot}[natline, group style={group size=2 by 1, horizontal sep=10pt, yticklabels at=edge left}, width=0.5\columnwidth, height=3.8cm,",
+        r"  xmin=0.6, xmax=4.4, xtick={1,2,3,4}, ymode=log, ymin=1, ymax=3e4, ytick={10,100,1000,10000}, yticklabels={10\,$\mu$s,100\,$\mu$s,1\,ms,10\,ms}]"]
+for j, fam in enumerate(("HGB", "RF")):
+    body.append(r"\nextgroupplot[title={%s, 100 trees}%s%s]" % (fam, ", ylabel={Time per query}" if j == 0 else "", ", legend to name=mintpaths, legend columns=-1" if j == 0 else ""))
+    for k, col, mk, mko, name in MK:
+        style = "mkours" if k == "twin" else "mk=" + col
+        body.append(r"\addplot[color=%s, mark=%s, mark size=1.9pt, mark options={%s}] coordinates {%s};" % (col, mk, style, " ".join("(%d,%.5g)" % p for p in MP[fam]["adult"][k])))
+    if j == 0:
+        body.append(r"\legend{" + ",".join(n for *_, n in MK) + "}")
+    for k, col, mk, mko, name in MK:  # German: dashed, open marks
+        body.append(r"\addplot[color=%s, dashed, forget plot, mark=%s, mark size=1.9pt, mark options={solid, fill=white, draw=%s, line width=0.6pt}] coordinates {%s};" % (col, mk, col, " ".join("(%d,%.5g)" % p for p in MP[fam]["german"][k])))
+    body.append(r"\node[slab, anchor=north] at (axis cs:2.5,4.6) {+%.1f\,$\mu$s per ensemble};" % MP[fam]["add"])
+body += [r"\end{groupplot}", r"\node[anchor=south west] at ([yshift=8pt]group c1r1.north west) {\pgfplotslegendfromname{mintpaths}};",
+         r"\node[anchor=north, font=\figfont\footnotesize] at ([yshift=-14pt]$(group c1r1.south)!0.5!(group c2r1.south)$) {Tree ensembles replayed per query};",
+         r"\node[plab, anchor=north west] at (group c1r1.outer north west) {A};", r"\node[plab, anchor=north west] at (group c2r1.outer north west) {B};"]
+write("exp_app_mint_paths", figure("figure", body, r"MINT: time per query of a one-variable action against the tree ensembles it replays, i.e., the outcome and its mediators, 30 persons per table: (A) HGB; (B) RF. Solid, filled: Adult; dashed, open: German. A label is the time that \Method adds per ensemble.", "fig:exp-app-mint-paths"),
+      "Appendix C, results/mint_paths of repo_lean.")
+
+# ---------------------------------------------------------------- appendix: random forests with the defaults of scikit-learn (fully grown)
+rf = J("rf_full.json")
+ok = [r for r in rf if r["status"] == "ok"]; big = [r for r in rf if "a tree over" in r["status"]]; tot = [r for r in rf if "in total" in r["status"]]
+body = [r"\begin{groupplot}[nat, group style={group size=2 by 1, horizontal sep=60pt}, height=4.6cm]",
+        r"\nextgroupplot[width=0.5\textwidth, xmode=log, ymode=log, xmin=3, xmax=1e5, ymin=1, ymax=1e20, xtick={10,100,1000,10000,100000}, xticklabels={10,100,{1,000},{10,000},{100,000}},",
+        r"  ytick={1,1e5,1e10,1e15,1e20}, yticklabels={1,$10^{5}$,$10^{10}$,$10^{15}$,$10^{20}$}, xlabel={Leaves per tree (mean)}, ylabel={Cells of the largest tree}, legend to name=rfleg, legend columns=-1]",
+        r"\addplot[only marks, mark=*, mark size=1.8pt, mark options={mkours}] coordinates {%s};" % " ".join("(%.5g,%.5g)" % (r["leaves_per_tree"], r["tree_blocks_max"]) for r in ok),
+        r"\addplot[only marks, mark=o, mark size=1.8pt, mark options={draw=cown, line width=0.6pt}] coordinates {%s};" % " ".join("(%.5g,%.5g)" % (r["leaves_per_tree"], r["tree_blocks_max"]) for r in big),
+        r"\addplot[only marks, mark=diamond, mark size=2.2pt, mark options={draw=cdowhy, line width=0.6pt}] coordinates {%s};" % " ".join("(%.5g,%.5g)" % (r["leaves_per_tree"], r["tree_blocks_max"]) for r in tot),
+        r"\legend{Built, A tree over $10^9$ cells, Over $5{\cdot}10^{10}$ cells in total}",
+        r"\draw[cmuted, dashed, line width=0.5pt] (axis cs:3,1e9) -- (axis cs:1e5,1e9); \node[vlab, anchor=south west] at (axis cs:3.2,1e9) {limit of a group};"]
+body.append(r"\nextgroupplot[width=0.3\textwidth, ymode=log, ymin=1, ymax=1e5, xmin=0.4, xmax=2.6, xtick={1,2}, xticklabels={ThreeStep,CellForest}, xtick style={draw=none},"
+            r" ytick={1,10,100,1000,10000,100000}, yticklabels={1\,$\mu$s,10\,$\mu$s,100\,$\mu$s,1\,ms,10\,ms,100\,ms}, ylabel={Time per query}]")
+for x, key, mk, style in ((1, "three_us", "square*", "mk=cthree"), (2, "twin_us", "*", "mkours")):
+    vals = sorted(r[key] for r in ok); m = len(vals)
+    body.append(r"\addplot[only marks, mark=%s, mark size=1.6pt, mark options={%s}] coordinates {%s};" % (mk, style, " ".join("(%.3f,%.5g)" % (x + ((t * 7) % m - (m - 1) / 2) * 0.012, v) for t, v in enumerate(vals))))
+    mean = sum(vals) / m
+    body.append(r"\draw[cink, line width=0.9pt] (axis cs:%g,%.5g) -- (axis cs:%g,%.5g);" % (x - 0.25, mean, x + 0.25, mean))
+sp = sorted(r["speedup"] for r in ok)
+body.append(r"\node[slab, anchor=south] at (axis cs:1.5,2e4) {%s\textendash %s$\times$ (median %.0f$\times$)};" % (f"{sp[0]:,.0f}", f"{sp[-1]:,.0f}", sp[len(sp) // 2]))
+body += [r"\end{groupplot}", r"\node[anchor=south west] at ([yshift=8pt]group c1r1.north west) {\pgfplotslegendfromname{rfleg}};",
+         r"\node[plab, anchor=north west] at (group c1r1.outer north west) {A};", r"\node[plab, anchor=north west] at (group c2r1.outer north west) {B};"]
+write("app_rf_full", figure("figure*", body, r"Random forests with the defaults of scikit-learn (1,000 fully grown trees, 61 tree ensembles of the 15 tables): (A) the cells of the largest tree against its leaves, for the 54 ensembles whose trees could be enumerated (7 more run out of 120\,GB); (B) the time per query of the 23 ensembles that \Method builds, a point per ensemble and a line at the mean; the label is the speedup over {\tt ThreeStep}.", "fig:app-rf-full"),
+      "Appendix, rf_full/ on 2Tyingli (rf_full.py, driver.log): RandomForestRegressor(n_estimators=1000, max_features=0.33), all parents intervened.")

@@ -158,6 +158,21 @@ class DoWhy:
         return self.gcm.counterfactual_samples(self.cg, iv, noise_data=nd)[self.y].to_numpy()
 
 
+class CausalAI:
+    """Salesforce CausalAI made exact (causalai_baseline.py), in its most favorable use, as DoWhy: the noise of the unit once,
+    then every call answers all of its interventions in one pass of CausalAI's inference loop."""
+
+    def __init__(self, scm, unit, T, y):
+        from causalai_baseline import ScmCausalAI
+        t0 = time.perf_counter()
+        self.ca = ScmCausalAI(scm, {k: float(v) for k, v in dict(unit).items()}, T, y)
+        self.build_s = time.perf_counter() - t0
+        self.info = {}
+
+    def __call__(self, Q):
+        return self.ca.query_many(Q)
+
+
 class Online:
     """The online evaluation at its leanest: the noise once, then the libraries' own ``predict`` over the whole batch,
     only for the mediators and the outcome, in topological order."""

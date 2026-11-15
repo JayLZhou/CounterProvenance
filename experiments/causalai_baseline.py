@@ -90,4 +90,24 @@ class ScmCausalAI:
         return treatment_data.data_arrays[0][:, ci.data.var_name2index(self.y)].copy()
 
 
+    def query_many(self, Q) -> np.ndarray:
+        """Many interventions on the one unit in one pass: its row repeated once per intervention, each row with its own
+        values of the intervened variables (CausalAI accepts one treatment value per row)."""
+        ci, Q = self.ci, np.asarray(Q, dtype=float)
+        treatment_data = deepcopy(ci.data)
+        treatment_data.data_arrays[0] = np.repeat(treatment_data.data_arrays[0][:1], len(Q), axis=0)
+        for j, name in enumerate(self.T):
+            treatment_data.data_arrays[0][:, ci.data.var_name2index(name)] = Q[:, j]
+        for var in ci.relevant_node_seq:
+            if var not in ci.treatment_vars and ci.causal_graph[var] != []:
+                x, _, _ = treatment_data.get_causal_Xy(var, ci.causal_graph[var])
+                if x is not None:
+                    parents = ci.causal_graph[var]
+                    x = ci.data_processor.transformX(x, parents)
+                    pred = ci.models[var].predict(x)
+                    pred = ci.data_processor.inv_transform(pred, [var])
+                    treatment_data.data_arrays[0][:, ci.data.var_name2index(var)] = pred
+        return treatment_data.data_arrays[0][:, ci.data.var_name2index(self.y)].copy()
+
+
 ScmCausalAIBatch = ScmCausalAI

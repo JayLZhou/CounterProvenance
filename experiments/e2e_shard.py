@@ -18,7 +18,7 @@ import pandas as pd
 
 from common import RESULTS
 from counterprovenance.scm import ancestors, fit_scm, parents_of
-from e2e_apps import APPS, SUBSET_APPS, Ctx, DoWhy, GeCo, Online, Oracle, SubsetOracle, ThreeStep, Twin, TwinMech, model_factory
+from e2e_apps import APPS, SUBSET_APPS, CausalAI, Ctx, DoWhy, GeCo, Online, Oracle, SubsetOracle, ThreeStep, Twin, TwinMech, model_factory
 from scm_full import dowhy_model
 
 
@@ -49,7 +49,7 @@ def main() -> None:
     ap.add_argument("--dataset", required=True)
     ap.add_argument("--family", required=True)
     ap.add_argument("--app", required=True)
-    ap.add_argument("--backend", required=True, choices=["twin", "geco", "native", "three_step", "dowhy", "treeshap"])
+    ap.add_argument("--backend", required=True, choices=["twin", "geco", "native", "three_step", "dowhy", "treeshap", "causalai"])
     ap.add_argument("--start", type=int, default=0)
     ap.add_argument("--stop", type=int, default=-1)
     ap.add_argument("--build-threads", type=int, default=8)
@@ -133,6 +133,8 @@ def main() -> None:
             backend = Shifted(twin, shift)
         elif args.backend == "dowhy":
             backend = DoWhy(gcm, cg, row, T, y)
+        elif args.backend == "causalai":
+            backend = CausalAI(scm, unit, T, y)
         elif args.backend == "native":
             # the application's own evaluation (e.g. MCCE): the library's predict over the whole call, the noise of the unit once
             backend = Online(scm, unit, T, y)
@@ -145,6 +147,8 @@ def main() -> None:
                 make = lambda S, b=backend: b if S is None else twinm.subset(b, S)
             elif args.backend == "dowhy":
                 make = lambda S, b=backend, r=row: b if S is None else DoWhy(gcm, cg, r, [T[i] for i in S], y)
+            elif args.backend == "causalai":
+                make = lambda S, b=backend, u=unit: b if S is None else CausalAI(scm, u, [T[i] for i in S], y)
             else:
                 make = lambda S, b=backend, u=unit: b if S is None else ThreeStep(scm, u, [T[i] for i in S], y)
             f = SubsetOracle(make)
