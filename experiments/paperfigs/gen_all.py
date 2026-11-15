@@ -148,7 +148,7 @@ body.append(r"\legend{" + ",".join(n for _, _, n in M4) + "}")
 for r in tr:
     body.append(r"\node[slab, anchor=south] at (axis cs:%g,%.4g) {%.0f$\times$};" % (r["m"], r["twin"] * 1.6, r["three_step"] / r["twin"]))
 body.append(r"\nextgroupplot[xmin=0.6, xmax=6.4, xtick={1,...,6}, xticklabels={" + ",".join(f"{h}\\\\[-1pt]{{\\scriptsize ({dp[h]['real']:.0f})}}" for h in H) +
-            r"}, xticklabel style={align=center}, xlabel={maximum depth $h$ (mean real depth), 46 ensembles}]")
+            r"}, xticklabel style={align=center}, xlabel={maximum depth $h$ (depth reached on average), 46 ensembles}]")
 body.append(r"\addplot[color=cthree, mark=square*, mark options={mk=cthree}] coordinates {%s};" % coords(range(1, 7), [dp[h]["three"] for h in H]))
 body.append(r"\addplot[color=ctwin, mark=*, mark options={mk=ctwin}] coordinates {%s};" % coords(range(1, 7), [dp[h]["twin"] for h in H]))
 for i, h in enumerate(H, 1):
@@ -363,3 +363,39 @@ body += [r"\end{groupplot}", r"\node[anchor=south west] at ([yshift=8pt]group c1
          r"\node[plab, anchor=north west] at (group c1r1.outer north west) {A};", r"\node[plab, anchor=north west] at (group c2r1.outer north west) {B};"]
 write("app_rf_full", figure("figure*", body, r"Random forests with the defaults of scikit-learn (1,000 fully grown trees, 61 tree ensembles of the 15 tables): (A) the cells of the largest tree against its leaves, for the 54 ensembles whose trees could be enumerated (7 more run out of 120\,GB); (B) the time per query of the 23 ensembles that \Method builds, a point per ensemble and a line at the mean; the label is the speedup over {\tt ThreeStep}.", "fig:app-rf-full"),
       "Appendix, rf_full/ on 2Tyingli (rf_full.py, driver.log): RandomForestRegressor(n_estimators=1000, max_features=0.33), all parents intervened.")
+
+# ---------------------------------------------------------------- appendix: CausalAI made exact in the applications (table)
+ca6 = {f"{r['dataset']}|{r['family']}|{r['app']}": r["query_s"] for r in J("app_causalai.json")}
+mt6 = J("mint.json")
+relv = {("adult", "HGB100"): REL[0], ("adult", "RF100"): REL[1], ("german_full", "HGB100"): REL[2], ("give_credit", "HGB100"): REL[3]}
+DSN = {"adult": "Adult", "german_full": "German", "german_mint": "German", "give_credit": "Credit"}
+FMN = {"HGB100": "HGB", "RF100": "RF", "RF200": "RF", "RF500D10": "RF"}
+rows6 = []  # (application, workload, CausalAI, CellForest, DoWhy)
+for app, ds, fam, label in (("geco_genetic", "adult", "RF500D10", "GeCo"), ("geco_genetic", "german_full", "RF500D10", "GeCo"), ("mcce_1000", "adult", "RF200", "MCCE"),
+                            ("mcce_1000", "german_full", "RF200", "MCCE"), ("mcce_10000", "adult", "RF200", r"MCCE, $K{=}10^4$"), ("mcce_10000", "german_full", "RF200", r"MCCE, $K{=}10^4$")):
+    rows6.append((label, f"{DSN[ds]}", ca6[f"{ds}|{fam}|{app}"], cv(ds, app, "twin"), cv(ds, app, "dowhy")))
+for (ds, fam), r in relv.items():
+    rows6.append(("Feature relevance", f"{DSN[ds]}, {FMN[fam]}", ca6[f"{ds}|{fam}|dowhy_feature_relevance"], r[1], r[2]))
+for app, label in (("what_if_mediated", "What-if analysis"), ("fairness_cf", "Counterfactual fairness")):
+    for ds, fam, _, _ in WR:
+        r = wf[f"{ds}|{fam}|{app}"]
+        rows6.append((label, f"{DSN[ds]}, {FMN[fam]}", ca6[f"{ds}|{fam}|{app}"], r["twin"]["query_s"], r["dowhy"]["query_s"]))
+for ds in ("adult", "german_mint"):
+    for fam in ("HGB100", "RF100"):
+        g = lambda b: mt6[f"{ds}|{fam}|{b}"]["query_s"] if mt6[f"{ds}|{fam}|{b}"]["full"] else mt6[f"{ds}|{fam}|{b}"]["projected_s"]
+        rows6.append(("MINT (Appendix~\\ref{app:mint})", f"{DSN[ds]}, {FMN[fam]}", ca6[f"{ds}|{fam}|recourse_mint"], g("twin"), g("dowhy")))
+lines = [r"% Appendix: CausalAI made exact on every application workload (run_app6_causalai.py), against CellForest and DoWhy (Section 7).",
+         r"\begin{table}[h]", r"\caption{CausalAI made exact in the applications: the time of all queries of each workload, against \Method and DoWhy (as in Section~\ref{sec:exp-apps}), and the speedup of \Method over CausalAI.}",
+         r"\label{tab:app-causalai}", r"\centering", r"\footnotesize", r"\setlength{\tabcolsep}{3pt}", r"\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}llrrrr@{}}", r"\toprule",
+         r"Application & Workload & CausalAI & \Method & DoWhy & Speedup\\", r"\midrule"]
+last = None
+for app, wl, c, t, w in rows6:
+    if last is not None and app != last:
+        lines.append(r"\addlinespace[2pt]")
+    lines.append(r"%s & %s & %s & %s & %s & %s$\times$\\" % (app if app != last else "", wl, human_s(c), human_s(t), human_s(w), f"{c / t:,.0f}"))
+    last = app
+tot_c, tot_t, tot_w = sum(r[2] for r in rows6), sum(r[3] for r in rows6), sum(r[4] for r in rows6)
+lines += [r"\midrule", r"All 22 & & %s & %s & %s & %s$\times$\\" % (human_s(tot_c), human_s(tot_t), human_s(tot_w), f"{tot_c / tot_t:,.0f}"), r"\bottomrule", r"\end{tabular*}", r"\end{table}"]
+with open(os.path.join(OUT, "app_causalai.tex"), "w") as f:
+    f.write("\n".join(lines) + "\n")
+print("CausalAI apps: speedups", sorted(round(r[2] / r[3]) for r in rows6), "CausalAI vs DoWhy", sorted(round(r[4] / r[2], 1) for r in rows6), "totals", tot_c / 86400, tot_t / 3600, tot_w / 86400)
