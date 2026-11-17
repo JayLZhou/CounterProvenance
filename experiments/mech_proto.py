@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import pickle
 import resource
 import time
 from pathlib import Path
@@ -24,10 +25,29 @@ from counterprovenance.scm_baselines import ScmThreeStepPy
 from scm_bench import choose_treatments, zoo
 
 
+def index_dir(results, dataset, family, trees, budget, one_pairs=5e10, one_max=50_000_000):
+    """Where the indexes of a table and a model are kept: one file per mechanism, for the build parameters."""
+    return Path(results) / "indexes" / f"{dataset}_{family}_t{trees}_b{budget:g}_p{float(one_pairs):g}_m{int(one_max)}"
+
+
 class MechanismIndex:
-    def __init__(self, scm, unit0, nodes, budget, threads, one_pairs=5e10, one_max=50_000_000):
+    """The index of every mechanism in ``nodes``.  With ``cache``, a directory, the index of a mechanism is read from
+    ``<cache>/<node>.pkl`` when it is there, and otherwise built and written there, so that it is built once for all
+    experiments (the index of a mechanism is over all its parents and depends on no unit)."""
+
+    def __init__(self, scm, unit0, nodes, budget, threads, one_pairs=5e10, one_max=50_000_000, cache=None):
         self.scm, self.indexes, self.info = scm, {}, {}
+        cache = Path(cache) if cache else None
+        if cache:
+            cache.mkdir(parents=True, exist_ok=True)
         for x in nodes:
+            path = cache / (str(x).replace("/", "_").replace(" ", "_") + ".pkl") if cache else None
+            if path is not None and path.exists():
+                t0 = time.perf_counter()
+                with open(path, "rb") as f:
+                    index, info = pickle.load(f)
+                self.indexes[x], self.info[x] = index, dict(info, load_s=time.perf_counter() - t0, loaded=True)
+                continue
             pa = list(scm.parents[x])
             t0 = time.perf_counter()
             bound = bind_scm(scm, unit0, pa, x, threads=threads, native=True)
@@ -37,6 +57,11 @@ class MechanismIndex:
             self.indexes[x] = index
             self.info[x] = dict(parents=len(pa), boxes=len(bound.boxes), groups=len(index.groups), cells=st.grid_cells,
                                 bytes=st.packed_bytes, build_s=time.perf_counter() - t0)
+            if path is not None:
+                tmp = path.with_suffix(".tmp")
+                with open(tmp, "wb") as f:
+                    pickle.dump((index, self.info[x]), f, protocol=5)
+                tmp.replace(path)
 
     def query(self, unit, T, t, order, observed):
         """One query, as the per-unit index is measured: one read per mechanism on the path."""

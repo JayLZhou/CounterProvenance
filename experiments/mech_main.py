@@ -19,7 +19,7 @@ import pandas as pd
 from common import RESULTS
 from counterprovenance.scm import ancestors, fit_scm, parents_of, relevant_nodes
 from counterprovenance.scm_baselines import ScmThreeStepPy
-from mech_proto import MechanismIndex
+from mech_proto import MechanismIndex, index_dir
 from scm_bench import choose_treatments, zoo
 
 DIMS = (1, 2, 4, 8, 16)
@@ -73,7 +73,8 @@ def run_twin(args, state, out):
     nodes = sorted({x for w in work.values() for x in relevant_nodes(scm.parents, w["T"], y)})
     t0 = time.perf_counter()
     try:
-        mech = MechanismIndex(scm, rows.iloc[0].to_dict(), nodes, args.budget, 1, args.one_pairs, args.one_max)
+        mech = MechanismIndex(scm, rows.iloc[0].to_dict(), nodes, args.budget, 1, args.one_pairs, args.one_max,
+                              cache=index_dir(RESULTS, args.dataset, args.family, args.trees, args.budget, args.one_pairs, args.one_max))
     except MemoryError as e:
         pd.DataFrame([dict(dataset=args.dataset, family=args.family, status=f"infeasible: {str(e)[:80]}", build_s=time.perf_counter() - t0)]).to_csv(out / f"{args.dataset}_{args.family}_build.csv", index=False)
         return

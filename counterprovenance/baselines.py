@@ -21,22 +21,30 @@ import numpy as np
 from .ensemble import BoundEnsemble, TreeEnsemble
 
 
+class _Cast:
+    """Read intervention values the way the model does (plain floats): round to the input precision, and map
+    |x| <= zero_threshold to 0 (LightGBM).  A class, not a closure, so that an index can be saved with pickle."""
+
+    __slots__ = ("f32", "zt")
+
+    def __init__(self, f32: bool, zt: float) -> None:
+        self.f32, self.zt = f32, zt
+
+    def __call__(self, t):
+        if self.f32:
+            out = array("f", t.tolist() if isinstance(t, np.ndarray) else t).tolist()
+        else:
+            out = t.tolist() if isinstance(t, np.ndarray) else [float(v) for v in t]
+        zt = self.zt
+        if zt > 0.0:
+            out = [0.0 if -zt <= v <= zt else v for v in out]
+        return out
+
+
 def make_cast(ensemble: TreeEnsemble):
     """Read intervention values the way the model does (plain floats): round to
     the input precision, and map |x| <= zero_threshold to 0 (LightGBM)."""
-    if ensemble.input_dtype == np.float32:
-        def cast(t):
-            return array("f", t.tolist() if isinstance(t, np.ndarray) else t).tolist()
-    else:
-        def cast(t):
-            return t.tolist() if isinstance(t, np.ndarray) else [float(v) for v in t]
-    zt = ensemble.zero_threshold
-    if zt > 0.0:
-        rounded = cast
-
-        def cast(t):
-            return [0.0 if -zt <= v <= zt else v for v in rounded(t)]
-    return cast
+    return _Cast(ensemble.input_dtype == np.float32, float(ensemble.zero_threshold))
 
 
 def _lists(tree):

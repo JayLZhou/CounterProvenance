@@ -28,7 +28,7 @@ from counterprovenance.native_cells import NativeCellIndex
 from counterprovenance.scm import relevant_nodes
 from counterprovenance.scm_baselines import ScmThreeStepPy
 from mech_main import prepare, queries
-from mech_proto import MechanismIndex
+from mech_proto import MechanismIndex, index_dir
 
 
 class LeafReader:
@@ -135,7 +135,8 @@ def main() -> None:
     T = state["work"][args.d]["T"]
     order = relevant_nodes(scm.parents, T, y)
     t0 = time.perf_counter()
-    mech = MechanismIndex(scm, rows.iloc[0].to_dict(), order, args.budget, args.build_threads)
+    mech = MechanismIndex(scm, rows.iloc[0].to_dict(), order, args.budget, args.build_threads,
+                          cache=index_dir(RESULTS, args.dataset, args.family, args.trees, args.budget))
     build_s = time.perf_counter() - t0
     M = len(scm.ensembles[y].trees)
     reader = LeafReader(mech.indexes[y], M)

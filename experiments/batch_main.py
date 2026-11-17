@@ -54,13 +54,14 @@ def main() -> None:
 
 def run_twin(args, state, out):
     from counterprovenance.scm import relevant_nodes
-    from mech_proto import MechanismIndex
+    from mech_proto import MechanismIndex, index_dir
     scm, y, rows, work = state["scm"], state["y"], state["rows"], state["work"]
     dims = [args.d] if args.d else sorted(work)
     nodes = sorted({x for d in dims for x in relevant_nodes(scm.parents, work[d]["T"], y)})
     t0 = time.perf_counter()
     try:
-        mech = MechanismIndex(scm, rows.iloc[0].to_dict(), nodes, args.budget, args.build_threads, args.one_pairs, args.one_max)
+        mech = MechanismIndex(scm, rows.iloc[0].to_dict(), nodes, args.budget, args.build_threads, args.one_pairs, args.one_max,
+                              cache=index_dir(RESULTS, args.dataset, args.family, args.trees, args.budget, args.one_pairs, args.one_max))
     except MemoryError as e:
         for d in dims:
             pd.DataFrame([dict(dataset=args.dataset, family=args.family, d=d, backend="twin", status=f"infeasible: {str(e)[:80]}")]).to_csv(
