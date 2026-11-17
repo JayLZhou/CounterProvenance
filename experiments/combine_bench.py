@@ -9,8 +9,9 @@ Phi, one query at a time, as in the main experiment.  CellForest:
   ``weights`` (one weight per tree, uniform in [0, 2], one vector per setting: a reweighted or pruned ensemble) are linear:
   the value of every cell for the weights is computed once per setting from the persistent trees (the weighted sums of
   their nodes), and a query then reads one value per group, one query at a time, as the stored sum (``prep_s``);
-* ``median`` (a robust ensemble) needs every selected leaf: CellForest reads the leaves of the persistent trees of all
-  groups and of the 10 queries of a unit together;
+* ``median`` and ``trimmed`` (the mean without the 10% largest and 10% smallest trees: robust ensembles) need every
+  selected leaf: CellForest reads them from the persistent trees of all groups, one query at a time, with the walk
+  compiled by numba (the only compiled step of a query);
 * ``sum``: the stored value of the main experiment (a check).
 
 Same cached SCMs, units, query points, and saved indexes as the main experiment (mech_main.py), one thread.
@@ -33,6 +34,45 @@ from counterprovenance.scm import relevant_nodes
 from counterprovenance.scm_baselines import ScmThreeStepPy
 from mech_main import prepare, queries
 from mech_proto import MechanismIndex, index_dir
+from numba import njit
+
+
+@njit(cache=True)
+def _walk(roots, L, R, H, no, io, V, Tr, out):
+    """The leaves of the versions ``roots``, one per group: a depth-first walk of each persistent tree."""
+    stack = np.empty(256, np.int64)
+    depth = np.empty(256, np.int64)
+    for g in range(roots.shape[0]):
+        stack[0] = roots[g]
+        depth[0] = 0
+        sp = 1
+        while sp > 0:
+            sp -= 1
+            c = stack[sp]
+            d = depth[sp]
+            if d == H[g]:
+                item = -c - 2
+                if item >= 0:
+                    out[Tr[item + io[g]]] = V[item + io[g]]
+            else:
+                n = c + no[g]
+                stack[sp] = R[n]
+                depth[sp] = d + 1
+                stack[sp + 1] = L[n]
+                depth[sp + 1] = d + 1
+                sp += 2
+
+
+@njit(cache=True)
+def _median(v):
+    return np.median(v)
+
+
+@njit(cache=True)
+def _trimmed(v):
+    s = np.sort(v)
+    k = s.shape[0] // 10
+    return s[k:s.shape[0] - k].mean()
 
 
 def _check(index):
@@ -107,6 +147,15 @@ class LeafReader:
         const = [i for leaf in index._const_leaves for i in leaf.cells.items]
         self.const_trees = np.array([boxes[i].tree for i in const], dtype=np.int64)
         self.const_values = np.array([boxes[i].value for i in const], dtype=np.float64)
+
+    def one(self, z) -> np.ndarray:
+        """The leaf values of one input: the cells of the groups, then the compiled walk of their persistent trees."""
+        cells = np.asarray(self.ix.query(z)._cells, dtype=np.int64)
+        out = np.empty(self.M)
+        out[self.const_trees] = self.const_values
+        if len(cells):
+            _walk(self.VER[self.FOC[cells + self.cell_off]], self.L, self.R, self.H, self.no, self.io, self.V, self.Tr, out)
+        return out
 
     def many(self, Z) -> np.ndarray:
         """The leaf values, one row per input of ``Z``."""
@@ -191,8 +240,11 @@ def main() -> None:
     t0 = time.perf_counter(); lin["weights"] = reweighted(ix_y, w_set); prep["weights"] = time.perf_counter() - t0
     t0 = time.perf_counter(); reader = LeafReader(ix_y, M); prep["median"] = time.perf_counter() - t0
     lin["sum"], prep["sum"] = ix_y, 0.0
+    prep["trimmed"] = prep["median"]
     phis = {"sum": lambda v: float(v.sum()), "prefix": lambda v: float(v @ w_pre), "weights": lambda v: float(v @ w_set),
-            "median": lambda v: float(np.median(v))}
+            "median": lambda v: float(_median(v)), "trimmed": lambda v: float(_trimmed(v))}
+    reader.one([float(rows.iloc[0][p]) for p in pa_y])   # compile the walk outside the timer
+    _median(np.zeros(3)); _trimmed(np.zeros(30))
     res = {k: dict(cf_s=0.0, cf_n=0, base_s=0.0, base_n=0, err=0.0) for k in phis}
 
     def mediators(unit, t, observed):
@@ -212,9 +264,9 @@ def main() -> None:
             t0 = time.perf_counter()  # per unit: the observed mediators and the factual value of the outcome
             observed = {x: mech.indexes[x].query([unit[p] for p in scm.parents[x]]).value for x in order[:-1]}
             zu = [unit[p] for p in pa_y]
-            if k == "median":  # the leaves of the factual input and of the 10 queries of the unit, read together
-                med = np.median(reader.many([zu] + [mediators(unit, t, observed) for t in Q]), axis=1)
-                got = (unit[y] + med[1:] - med[0]).tolist()
+            if k in ("median", "trimmed"):  # every selected leaf, one query at a time
+                fu = phi(reader.one(zu))
+                got = [unit[y] + phi(reader.one(mediators(unit, t, observed))) - fu for t in Q]
             else:  # one query at a time: one value per group
                 ix = lin[k]
                 fu = ix.query(zu).value
