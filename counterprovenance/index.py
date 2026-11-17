@@ -132,6 +132,13 @@ class _Table:
     def __array__(self, dtype=None, copy=None) -> np.ndarray:
         return self.values[self.map]
 
+    # pickle: the arrays, and the memoryviews made again on loading
+    def __getstate__(self):
+        return self.map, self.values
+
+    def __setstate__(self, state) -> None:
+        self.__init__(*state)
+
 
 class LazyAnswer:
     """Result of a compiled query: the exact value now, the provenance pieces on
@@ -255,6 +262,18 @@ class IndexStats:
 
 
 class ProvenanceIndex:
+    # pickle: the value tables of a few groups are memoryviews, saved as arrays and made again on loading
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        if "_tables" in state:
+            state["_tables"] = [("view", np.asarray(t)) if isinstance(t, memoryview) else ("obj", t) for t in state["_tables"]]
+        return state
+
+    def __setstate__(self, state) -> None:
+        if "_tables" in state:
+            state["_tables"] = [memoryview(t) if kind == "view" else t for kind, t in state["_tables"]]
+        self.__dict__.update(state)
+
     def __init__(
         self,
         bound: BoundEnsemble,
