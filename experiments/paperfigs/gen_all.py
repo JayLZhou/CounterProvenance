@@ -431,23 +431,25 @@ print("nogroup: built", len(built), "same", sum(abs(r["grouped_formula"] - r["no
 
 # ---------------------------------------------------------------- Exp.7: other combinations of the trees (combine_bench.py)
 if os.path.exists(os.path.join(D, "combine.json")):
-    cb = J("combine.json")  # list of rows: dataset, family, combo, cf_us, base_us
-    CMB = [("sum", "Sum"), ("prefix", "First half"), ("weights", "Weights"), ("median", "Median")]  # all four read the leaves
-    body = [r"\begin{axis}[nat, width=\columnwidth, height=4.4cm, ymode=log, ymin=10, ymax=3e4, xmin=0.45, xmax=4.55, xtick={1,...,4},",
-            r"  xticklabels={" + ",".join("{%s\\\\\\textcolor{ctwin}{\\bfseries %s$\\times$}}" % (lab, "%.0f" % (sum(r["base_us"] for r in cb if r["combo"] == k) / sum(r["cf_us"] for r in cb if r["combo"] == k))) for k, lab in CMB) + r"},",
-            r"  xticklabel style={align=center}, xtick style={draw=none}, ytick={10,100,1000,10000}, yticklabels={10\,$\mu$s,100\,$\mu$s,1\,ms,10\,ms},",
-            r"  ylabel={Mean time per query}, legend style={at={(0,1.02)}, anchor=south west}, legend columns=-1]",
-            r"\addlegendimage{only marks, mark=square*, mark size=1.8pt, mark options={mk=cthree}}",
-            r"\addlegendimage{only marks, mark=*, mark size=1.8pt, mark options={mkours}}",
-            r"\legend{ThreeStep, CellForest}"]
-    for i in range(1, 5, 2):
-        body.append(r"\fill[cband] (axis cs:%g,10) rectangle (axis cs:%g,3e4);" % (i - 0.5, i + 0.5))
-    for i, (k, _) in enumerate(CMB, 1):
-        for x, key, mk, style in ((i - 0.17, "base_us", "square*", "mk=cthree"), (i + 0.17, "cf_us", "*", "mkours")):
-            vals = [r[key] for r in cb if r["combo"] == k]; m = len(vals)
-            body.append(r"\addplot[only marks, forget plot, mark=%s, mark size=1.5pt, mark options={%s}] coordinates {%s};" % (mk, style, " ".join("(%.3f,%.5g)" % (x + (t - (m - 1) / 2) * 0.012, v) for t, v in enumerate(vals))))
-            mean = sum(vals) / m
-            body.append(r"\draw[cink, line width=0.9pt] (axis cs:%g,%.5g) -- (axis cs:%g,%.5g);" % (x - 0.12, mean, x + 0.12, mean))
+    cb = J("combine.json")  # rows: dataset, family, combo, path, cf_us, base_us
+    CMB = [("prefix", "First half", "cthree", "square*"), ("weights", "Weights", "cchirho", "diamond*"), ("median", "Median", "cdowhy", "triangle*"), ("sum", "Sum", "ctwin", "*")]
+    byk = {(r["dataset"], r["combo"]): r for r in cb}
+    ticks = []
+    for ds, ab in ORDER:
+        r = byk[(ds, "sum")]
+        ticks.append("{%s\\\\[-1pt]{\\scriptsize %s, %d}}" % (ab, r["family"], r["path"]))
+    body = [r"\begin{axis}[nat, width=\textwidth, height=4.2cm, ymode=log, ymin=2, ymax=150, xmin=0.45, xmax=15.55, xtick={1,...,15}, xticklabels={" + ",".join(ticks) + r"},",
+            r"  xticklabel style={align=center}, xtick style={draw=none}, ytick={2,5,10,20,50,100}, yticklabels={2,5,10,20,50,100}, ylabel={Speedup over ThreeStep},",
+            r"  legend style={at={(0,1.02)}, anchor=south west}, legend columns=-1]"]
+    for k, lab, col, mk in CMB:
+        body.append(r"\addlegendimage{only marks, mark=%s, mark size=2pt, mark options={%s}}" % (mk, "mkours" if k == "sum" else "mk=" + col))
+    body.append(r"\legend{" + ",".join(lab for _, lab, _, _ in CMB) + "}")
+    for i in range(1, 16, 2):
+        body.append(r"\fill[cband] (axis cs:%g,2) rectangle (axis cs:%g,150);" % (i - 0.5, i + 0.5))
+    for i, (ds, ab) in enumerate(ORDER, 1):
+        for j, (k, lab, col, mk) in enumerate(CMB):
+            r = byk[(ds, k)]
+            body.append(r"\addplot[only marks, forget plot, mark=%s, mark size=2pt, mark options={%s}] coordinates {(%.3f,%.4g)};" % (mk, "mkours" if k == "sum" else "mk=" + col, i + (j - 1.5) * 0.14, r["base_us"] / r["cf_us"]))
     body.append(r"\end{axis}")
-    write("exp_combine", figure("figure", body, r"Combining the trees of the outcome at query time from their selected leaves (the sum, the first half of the trees, per-tree weights, and the median), on one model per table, $d=4$: a point per model, a line at the mean. Bold: the speedup of \Method (ratio of the means).", "fig:exp-combine"),
+    write("exp_combine", figure("figure*", body, r"Combining the trees of the outcome at query time from their selected leaves, on one model per table ($d=4$): the speedup of \Method over {\tt ThreeStep} for each combination. Under a table: its model and the tree ensembles on the path of a query.", "fig:exp-combine"),
           "Exp.7 (combinations), results/combine of repo_lean and repo_lrf (combine_bench.py).")
