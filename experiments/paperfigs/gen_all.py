@@ -399,3 +399,32 @@ lines += [r"\midrule", r"All 22 & & %s & %s & %s & %s$\times$\\" % (human_s(tot_
 with open(os.path.join(OUT, "app_causalai.tex"), "w") as f:
     f.write("\n".join(lines) + "\n")
 print("CausalAI apps: speedups", sorted(round(r[2] / r[3]) for r in rows6), "CausalAI vs DoWhy", sorted(round(r[4] / r[2], 1) for r in rows6), "totals", tot_c / 86400, tot_t / 3600, tot_w / 86400)
+
+# ---------------------------------------------------------------- Exp.6: with and without the grouping, every model
+ng = J("nogroup.json")
+LIM_B, TOP = 1e12, 4e12
+body = [r"\begin{axis}[nat, width=\textwidth, height=4.4cm, ymode=log, ymin=1e6, ymax=4e12, xmin=0.45, xmax=15.55, xtick={1,...,15}, xticklabels={" + ",".join(ABBR) + r"}, xtick style={draw=none},",
+        r"  ytick={1e6,1e8,1e10,1e12}, yticklabels={1\,MB,100\,MB,10\,GB,1\,TB}, ylabel={Index size}, legend style={at={(0,1.02)}, anchor=south west}, legend columns=-1]",
+        r"\addlegendimage{only marks, mark=*, mark size=1.8pt, mark options={mkours}}",
+        r"\addlegendimage{only marks, mark=square*, mark size=1.6pt, mark options={mk=cown}}",
+        r"\addlegendimage{only marks, mark=triangle, mark size=2.2pt, mark options={draw=cdowhy, line width=0.6pt}}",
+        r"\legend{With grouping (\Method), One index over all trees, Not built: over 1\,TB}"]
+for i in range(1, 16, 2):
+    body.append(r"\fill[cband] (axis cs:%g,1e6) rectangle (axis cs:%g,%g);" % (i - 0.5, i + 0.5, TOP))
+body.append(r"\draw[cmuted, dashed, line width=0.5pt] (axis cs:0.45,%g) -- (axis cs:15.55,%g);" % (LIM_B, LIM_B))
+for i, (ds, ab) in enumerate(ORDER, 1):
+    for t, f in enumerate(FAMS):
+        r = ng[f"{ds}_{f}"]; jx = (t - 2) * 0.045
+        body.append(r"\addplot[only marks, forget plot, mark=*, mark size=1.8pt, mark options={mkours}] coordinates {(%.3f,%.5g)};" % (i - 0.18 + jx, r["grouped_formula"]))
+        if r["status"] == "built":
+            body.append(r"\addplot[only marks, forget plot, mark=square*, mark size=1.6pt, mark options={mk=cown}] coordinates {(%.3f,%.5g)};" % (i + 0.18 + jx, r["none_formula"]))
+        else:
+            body.append(r"\addplot[only marks, forget plot, mark=triangle, mark size=2.2pt, mark options={draw=cdowhy, line width=0.6pt}] coordinates {(%.3f,%.5g)};" % (i + 0.18 + jx, 2e12))
+    nb = sum(ng[f"{ds}_{f}"]["status"] != "built" for f in FAMS)
+    if nb:
+        body.append(r"\node[vlab, text=cdowhy, anchor=south] at (axis cs:%.2f,2.6e12) {%d/5};" % (i + 0.18, nb))
+body.append(r"\end{axis}")
+built = [r for r in ng.values() if r["status"] == "built"]
+write("exp_nogroup", figure("figure*", body, r"Index of every model with the grouping (\Method) and as one index over all trees: a point per model. A triangle on the top: the model cannot be built within 1\,TB of memory; its count is above.", "fig:exp-nogroup"),
+      "Exp.6, grouped: results/rss of repo_lean and repo_lrf (size formula); one index: results/rss_none of repo_hybrid, repo_pft64(_lrf), repo_abl, and logs/abl/sched.txt.")
+print("nogroup: built", len(built), "same", sum(abs(r["grouped_formula"] - r["none_formula"]) < 1e3 for r in built))
