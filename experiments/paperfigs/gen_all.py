@@ -432,22 +432,23 @@ print("nogroup: built", len(built), "same", sum(abs(r["grouped_formula"] - r["no
 # ---------------------------------------------------------------- Exp.7: other combinations of the trees (combine_bench.py)
 if os.path.exists(os.path.join(D, "combine.json")):
     cb = J("combine.json")  # rows: dataset, family, combo, path, cf_us, base_us
-    CMB = [("prefix", "First half", "cthree", "square*"), ("weights", "Weights", "cchirho", "diamond*"), ("median", "Median", "cdowhy", "triangle*"), ("sum", "Sum", "ctwin", "*")]
+    CMB = [("prefix", "First half", "cthree", "square*"), ("weights", "Weights", "cchirho", "diamond*"), ("median", "Median", "cdowhy", "triangle*"),
+           ("trimmed", "Trimmed mean", "ccausal", "oplus*"), ("sum", "Sum", "ctwin", "*")]
     def ratio(ds, k):  # a table: the mean time over its models of each backend, and their ratio
         rs = [r for r in cb if r["dataset"] == ds and r["combo"] == k]
         return sum(r["base_us"] for r in rs) / sum(r["cf_us"] for r in rs)
     ticks = ABBR
-    body = [r"\begin{axis}[nat, width=\textwidth, height=4.2cm, ymode=log, ymin=2, ymax=150, xmin=0.45, xmax=15.55, xtick={1,...,15}, xticklabels={" + ",".join(ticks) + r"},",
-            r"  xticklabel style={align=center}, xtick style={draw=none}, ytick={2,5,10,20,50,100}, yticklabels={2,5,10,20,50,100}, ylabel={Speedup over ThreeStep},",
+    body = [r"\begin{axis}[nat, width=\textwidth, height=4.2cm, ymode=log, ymin=2, ymax=600, xmin=0.45, xmax=15.55, xtick={1,...,15}, xticklabels={" + ",".join(ticks) + r"},",
+            r"  xticklabel style={align=center}, xtick style={draw=none}, ytick={2,10,50,100,500}, yticklabels={2,10,50,100,500}, ylabel={Speedup over ThreeStep},",
             r"  legend style={at={(0,1.02)}, anchor=south west}, legend columns=-1]"]
     for k, lab, col, mk in CMB:
         body.append(r"\addlegendimage{only marks, mark=%s, mark size=2pt, mark options={%s}}" % (mk, "mkours" if k == "sum" else "mk=" + col))
     body.append(r"\legend{" + ",".join(lab for _, lab, _, _ in CMB) + "}")
     for i in range(1, 16, 2):
-        body.append(r"\fill[cband] (axis cs:%g,2) rectangle (axis cs:%g,150);" % (i - 0.5, i + 0.5))
+        body.append(r"\fill[cband] (axis cs:%g,2) rectangle (axis cs:%g,600);" % (i - 0.5, i + 0.5))
     for i, (ds, ab) in enumerate(ORDER, 1):
         for j, (k, lab, col, mk) in enumerate(CMB):
-            body.append(r"\addplot[only marks, forget plot, mark=%s, mark size=2pt, mark options={%s}] coordinates {(%.3f,%.4g)};" % (mk, "mkours" if k == "sum" else "mk=" + col, i + (j - 1.5) * 0.14, ratio(ds, k)))
+            body.append(r"\addplot[only marks, forget plot, mark=%s, mark size=2pt, mark options={%s}] coordinates {(%.3f,%.4g)};" % (mk, "mkours" if k == "sum" else "mk=" + col, i + (j - 2) * 0.13, ratio(ds, k)))
     body.append(r"\end{axis}")
     write("exp_combine", figure("figure*", body, r"Combining the trees of the outcome at query time from their selected leaves, on all five models of each table ($d=4$): the speedup of \Method over {\tt ThreeStep} for each combination, as the ratio of their mean times over the five models.", "fig:exp-combine"),
           "Exp.7 (combinations), results/combine of repo_lean and repo_lrf (combine_bench.py).")
