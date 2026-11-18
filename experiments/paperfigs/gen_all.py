@@ -148,14 +148,14 @@ body.append(r"\legend{" + ",".join(n for _, _, n in M4) + "}")
 for r in tr:
     body.append(r"\node[slab, anchor=south] at (axis cs:%g,%.4g) {%.0f$\times$};" % (r["m"], r["twin"] * 1.6, r["three_step"] / r["twin"]))
 body.append(r"\nextgroupplot[xmin=0.6, xmax=6.4, xtick={1,...,6}, xticklabels={" + ",".join(f"{h}\\\\[-1pt]{{\\scriptsize ({dp[h]['real']:.0f})}}" for h in H) +
-            r"}, xticklabel style={align=center}, xlabel={maximum depth $h$ (depth reached on average), 46 ensembles}]")
+            r"}, xticklabel style={align=center}, xlabel={maximum depth $h$ (depth reached on average), 35 ensembles}]")
 body.append(r"\addplot[color=cthree, mark=square*, mark options={mk=cthree}] coordinates {%s};" % coords(range(1, 7), [dp[h]["three"] for h in H]))
 body.append(r"\addplot[color=ctwin, mark=*, mark options={mk=ctwin}] coordinates {%s};" % coords(range(1, 7), [dp[h]["twin"] for h in H]))
 for i, h in enumerate(H, 1):
     body.append(r"\node[slab, anchor=south] at (axis cs:%d,%.4g) {%.0f$\times$};" % (i, dp[h]["twin"] * 1.6, dp[h]["sp"]))
 body += [r"\end{groupplot}", r"\node[anchor=south] at ([yshift=8pt]$(group c1r1.north)!0.5!(group c2r1.north)$) {\pgfplotslegendfromname{scal}};",
          r"\node[plab, anchor=north west] at (group c1r1.outer north west) {A};", r"\node[plab, anchor=north west] at (group c2r1.outer north west) {B};"]
-write("exp_scal", figure("figure*", body, r"Scalability of the time per query: (A) with the number of trees, over the 75 models; (B) with the maximum depth of the trees, over the 46 tree ensembles and families indexed at every depth. A label above \Method is its speedup over {\tt ThreeStep} (in B, the median).", "fig:exp-scal"),
+write("exp_scal", figure("figure*", body, r"Scalability of the time per query: (A) with the number of trees, over the 75 models; (B) with the maximum depth of the trees, over 7 tree ensembles of 6 tables with 2 to 7 parents and all five families (35 ensembles), all indexed at every depth. A label above \Method is its speedup over {\tt ThreeStep} (in B, the median).", "fig:exp-scal"),
       "Exp.4: trees from the runs of Exp.4 (results/trees_pairs, results/trees), depth from depth_exp3 on 2Tyingli.")
 
 # ---------------------------------------------------------------- Exp.5: beta
