@@ -4,3 +4,4 @@ __pycache__/
 artifacts/
 data/
 experiments/logs/
+counterprovenance/native/*.so
