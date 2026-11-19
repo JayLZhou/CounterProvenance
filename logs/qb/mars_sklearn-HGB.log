@@ -1,8 +1,0 @@
-{'host': '3haoji-A100', 'python': '3.11.15', 'platform': 'Linux-5.15.0-91-generic-x86_64-with-glibc2.31', 'numpy': '2.4.6', 'scipy': '1.15.3', 'sklearn': '1.9.0', 'xgboost': '3.2.0', 'lightgbm': '4.7.0', 'dowhy': '0.14'}
-OpenML ThermalPowerConsumptionMarsExpress60: (20000, 484)
-sklearn-HGB (1000 trees) fitted in 69.7s
-mars  sklearn-HGB  d= 1 trees= 143/1000 groups=   2 bitmask=   0 rec=      2,993 build=   0.0s | py   1.91 vs loop   632.5 (331.5x) | nb  0.080 vs  90.04 (1128.4x) | lib 9578.9 vs nb-call  0.86 | slider  1.65 vs   98.3
-mars  sklearn-HGB  d= 2 trees= 200/1000 groups=   2 bitmask=   0 rec=     21,769 build=   0.4s | py   2.02 vs loop   623.0 (308.8x) | nb  0.106 vs  81.90 (769.8x) | lib 9564.7 vs nb-call  0.92 | slider  1.57 vs   94.9
-mars  sklearn-HGB  d= 4 trees= 273/1000 groups=   3 bitmask=   0 rec=  2,224,706 build=  26.8s | py   2.55 vs loop   677.7 (265.4x) | nb  0.198 vs  84.21 (424.7x) | lib 9292.7 vs nb-call  1.01 | slider  1.70 vs   94.8
-mars  sklearn-HGB  d= 8 trees= 430/1000 groups=  24 bitmask=   0 rec=  3,797,195 build=  14.7s | py   5.53 vs loop   668.3 (120.8x) | nb  0.564 vs  86.59 (153.5x) | lib 9136.5 vs nb-call  1.25 | slider  3.92 vs  120.8
-mars  sklearn-HGB  d=16 trees= 571/1000 groups= 102 bitmask=   0 rec=  4,229,971 build=  10.8s | py  24.35 vs loop   605.4 ( 24.9x) | nb  2.223 vs  81.05 ( 36.5x) | lib 8819.9 vs nb-call  3.07 | slider  9.67 vs  163.2

@@ -1,8 +1,0 @@
-{'host': '3haoji-A100', 'python': '3.11.15', 'platform': 'Linux-5.15.0-91-generic-x86_64-with-glibc2.31', 'numpy': '2.4.6', 'scipy': '1.15.3', 'sklearn': '1.9.0', 'xgboost': '3.2.0', 'lightgbm': '4.7.0', 'dowhy': '0.14'}
-OpenML topo_2_1: (8885, 261)
-sklearn-HGB (1000 trees) fitted in 23.3s
-topo  sklearn-HGB  d= 1 trees= 217/1000 groups=   2 bitmask=   0 rec=      3,153 build=   0.0s | py   2.41 vs loop   547.6 (227.7x) | nb  0.067 vs  80.73 (1209.7x) | lib 9403.2 vs nb-call  0.82 | slider  1.41 vs  114.0
-topo  sklearn-HGB  d= 2 trees= 280/1000 groups=   2 bitmask=   0 rec=     11,470 build=   0.4s | py   1.98 vs loop   569.8 (288.0x) | nb  0.098 vs  83.13 (852.4x) | lib 9563.7 vs nb-call  0.88 | slider  1.48 vs   99.6
-topo  sklearn-HGB  d= 4 trees= 339/1000 groups=   2 bitmask=   0 rec=  5,217,414 build= 173.3s | py   3.86 vs loop   602.5 (155.9x) | nb  0.160 vs  76.60 (478.0x) | lib 9376.4 vs nb-call  0.87 | slider  1.37 vs   86.8
-topo  sklearn-HGB  d= 8 trees= 497/1000 groups=  11 bitmask=   0 rec=  4,232,704 build=  48.5s | py   3.99 vs loop   585.7 (146.9x) | nb  0.392 vs  78.77 (201.2x) | lib 8510.7 vs nb-call  1.05 | slider  2.30 vs  102.5
-topo  sklearn-HGB  d=16 trees= 656/1000 groups=  61 bitmask=   0 rec=  4,137,101 build=  17.7s | py  12.71 vs loop   700.4 ( 55.1x) | nb  1.534 vs  84.68 ( 55.2x) | lib 8477.7 vs nb-call  2.33 | slider  6.67 vs  146.8

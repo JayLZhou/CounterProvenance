@@ -2,7 +2,7 @@
 """Rerun the settings that exceeded the limits with the mediator dominance test.
 
 For each ``dataset:family:d``: fit, compile through the mediators, build the index,
-check 400 queries against ``ScmOnlinePy`` and time the numba index against ``ScmNumba``.
+check 400 queries against ``ScmOnlinePy`` and time the numba index against it.
 Output: ``results/scm_feasible.csv``.
 """
 
@@ -19,7 +19,7 @@ import pandas as pd
 from common import per_call_seconds, write_csv
 from counterprovenance import ProvenanceIndex, accel
 from counterprovenance.scm import ancestors, bind_scm, fit_scm, parents_of
-from counterprovenance.scm_baselines import ScmNumba, ScmOnlinePy
+from counterprovenance.scm_baselines import ScmOnlinePy
 from scm_bench import choose_treatments, zoo
 
 
@@ -58,18 +58,18 @@ def main() -> None:
             Q = rng.uniform(df[T].quantile(0.01).to_numpy(), df[T].quantile(0.99).to_numpy(), size=(400, d))
             py = ScmOnlinePy(scm, unit, T, outcome)
             truth = np.array([py.query(t)[0] for t in Q])
-            nb_ours, nb_onl = accel.NumbaIndex(index), ScmNumba(scm, unit, T, outcome)
-            nb_ours.query(Q[0]), nb_onl.query(Q[0])
+            nb_ours = accel.NumbaIndex(index)
+            nb_ours.query(Q[0])
             err = max(float(np.max(np.abs(np.array(v) - truth) / np.maximum(1.0, np.abs(truth))))
                       for v in ([index.query(t).value for t in Q], [nb_ours.query(t) for t in Q]))
             row = dict(dataset=ds, family=fam, d=d, unit=u, mediators=len(py.mechs) - 1, boxes=len(bound.boxes),
                        groups=len(index.groups), compile_s=compile_s, build_s=build_s, max_rel_err=err,
                        ours_nb_us=per_call_seconds(lambda: [nb_ours.query(t) for t in Q], len(Q)) * 1e6,
-                       online_nb_us=per_call_seconds(lambda: [nb_onl.query(t) for t in Q], len(Q)) * 1e6)
+                       online_py_us=per_call_seconds(lambda: [py.query(t) for t in Q], len(Q)) * 1e6)
             rows.append(row)
             write_csv(f"scm_feasible{args.tag}.csv", rows)
             print(f"{ds} {fam} d={d} unit {u} med={row['mediators']} boxes={row['boxes']:,} build={build_s:.1f}s "
-                  f"err={err:.1e} nb {row['ours_nb_us']:.2f} vs {row['online_nb_us']:.1f}us", flush=True)
+                  f"err={err:.1e} nb {row['ours_nb_us']:.2f} vs {row['online_py_us']:.1f}us", flush=True)
 
 
 if __name__ == "__main__":

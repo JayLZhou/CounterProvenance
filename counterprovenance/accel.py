@@ -1,23 +1,15 @@
-"""Compiled (numba) versions of the compiled query and of the online loop.
+"""A compiled (numba) version of the query of the index.
 
-Both sides use the same compiler and the same calling convention (a few flat
-arrays per call), so the comparison measures the algorithms:
 :class:`NumbaIndex` runs the packed lookup (``d`` binary searches, one table
 read per group) and the leaf bitmasks of a compiled
-:class:`~counterprovenance.index.ProvenanceIndex`; :class:`NumbaLoop` walks the
-trees.  ``query`` is one call from Python per query, ``batch`` loops over many
-queries inside compiled code (sweeps).  numba is optional.
+:class:`~counterprovenance.index.ProvenanceIndex`.  ``query`` is one call from
+Python per query, ``batch`` loops over many queries inside compiled code
+(sweeps).  numba is optional.
 """
 
 from __future__ import annotations
 
-import math
-from typing import Sequence
-
 import numpy as np
-
-from .baselines import varying_trees
-from .ensemble import BoundEnsemble, TreeEnsemble
 
 try:
     from numba import njit
@@ -34,8 +26,6 @@ for _i in range(64):
 
 # int header of NumbaIndex.ints
 _D, _W, _G, _K, _NB, _C, _O_THLEN, _O_OFFS, _O_UB, _O_CONTRIB, _O_DB, _O_TH, _O_TAB, _O_BV, _F32 = range(15)
-# int header of NumbaLoop.ints
-_M, _N, _P, _NA, _LF32, _O_FEAT, _O_LEFT, _O_RIGHT, _O_AXES, _O_THR, _O_VAL, _O_UNIT = range(12)
 
 if HAVE_NUMBA:
     from numba.cpython.unsafe.numbers import trailing_zeros
@@ -106,48 +96,6 @@ if HAVE_NUMBA:
     def _index_batch(il, fl, bm, T, out, work, mw):
         for q in range(T.shape[0]):
             out[q] = _index_query(il, fl, bm, T[q], work, mw)
-
-    @njit(cache=True)
-    def _walk(il, fl, t, x, leaves):
-        M = il[0]
-        n = il[1]
-        p = il[2]
-        na = il[3]
-        f32 = il[4]
-        o_feat = il[5]
-        o_left = il[6]
-        o_right = il[7]
-        o_axes = il[8]
-        o_thr = il[9]
-        o_val = il[10]
-        o_unit = il[11]
-        for i in range(p):
-            x[i] = fl[o_unit + i]
-        zt = fl[1]
-        for k in range(na):
-            v = t[k]
-            if f32 == 1:
-                v = np.float64(np.float32(v))
-            if -zt <= v <= zt:
-                v = 0.0
-            x[il[o_axes + k]] = v
-        total = fl[0]
-        for m in range(M):
-            base = m * n
-            node = 0
-            while il[o_feat + base + node] >= 0:
-                if x[il[o_feat + base + node]] <= fl[o_thr + base + node]:
-                    node = il[o_left + base + node]
-                else:
-                    node = il[o_right + base + node]
-            leaves[m] = node
-            total += fl[o_val + base + node]
-        return total
-
-    @njit(cache=True)
-    def _walk_batch(il, fl, T, out, x, leaves):
-        for q in range(T.shape[0]):
-            out[q] = _walk(il, fl, T[q], x, leaves)
 
 
 def _require() -> None:
@@ -227,57 +175,4 @@ class NumbaIndex:
         out = np.empty(len(T))
         _index_batch(self.ints, self.floats, self.bm, np.ascontiguousarray(T, dtype=np.float64), out, self.work,
                      self.mwork)
-        return out
-
-
-class NumbaLoop:
-    """Compiled online loop over all trees (or, with ``bound``, the varying ones)."""
-
-    def __init__(self, ensemble: TreeEnsemble, unit: Sequence[float], axes: Sequence[int],
-                 noise: float = 0.0, bound: BoundEnsemble | None = None) -> None:
-        _require()
-        if bound is None:
-            trees = list(range(ensemble.tree_count))
-            const = ensemble.base + noise
-        else:
-            trees = varying_trees(bound)
-            keep = set(trees)
-            const = math.fsum([bound.offset] + [b.value for b in bound.boxes if b.tree not in keep])
-        n = max(1, max((len(ensemble.trees[m].feature) for m in trees), default=1))
-        M = len(trees)
-        feat = np.full((M, n), -1, dtype=np.int64)
-        thr = np.zeros((M, n))
-        left = np.zeros((M, n), dtype=np.int64)
-        right = np.zeros((M, n), dtype=np.int64)
-        val = np.zeros((M, n))
-        for i, m in enumerate(trees):
-            tr = ensemble.trees[m]
-            k = len(tr.feature)
-            feat[i, :k] = tr.feature
-            thr[i, :k] = tr.threshold
-            left[i, :k] = tr.left
-            right[i, :k] = tr.right
-            val[i, :k] = tr.value
-        unit_arr = ensemble.cast(np.asarray(unit, dtype=float).reshape(1, -1))[0].astype(np.float64)
-        axes_arr = np.asarray(axes, dtype=np.int64)
-        f32 = int(ensemble.input_dtype == np.float32)
-        header = np.zeros(12, dtype=np.int64)
-        ints, (_, o_feat, o_left, o_right, o_axes) = _pack([header, feat.ravel(), left.ravel(), right.ravel(), axes_arr])
-        o_thr = 2
-        o_val = o_thr + thr.size
-        o_unit = o_val + val.size
-        ints = ints.astype(np.int64)
-        ints[:12] = [M, n, len(unit_arr), len(axes_arr), f32, o_feat, o_left, o_right, o_axes, o_thr, o_val, o_unit]
-        self.ints = ints
-        zt = ensemble.zero_threshold if ensemble.zero_threshold > 0 else -1.0
-        self.floats = np.concatenate([np.array([const, zt]), thr.ravel(), val.ravel(), unit_arr]).astype(np.float64)
-        self.x = np.zeros(len(unit_arr))
-        self.leaves = np.zeros(M, dtype=np.int64)
-
-    def query(self, t: np.ndarray) -> float:
-        return _walk(self.ints, self.floats, t, self.x, self.leaves)
-
-    def batch(self, T: np.ndarray) -> np.ndarray:
-        out = np.empty(len(T))
-        _walk_batch(self.ints, self.floats, np.ascontiguousarray(T, dtype=np.float64), out, self.x, self.leaves)
         return out

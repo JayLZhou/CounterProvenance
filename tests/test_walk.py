@@ -60,25 +60,6 @@ def test_walk_equals_fresh_queries(family, graph):
 
 
 @pytest.mark.skipif(not HAVE_NUMBA, reason="numba")
-@pytest.mark.parametrize("family", list(_factories()))
-def test_incremental_baseline_equals_fresh_queries(family):
-    from counterprovenance.scm_baselines import ScmIncremental, ScmNumba
-
-    df = _data()
-    treatments = ["A", "B"]
-    scm = fit_scm(df, EDGES, "Y", treatments, _factories()[family])
-    rng = np.random.default_rng(6)
-    unit = df.iloc[int(rng.integers(len(df)))].to_dict()
-    bound = bind_scm(scm, unit, treatments, "Y")
-    steps = _steps(df, treatments, bound, rng)
-    inc = ScmIncremental(scm, unit, treatments, "Y", np.asarray(steps[0]))
-    full = ScmNumba(scm, unit, treatments, "Y")
-    for t in steps:
-        t = np.asarray(t, dtype=np.float64)
-        assert inc.move(t) == full.query(t)
-
-
-@pytest.mark.skipif(not HAVE_NUMBA, reason="numba")
 @pytest.mark.parametrize("tau", [0, 5, 1e9, None])
 def test_session_equals_fresh_queries(tau):
     from counterprovenance import ProvenanceIndex, accel

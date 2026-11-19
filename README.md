@@ -1,211 +1,193 @@
-# CounterProvenance
+<div align="center">
 
-Code of **TWIN: Indexing Tree Ensembles for Fast and Exact Counterfactual Queries**.
+# 🌲 CellForest
 
-A counterfactual query asks, for one observed unit, what the outcome would have been under
-`do(T = t)`. In an additive-noise SCM whose mechanisms are tree ensembles (scikit-learn GBR / HGB / RF,
-XGBoost, LightGBM), every such query is answered today by abduction, action and prediction: the noise is
-abducted, the intervention is applied, and every mechanism between `T` and the outcome is evaluated again,
-tree by tree. TWIN compiles the whole intervention space of one unit once, and then answers every
-`do(T = t)` with a few table reads, returning
+### Indexing Tree Ensembles for Fast and Exact Counterfactual Queries
 
-* the **exact counterfactual value** (the libraries' own leaf selection, also on split thresholds), and
-* its **provenance**: the leaf of every tree that produced it.
+![Python](https://img.shields.io/badge/python-3.11-blue)
+![C++](https://img.shields.io/badge/build-C%2B%2B17-orange)
+![Models](https://img.shields.io/badge/models-scikit--learn%20%7C%20XGBoost%20%7C%20LightGBM-green)
+![Exact](https://img.shields.io/badge/answers-exact-brightgreen)
 
-```bash
-pip install -r requirements-models.txt          # numpy, scipy, scikit-learn, xgboost, lightgbm
-pip install -r requirements-dowhy.txt           # + DoWhy, only for the baselines
+**⚡ Microseconds per query · 🎯 exact answers · 🧩 one index for all units and all interventions**
+
+</div>
+
+---
+
+## 🤔 What is this?
+
+A **counterfactual query** asks, for one observed unit (a customer, a patient, a loan applicant):
+*what would the outcome have been, had some variables been set to other values?*
+
+On a structural causal model (SCM) whose functions are **tree ensembles** (gradient-boosted trees,
+random forests), existing libraries answer every query by *abduction → action → prediction*, and
+traverse **every tree again for every query**.
+
+**CellForest** indexes the tree ensembles once, offline, and then answers each query with a few table
+reads:
+
+- 🎯 **Exact** — the same selected leaves and the same value as the three steps.
+- ⚡ **Fast** — microseconds per query, two to three orders of magnitude faster than existing solutions.
+- 🧩 **One index per tree ensemble** — it serves every unit and every intervention; a new unit needs no new index.
+- 🍃 **Keeps the leaves** — a query can also return the selected leaf of every tree, e.g., to reweight the trees.
+
+## 🧠 How it works
+
+```
+ tree ensemble f_V                                             query do(X = x) on unit u
+        │                                                                 │
+        ▼                                                                 ▼
+ 🟦 cells: every tree selects the same leaf                  binary search per parent
+        │                                                                 │
+        ▼                                                                 ▼
+ 🕸️ cell graph: neighbors, weighted by changed trees            one read per group
+        │                                                                 │
+        ▼                                                                 ▼
+ 🌿 CellTree: changes stored along the MST                        value (+ leaves)
+        │
+        ▼
+ 🌲 CellForest: groups of trees, one CellTree each
 ```
 
+| Step | Idea |
+|---|---|
+| 🟦 **Cells** | The output of a tree ensemble is constant wherever every tree selects the same leaf. |
+| 🕸️ **Cell graph** | Neighboring cells differ in very few trees; an edge is weighted by the trees that change. |
+| 🌿 **CellTree** | Store one cell in full and every other cell as its change from a neighbor, along the minimum spanning tree. |
+| 🌲 **CellForest** | Split the trees into groups so that the blocks multiply only within a group. Finding the fewest groups is NP-hard, so we merge greedily under a budget β. |
+
+## 🚀 Quick start
+
+### 📥 Install
+
+```bash
+pip install -r requirements-models.txt    # numpy, scipy, scikit-learn, xgboost, lightgbm
+pip install -r requirements-dowhy.txt     # + DoWhy, networkx, pandas (SCMs and the competitors)
+```
+
+The two C++ kernels in `counterprovenance/native/` are compiled with `g++` (C++17) on first use.
+
+### 🌳 One model
+
 ```python
+from counterprovenance import bind, from_model, ProvenanceIndex
+
+ensemble = from_model(model)                 # a fitted scikit-learn, XGBoost, or LightGBM regressor
+bound = bind(ensemble, unit_row, axes=[0, 3], noise=noise)
+index = ProvenanceIndex(bound)               # built once
+
+answer = index.query([t0, t3])               # do(X0 = t0, X3 = t3)
+answer.value                                 # exact counterfactual value
+answer.labels()                              # the selected leaves: (tree, leaf) multiset
+```
+
+### 🕸️ A whole SCM
+
+```python
+import sys; sys.path.insert(0, "experiments")
 import pandas as pd
 from lightgbm import LGBMRegressor
-from counterprovenance import ProvenanceIndex
-from counterprovenance.scm import fit_scm, bind_scm
+from counterprovenance.scm import fit_scm, relevant_nodes
+from mech_proto import MechanismIndex
 
-df = pd.read_parquet("data.parquet")                         # columns = nodes of the causal DAG
+df = pd.read_parquet("data.parquet")                             # columns = variables of the causal DAG
 edges = list(pd.read_csv("graph.csv").itertuples(index=False))   # (source, target) pairs
-T, Y = ["A", "B"], "Y"                                       # intervened variables: ancestors of Y
+T, Y = ["A", "B"], "Y"                                           # intervened variables and the outcome
 scm = fit_scm(df, edges, outcome=Y, treatments=T,
               factory=lambda: LGBMRegressor(n_estimators=1000, verbose=-1), max_rows=50_000)
 
-unit = df.iloc[17].to_dict()                                 # the observed unit
-bound = bind_scm(scm, unit, treatments=T, outcome=Y)         # leaf boxes over t, through the mediators
-index = ProvenanceIndex(bound, grouping="auto")              # built once per unit
+order = relevant_nodes(scm.parents, T, Y)                        # the mediators and Y, in topological order
+forest = MechanismIndex(scm, df.iloc[0].to_dict(), order,        # 🌲 one index per tree ensemble,
+                        budget=2e7, threads=1)                   #    built once for all units
 
-ans = index.query([40.0, 35.0])          # do(A = 40, B = 35)
-ans.value                                # exact counterfactual outcome
-ans.labels()                             # provenance: Counter({(tree, leaf): 1, ...})
-index.choice                             # "one", "tables" or "masks" (see below)
+unit = df.iloc[17].to_dict()                                     # any observed unit
+observed = forest.observed(unit, order)                          # abduction: once per unit
+forest.query(unit, T, [40.0, 35.0], order, observed)             # do(A = 40, B = 35)
 ```
 
-## How it works
+## 📊 Results at a glance
 
-```
-fitted SCM + unit ──compile──► leaf boxes of the outcome's trees over t ∈ R^d
-                                   │
-          slab grid of all trees ≤ 2M cells? ──yes──► one cell graph + MST          ("one")
-                                   │ no
-                     greedy grouping into cell graphs (budget β)
-                                   │
-            cost model: α·#graphs (+ masks of deep trees)  vs  F + γ·#mask words
-                       │                                        │
-            several cell graphs, each stored along its MST   leaf bitmasks for every tree
-                       ("tables")                                 ("masks")
-```
+Measured on 15 real tables (1,030 to 101 million rows) with five model families of 1,000 trees
+(GBR, HGB, XGBoost, LightGBM, and LightGBM's random forest), in Python, in one thread.
 
-**1. Leaf boxes through mediators.** For a fixed unit, every variable that is not intervened and not a
-descendant of `T` keeps its observed value, so every tree of the outcome becomes a partition of the
-intervention space into axis-aligned *leaf boxes*. A mediator `Z` between `T` and the outcome is replayed
-by its own trees: `Z(t) = u_Z + (f_Z(pa(t)) − f_Z(pa(u)))`, which equals the observed value on the factual
-cell. A box of the outcome's tree that tests `Z ≤ θ` is kept whole when `Z` stays on one side of `θ` over
-the box. This is checked by a dominance test that bounds `Z` by `u_Z` plus the per-tree minimum and maximum
-differences. Only the boxes that straddle `θ` are split at the mediator's internal boundaries
-(`scm.bind_scm`).
+| | CellForest | ThreeStep | CausalAI | ChiRho | DoWhy |
+|---|---|---|---|---|---|
+| ⏱️ Mean time per query | **25 µs** | 6.9 ms | 10.7 ms | 21 ms | 68 ms |
+| 🚀 Speedup of CellForest | — | 155–274× | 390–427× | 450–844× | 1,460–2,707× |
 
-**2. One cell graph and its MST.** The walls of all leaf boxes cut the space into *cells*; two adjacent
-cells differ only in the trees whose leaf changes across their common wall.
-* The **cell graph** has one node per cell and one edge per wall, weighted by the number of trees that
-  change.
-* The index stores the cells along a **minimum spanning tree** of this graph in a persistent factor tree
-  (path or node copying). Every cell is then one directly addressable root, and a cell costs only the trees
-  that change on its MST edge.
-* A query is `d` binary searches plus one table read.
+- 💾 **Index**: 7 MB to 5.7 GB per table on average, built in seconds to minutes with one thread.
+- 🧮 **Exact**: the same answers as the three steps on all 3.2 million queries.
+- 🧰 **Applications** (counterfactual explanations, feature relevance, what-if analysis, counterfactual
+  fairness): the queries become two to three orders of magnitude faster, with the application code unchanged.
 
-This is used whenever the slab grid of all trees has at most `one_cells = 2·10^6` cells, which in
-practice means `d ≤ 2` (`cellindex.py`, `persistence.py`, `plan.py`).
-
-**3. Several cell graphs: greedy grouping.** For larger `d`, the product grid of all trees is too large,
-but most trees split on few of the intervened axes.
-* *Group sizes.* A group of trees gets its own cell graph over the axes its trees split on. Its size is
-  the product, over those axes, of (number of cuts + 1).
-* *Problem.* Choose groups that minimise the number of cell graphs (= table reads per query) subject to
-  a total size `Σ cells ≤ β`.
-* *Hardness.* The problem is NP-hard by a reduction from Product Partition. Hence no polynomial algorithm
-  approximates the number of groups within a factor below 3/2 unless P = NP.
-* *Greedy* (`grouping.greedy_groups`, Kruskal-like):
-  - start from groups of nested axis supports;
-  - repeatedly merge the pair whose union adds the fewest cells, while the total stays within `β`
-    (default `2·10^6`);
-  - trees whose own grid exceeds `grid_cap`, or 64× their number of leaves, are *deep*: a table over
-    their grid would be mostly redundant.
-
-  The greedy has no approximation guarantee; it is fast and works well in practice.
-* *Storage.* Each group is a cell graph stored along its MST, as in step 2. A single-tree group is
-  trivial: one entry per leaf.
-
-**4. Tables or masks: a cost model.** Before building anything, `grouping="auto"` compares two estimated
-query costs (in µs):
-
-| choice | per-query cost | answered by |
-|---|---|---|
-| `tables` | `α · #cell graphs` (+ `F + γ · words` for the deep trees) | one packed read per cell graph |
-| `masks`  | `F + γ · Σ_m ⌈leaves_m / 64⌉` | leaf bitmasks of every tree |
-
-* Defaults: `α = 0.15`, `F = 8`, `γ = 0.02`.
-* *Leaf bitmasks.* For every axis and slab, one 64-bit field per tree holds the leaves whose box
-  contains the slab. The AND over the `d` axes leaves exactly one bit per tree, so the storage is a sum
-  over axes rather than a product.
-* *Why a pure choice.* Mixing small cell graphs with masks was slower than either pure choice in our
-  measurements, so the cost model picks one of the two.
-
-**Exactness.**
-* Abduction sums the leaf values exactly (`fsum`). XGBoost's own `predict` accumulates in single
-  precision; its deviation is recorded separately as `err_lib`.
-* Every experiment checks every query of TWIN against the three-step evaluation, ChiRho and DoWhy-GCM.
-
-## Experiments
-
-**Baselines.** All are pure Python and run single-threaded with the same fitted models:
-* **Three-step** (`scm_baselines.ScmThreeStepPy`): abduction, action and prediction on every query,
-  without caching the noise;
-* **ChiRho** (`experiments/chirho_baseline.py`): a Pyro program under `TwinWorldCounterfactual` and `do`;
-* **DoWhy-GCM** (PyWhy): `gcm.counterfactual_samples` over the causal DAG.
-
-**Datasets.** There are 15 real tables, from 1,030 to 101 million rows. Every outcome has ≥ 8 ancestors,
-so all `d ∈ {1, 2, 4, 8}` can be evaluated. `experiments/causal_datasets.py` writes `data.parquet`,
-`graph.csv` and `meta.json` for each.
-
-| group | datasets |
-|---|---|
-| published graph | light_tunnel (Causal Chambers) |
-| partial graph (cause → effect) | postgres, jdk (Gentzel et al.), concrete (Tübingen pairs) |
-| graph learned by PC | nyc_taxi (101M), airline (32.6M), higgs (11M), methane (9.2M), susy (5M), census1990 (2.5M), mslr (1.2M), baf (1M), elevators (17K), pol (15K), ailerons (14K) |
-
-For the PC-learned graphs:
-* PC (causal-learn) uses Fisher-z tests at level 0.01, conditioning sets of at most 3 variables, and
-  10,000 sampled rows; the outcome is forbidden to cause any other variable.
-* Conflicting orientations are demoted by the Eades–Lin–Smyth ordering.
-* The result is extended to a DAG by Dor–Tarsi, or, when no consistent extension exists, along a
-  topological order.
-
-Four datasets were tried and dropped because compiling through mediators creates too many leaf boxes:
-superconduct and gov_census (`d = 8` exceeds 50 million boxes on several boosted models), acs_income
-(RF, `d = 4`: 43 million boxes, a query no faster than three-step) and house_sales (RF, `d = 2`: 41 million boxes,
-more than 170 GB to build the index).
-
-**Setup.**
-* *Models.* 1,000 trees per mechanism for all five families (GBR depth 3, HGB and LGBM 31 leaves, XGB
-  depth 6, RF depth 10), trained on up to 50,000 sampled rows.
-* *Queries.* For each dataset, model and `d` there are 3 random units and 10,000 queries per unit:
-  - 7,500 uniform between the 1st and 99th percentiles of the intervened variables;
-  - 2,500 with one coordinate moved onto a leaf-box boundary.
-* *Intervened variables.* Those the outcome's mechanism splits on most often.
-
-**Results so far** (10 of the 15 datasets, 173 settings; geometric-mean speedup of TWIN; all methods
-return the same values):
-
-| d | TWIN, mean per query | vs three-step | vs ChiRho | vs DoWhy-GCM |
-|---|---|---|---|---|
-| 1 | 5.5 µs | 677× | 3,023× | 9,323× |
-| 2 | 6.1 µs | 913× | 3,596× | 8,091× |
-| 4 | 42 µs | 233× | 989× | 1,832× |
-| 8 | 66 µs | 101× | 601× | 1,060× |
-
-**Reproducing.** Experiments run on a Linux server. The paths below assume the layout
-`<W>/{env,data,logs,repo}`.
+## 🔬 Reproducing the experiments
 
 ```bash
-python experiments/causal_datasets.py --out ../data/causal              # build the 15 datasets (downloads)
-DIMS="1 2 4 8" experiments/run_scm_split.sh ../data/causal 80 <datasets> # baselines (+ TWIN), one job per (dataset, model, d)
-EXTRA="--ours-only" LOGDIR=../logs/scm_ours DIMS="1 2 4 8" \
-  experiments/run_scm_split.sh ../data/causal 24 <datasets>               # TWIN alone
-python experiments/main_report.py --base <baseline repo> --ours <ours repo> \
-  --data ../data/causal --out results/main                                # tables and figures
-python -m unittest discover -s tests                                      # exactness tests
+python experiments/causal_datasets.py --out ../data/causal      # 📚 build the 15 tables and their DAGs
+python experiments/mech_main.py --data ../data/causal \
+       --dataset concrete --family GBR --backend twin           # ⚡ CellForest on one table and model
+python experiments/mech_main.py --data ../data/causal \
+       --dataset concrete --family GBR --backend three_step     # 🐢 a competitor on the same queries
+python -m pytest tests                                          # ✅ exactness tests
 ```
 
-`run_scm_split.sh` has the following properties:
-* it skips finished and running jobs, so it can be restarted at any time;
-* it hides the GPUs (`CUDA_VISIBLE_DEVICES=`), because XGBoost would otherwise open them and can block on
-  the driver of a shared machine;
-* it runs every job single-threaded.
+`--backend` is one of `twin` (CellForest), `three_step`, `chirho`, `dowhy`, `causalai`;
+`--family` is one of `GBR`, `HGB`, `XGB`, `LGBM`, `RF`.
 
-## Repository layout
+| Experiment | Scripts |
+|---|---|
+| 🏁 Query time on all tables (Exp.1–2) | `mech_main.py`, `run_main.py`, `run_latency.py`, `run_causalai.py` |
+| 💾 Index size and build time (Exp.3) | `mech_rss.py`, `run_rss.py` |
+| 🌳 Number and depth of the trees (Exp.4) | `run_trees.py`, `depth_exp3.py`, `depth_driver3.py` |
+| 🎚️ Budget β (Exp.5) | `mech_beta.py`, `beta_probe.py`, `run_beta.py` |
+| 🧪 Ablations: CellTable, no grouping (Exp.6) | `mech_structure.py`, `mech_table.py`, `mech_size.py`, `run_none.py` |
+| 🍃 Other combinations of the trees (Exp.7) | `combine_bench.py` |
+| 🧰 Applications (Exp.8–11) | `e2e_apps.py`, `e2e_table.py`, `e2e_shard.py`, `run_shards.py`, `mint_paths.py` |
+| 📈 Figures of the paper | `paperfigs/gen_all.py` |
+
+The `run_*.py` scripts are schedulers for a large shared server: they start the jobs of an experiment
+one by one as the memory allows, and can be restarted at any time.
+
+## 🗂️ Repository layout
 
 ```
-counterprovenance/
-  ensemble.py       tree compilers (sklearn, XGBoost, LightGBM), unit binding, slabs
-  scm.py            additive-noise SCMs on a DAG: fitting, abduction, leaf boxes through mediators
-  grouping.py       tree profiles and the greedy grouping under the budget β
-  index.py          ProvenanceIndex: one cell graph / greedy cell graphs / leaf masks, cost model, query
-  cellindex.py      a cell graph: exact overlay, MST plan, persistent factor tree
-  overlay.py        exact overlay of leaf boxes with wall labels and cell adjacency
-  plan.py           MST and covering walks of the cell graph
-  persistence.py    persistent factor tree (path and node copying)
-  accel.py          numba kernels (bitmask AND, packed lookups)
-  scm_baselines.py  three-step and online baselines
-  semiring.py       provenance circuits in N[X]
-experiments/
-  causal_datasets.py  the 15 datasets and their DAGs
-  scm_full.py         one (dataset, model, d) job: TWIN, three-step, ChiRho, DoWhy-GCM
-  chirho_baseline.py  the ChiRho baseline
-  run_scm_split.sh    job runner (resumable)
-  main_report.py      tables and figures of the main experiment
-  *_proto.py, ...     design studies behind the algorithm (grouping, masks, dominance, skyline)
-tests/              exactness tests against brute force and the libraries' leaf APIs
-docs/DESIGN.md      design notes; docs/archive/ the v1 prototype
+counterprovenance/        📦 the library
+  ensemble.py             tree compilers (scikit-learn, XGBoost, LightGBM), leaf boxes
+  scm.py                  additive-noise SCMs on a DAG: fitting, abduction, mediators
+  grouping.py             the greedy grouping under the budget β
+  index.py                ProvenanceIndex: the groups, their cell graphs, and the query
+  cellindex.py            a cell graph: cells, MST, persistent tree of the changes
+  native/                 C++ kernels (leaf boxes, cell graph and MST)
+  scm_baselines.py        ThreeStep and online evaluation in pure Python
+experiments/              🔬 one script per experiment (see the table above)
+  causal_datasets.py      the 15 tables and their causal DAGs
+  workload_datasets.py    the tables of the applications
+  chirho_baseline.py      the ChiRho competitor
+  causalai_baseline.py    the CausalAI competitor, made exact
+  paperfigs/              the figures of the paper
+tests/                    ✅ exactness tests against brute force and the libraries' leaf APIs
+docs/                     📝 design notes
 ```
 
-The previous prototype (linear SCMs, versioned closures, global-grid MCPST) is kept at the git tag
-`v1-prototype`.
+## 📚 Datasets
+
+| Causal graph | Tables |
+|---|---|
+| ✅ Published | Light Tunnel (Causal Chambers) |
+| 🧩 Partial (cause → effect) | PostgreSQL, JDK, Concrete |
+| 🤖 Learned by the PC algorithm | NYC Taxi, Airline, Higgs, Methane, SUSY, Census 1990, MSLR, BAF, Elevators, Pol, Ailerons |
+
+## 📝 Citation
+
+```bibtex
+@article{cellforest,
+  title  = {CellForest: Indexing Tree Ensembles for Fast and Exact Counterfactual Queries},
+  author = {Zhou, Yingli and Bonifati, Angela},
+  year   = {2026}
+}
+```
+
+## 💬 Contact
+
+Questions and issues are welcome: please open a GitHub issue. 🙌

@@ -1,8 +1,0 @@
-{'host': '3haoji-A100', 'python': '3.11.15', 'platform': 'Linux-5.15.0-91-generic-x86_64-with-glibc2.31', 'numpy': '2.4.6', 'scipy': '1.15.3', 'sklearn': '1.9.0', 'xgboost': '3.2.0', 'lightgbm': '4.7.0', 'dowhy': '0.14'}
-OpenML ujiindoorloc_latitude: (20000, 525)
-sklearn-GBR (1000 trees) fitted in 141.7s
-uji   sklearn-GBR  d= 1 trees= 248/1000 groups=   2 bitmask=   0 rec=      3,293 build=   0.0s | py   1.99 vs loop   292.4 (146.7x) | nb  0.067 vs  20.95 (313.0x) | lib  621.0 vs nb-call  0.82 | slider  1.50 vs   89.3
-uji   sklearn-GBR  d= 2 trees= 320/1000 groups=   2 bitmask=   0 rec=     27,295 build=   0.4s | py   3.12 vs loop   308.8 ( 98.9x) | nb  0.090 vs  20.94 (233.9x) | lib  606.9 vs nb-call  0.89 | slider  1.54 vs   86.0
-uji   sklearn-GBR  d= 4 trees= 412/1000 groups=   2 bitmask=   0 rec=  1,329,541 build=  28.3s | py   2.57 vs loop   342.1 (132.9x) | nb  0.138 vs  20.93 (151.8x) | lib  623.3 vs nb-call  0.77 | slider  1.37 vs   74.0
-uji   sklearn-GBR  d= 8 trees= 492/1000 groups=   5 bitmask=   0 rec=  2,903,359 build=  45.2s | py   3.37 vs loop   343.5 (102.0x) | nb  0.298 vs  20.57 ( 69.0x) | lib  627.2 vs nb-call  0.97 | slider  1.73 vs   76.1
-uji   sklearn-GBR  d=16 trees= 620/1000 groups=  13 bitmask=   0 rec=  3,547,953 build=  38.3s | py   6.65 vs loop   386.7 ( 58.2x) | nb  0.506 vs  21.87 ( 43.2x) | lib  603.9 vs nb-call  1.13 | slider  2.03 vs   73.7

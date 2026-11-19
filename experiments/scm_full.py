@@ -11,8 +11,7 @@ textbook three-step counterfactual in pure Python that caches nothing (``ScmThre
 abduction, action and prediction on every query), by ChiRho (``chirho_baseline.ScmChiRho``,
 when ``chirho`` is importable) and by DoWhy-GCM over the same DAG and the same fitted models,
 all on ``--queries`` queries (``--dowhy-queries`` for the two libraries).  ``--extra-baselines`` also times pure-Python propagation
-(``ScmOnlinePy``), numba (``NumbaIndex`` vs ``ScmNumba``) and Treelite; they are not
-reported in the paper.
+(``ScmOnlinePy``); it is not reported in the paper.
 
 A value is computed as ``u + (f(pa') - f(pa))`` (see :mod:`counterprovenance.scm`).
 
@@ -29,7 +28,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import tempfile
 import time
 from pathlib import Path
 
@@ -37,9 +35,9 @@ import numpy as np
 import pandas as pd
 
 from common import RESULTS, per_call_seconds, per_query_us, write_csv
-from counterprovenance import ProvenanceIndex, accel
-from counterprovenance.scm import Infeasible, ScmOnline, ancestors, bind_scm, fit_scm, parents_of, relevant_nodes
-from counterprovenance.scm_baselines import ScmNumba, ScmOnlinePy, ScmThreeStepPy
+from counterprovenance import ProvenanceIndex
+from counterprovenance.scm import Infeasible, ScmOnline, ancestors, bind_scm, fit_scm, parents_of
+from counterprovenance.scm_baselines import ScmOnlinePy, ScmThreeStepPy
 from scm_bench import choose_treatments, zoo
 
 try:
@@ -50,56 +48,6 @@ try:
     HAVE_CHIRHO = True
 except ImportError:
     HAVE_CHIRHO = False
-
-
-def treelite_mechanisms(scm, nodes, workdir, threads):
-    """Compile the mechanisms of ``nodes`` with tl2cgen; returns node -> (C predict function, entry dtype).
-
-    The generated ``void predict(union Entry*, int, double*)`` is called directly through ctypes, so a
-    call costs about as much as one numba call (tl2cgen's ``DMatrix`` + ``Predictor`` wrapper would add
-    tens of microseconds per call, see ``tl_fair.py``)."""
-    import ctypes
-
-    from baselines_all import treelite_predictor
-
-    out = {}
-    for node in nodes:
-        sub = Path(workdir) / f"m{len(out)}"
-        sub.mkdir(parents=True, exist_ok=True)
-        _, _, dtype, _ = treelite_predictor(scm.models[node], str(sub))
-        fn = ctypes.CDLL(str(sub / "model.so")).predict
-        fn.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p]
-        fn.restype = None
-        out[node] = (fn, np.float32 if dtype == "float32" else np.float64)
-    return out
-
-
-class ScmTreelite:
-    """Propagation through the DAG with every mechanism's Treelite-compiled C ``predict``."""
-
-    def __init__(self, scm, compiled, unit, treatments, outcome):
-        self.order = relevant_nodes(scm.parents, treatments, outcome)
-        self.unit, self.treatments, self.outcome = dict(unit), list(treatments), outcome
-        self.parents, self.compiled, self.ens = scm.parents, compiled, scm.ensembles
-        self._out = np.zeros(1)
-        self._bufs = {n: np.zeros(len(scm.parents[n]), dtype=compiled[n][1]) for n in self.order}
-        self.observed = {n: self._predict(n, self.unit) for n in self.order}
-
-    def _predict(self, node, values):
-        fn, _ = self.compiled[node]
-        buf = self._bufs[node]
-        buf[:] = self.ens[node].cast(np.array([values[p] for p in self.parents[node]]))
-        self._out[0] = 0.0
-        fn(buf.ctypes.data, 0, self._out.ctypes.data)
-        return float(self._out[0])
-
-    def query(self, t):
-        values = dict(self.unit)
-        for name, v in zip(self.treatments, t):
-            values[name] = float(v)
-        for node in self.order:
-            values[node] = float(self.unit[node]) + (self._predict(node, values) - self.observed[node])
-        return values[self.outcome]
 
 
 def dowhy_model(scm, edges):
@@ -144,7 +92,7 @@ def main() -> None:
     ap.add_argument("--max-mask-bytes", type=float, default=float("inf"), help="no limit by default")
     ap.add_argument("--build-threads", type=int, default=1, help="threads of the C++ leaf-box compiler")
     ap.add_argument("--extra-baselines", action="store_true",
-                    help="also time pure-Python propagation, numba and Treelite (not reported in the paper)")
+                    help="also time pure-Python propagation (not reported in the paper)")
     ap.add_argument("--unit-ids", default="", help="comma-separated unit indices to run (default: all)")
     ap.add_argument("--grouping", default="tables")
     ap.add_argument("--budget", type=float, default=2e7, help="table cells of the greedy cell graphs")
@@ -173,15 +121,6 @@ def main() -> None:
     print(f"{args.dataset} {args.family}: {len(scm.models)} mechanisms fitted in {fit_s:.0f}s", flush=True)
 
     dims = [d for d in (int(v) for v in args.dims.split(",")) if choose_treatments(scm, outcome, d)]
-    needed = set()
-    for d in dims:
-        needed |= set(relevant_nodes(scm.parents, choose_treatments(scm, outcome, d), outcome))
-    tl_dir = tempfile.TemporaryDirectory()
-    compiled = {}
-    if args.extra_baselines:
-        start = time.perf_counter()
-        compiled = treelite_mechanisms(scm, sorted(needed), tl_dir.name, args.threads)
-        print(f"  treelite: {len(compiled)} mechanisms compiled in {time.perf_counter() - start:.0f}s", flush=True)
     gcm, cg = dowhy_model(scm, edges)
 
     # every unit and every (unit, d) draws from its own seeded generator, so that jobs split by unit or d
@@ -278,22 +217,6 @@ def main() -> None:
             if args.extra_baselines:
                 row["online_py_us"] = per_call_seconds(lambda: [py.query(t) for t in Q], n) * 1e6
                 lat["online_py"] = per_query_us(py.query, Q)
-            if args.extra_baselines and accel.HAVE_NUMBA:
-                nb_ours = accel.NumbaIndex(index)
-                nb_onl = ScmNumba(scm, unit, T, outcome)
-                nb_ours.query(Q[0]), nb_onl.query(Q[0])
-                check("ours_nb", [nb_ours.query(t) for t in Q])
-                check("online_nb", [nb_onl.query(t) for t in Q])
-                row["ours_nb_us"] = per_call_seconds(lambda: [nb_ours.query(t) for t in Q], n) * 1e6
-                row["online_nb_us"] = per_call_seconds(lambda: [nb_onl.query(t) for t in Q], n) * 1e6
-                lat["ours_nb"] = per_query_us(nb_ours.query, Q)
-                lat["online_nb"] = per_query_us(nb_onl.query, Q)
-            if compiled:
-                tl = ScmTreelite(scm, compiled, unit, T, outcome)
-                got = [tl.query(t) for t in Q]
-                row["treelite_wrong"] = int((np.abs(np.asarray(got) - lib) > lib_tol).sum())
-                row["treelite_us"] = per_call_seconds(lambda: [tl.query(t) for t in Q], n) * 1e6
-                lat["treelite"] = per_query_us(tl.query, Q)
             k = min(args.dowhy_queries, n)
             if HAVE_CHIRHO:
                 ch = ScmChiRho(scm, unit, T, outcome)
@@ -322,7 +245,6 @@ def main() -> None:
                   f"build={row['build_s']:6.1f}s | ours {row.get('ours_py_us', float('nan')):7.1f}us | three-step "
                   f"{row['three_step_us']:8.0f}us | chirho {row.get('chirho_us', float('nan')):9.0f}us | dowhy "
                   f"{row['dowhy_us']:9.0f}us", flush=True)
-    tl_dir.cleanup()
 
 
 if __name__ == "__main__":

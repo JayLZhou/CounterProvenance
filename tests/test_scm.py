@@ -91,7 +91,7 @@ def test_star_graph_matches_single_model_binding(family):
 
 @pytest.mark.parametrize("family", list(_factories()))
 def test_dag_baselines_equal_propagation(family):
-    from counterprovenance.scm_baselines import ScmNumba, ScmOnlinePy
+    from counterprovenance.scm_baselines import ScmOnlinePy
 
     df = _data()
     treatments = ["A", "B"]
@@ -101,20 +101,16 @@ def test_dag_baselines_equal_propagation(family):
     bound = bind_scm(scm, unit, treatments, "Y")
     ref = ScmOnline(scm, unit, treatments, "Y")
     py = ScmOnlinePy(scm, unit, treatments, "Y")
-    nb = ScmNumba(scm, unit, treatments, "Y")
     tol = 5e-5 if family == "xgb" else 1e-9
-    pts = _queries(df, treatments, bound, rng)
-    batch = nb.batch(np.asarray(pts))
-    for t, b in zip(pts, batch):
-        r = ref.query(t)
-        for got in (py.query(t)[0], nb.query(np.asarray(t)), b):
-            assert abs(got - r) <= tol * max(1.0, abs(r)), (family, t, got, r)
+    for t in _queries(df, treatments, bound, rng):
+        r, got = ref.query(t), py.query(t)[0]
+        assert abs(got - r) <= tol * max(1.0, abs(r)), (family, t, got, r)
 
 
 @pytest.mark.parametrize("family", list(_factories()))
 def test_observed_mediator_on_threshold(family):
     """Integer mediators sit on their children's thresholds; the factual cell must give them back exactly."""
-    from counterprovenance.scm_baselines import ScmNumba, ScmOnlinePy
+    from counterprovenance.scm_baselines import ScmOnlinePy
 
     rng = np.random.default_rng(4)
     n = 3000
@@ -132,9 +128,8 @@ def test_observed_mediator_on_threshold(family):
         index = ProvenanceIndex(bound)
         ref = ScmOnline(scm, unit, treatments, "Y")
         py = ScmOnlinePy(scm, unit, treatments, "Y")
-        nb = ScmNumba(scm, unit, treatments, "Y")
         t = np.array([unit["A"]])
         r = ref.query(t)
         assert r == pytest.approx(unit["Y"], abs=1e-9 * max(1.0, abs(unit["Y"])))
-        for got in (index.query(t).value, py.query(t)[0], nb.query(t)):
+        for got in (index.query(t).value, py.query(t)[0]):
             assert abs(got - r) <= tol * max(1.0, abs(r)), (family, i, got, r)

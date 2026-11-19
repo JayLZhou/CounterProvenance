@@ -1,7 +1,0 @@
-{'host': '3haoji-A100', 'python': '3.11.15', 'platform': 'Linux-5.15.0-91-generic-x86_64-with-glibc2.31', 'numpy': '2.4.6', 'scipy': '1.15.3', 'sklearn': '1.9.0', 'xgboost': '3.2.0', 'lightgbm': '4.7.0', 'dowhy': '0.14'}
-California housing: (20640, 8)
-sklearn-RF (1000 trees) fitted in 4.8s
-cal   sklearn-RF   d= 1 trees= 232/250 groups=   2 bitmask=   0 rec=      8,619 build=   0.1s | py   2.17 vs loop   289.7 (133.8x) | nb  0.107 vs  40.84 (381.8x) | lib 18673.0 vs nb-call  0.90 | slider  1.66 vs  443.3
-cal   sklearn-RF   d= 2 trees= 248/250 groups=   2 bitmask=   0 rec=  4,173,683 build=  45.2s | py   2.77 vs loop   366.1 (132.2x) | nb  0.191 vs  42.67 (223.6x) | lib 18606.8 vs nb-call  0.88 | slider  1.89 vs  497.8
-cal   sklearn-RF   d= 4 trees= 250/250 groups= 236 bitmask=  14 rec=448,680,630 build= 247.5s | py  54.15 vs loop   490.3 (  9.1x) | nb  3.705 vs  46.39 ( 12.5x) | lib 15653.4 vs nb-call  7.47 | slider 45.45 vs  569.8
-cal   sklearn-RF   d= 8 trees= 250/250 groups=   0 bitmask= 250 rec=236,590,780 build=  72.3s | py 332.91 vs loop   557.7 (  1.7x) | nb 90.022 vs  59.92 (  0.7x) | lib 15794.3 vs nb-call 98.85 | slider 312.75 vs 1299.4

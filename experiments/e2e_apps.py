@@ -196,8 +196,7 @@ class Online:
 class GeCo:
     """The classifier evaluation of GeCo (Schleich et al., PVLDB 2021) in Python: candidates are grouped by the variables
     they change, and for every such set the forest is partially evaluated once, so that the tests on the other variables
-    are folded away and only the changed variables are read.  GeCo stores the folded forest in the layout of QuickScorer;
-    here it is walked level by level with NumPy, as the query of TWIN is read with NumPy.  Without mediators."""
+    are folded away and only the changed variables are read.  Here the folded forest is walked level by level with NumPy, as the query of TWIN is read with NumPy.  Without mediators."""
 
     def __init__(self, scm, unit, T, y, chunk=1024):
         t0 = time.perf_counter()

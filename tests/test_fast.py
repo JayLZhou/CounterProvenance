@@ -140,19 +140,15 @@ class CompiledIndexTests(unittest.TestCase):
 
 @unittest.skipUnless(accel.HAVE_NUMBA, "numba not installed")
 class NumbaTests(unittest.TestCase):
-    def test_numba_index_and_loop(self) -> None:
+    def test_numba_index(self) -> None:
         for seed, cap in ((30, 1 << 22), (31, 6), (32, 1)):
             bound, rng = _bound(seed, 4, 30, 3, 7)
             index = ProvenanceIndex(bound, grid_cap=cap, budget=2_000)
             fast = accel.NumbaIndex(index)
-            loop = accel.NumbaLoop(bound.ensemble, bound.unit, bound.axes, noise=-0.5)
-            loop_b = accel.NumbaLoop(bound.ensemble, bound.unit, bound.axes, bound=bound)
             T = _queries(bound, rng, 60)
             ref = np.array([bound.value(t) for t in T])
             np.testing.assert_allclose([fast.query(t) for t in T], ref, rtol=1e-12, atol=1e-12)
             np.testing.assert_allclose(fast.batch(T), ref, rtol=1e-12, atol=1e-12)
-            np.testing.assert_allclose([loop.query(t) for t in T], ref, rtol=1e-12, atol=1e-12)
-            np.testing.assert_allclose(loop_b.batch(T), ref, rtol=1e-12, atol=1e-12)
             for t in T[:20]:
                 _, cells, leaves = fast.query_full(t)
                 answer = index.query(t)
@@ -196,9 +192,7 @@ class LightGBMZeroTests(unittest.TestCase):
             self.assertAlmostEqual(index.query(r[:2]).value, float(model.predict(r[None, :])[0]), places=9)
         if accel.HAVE_NUMBA:
             fast = accel.NumbaIndex(index)
-            loop = accel.NumbaLoop(ensemble, rows[0], [0, 1])
             np.testing.assert_allclose(fast.batch(rows[:, :2]), model.predict(rows), rtol=0, atol=1e-9)
-            np.testing.assert_allclose(loop.batch(rows[:, :2]), model.predict(rows), rtol=0, atol=1e-9)
 
 
 class RealModelTests(unittest.TestCase):

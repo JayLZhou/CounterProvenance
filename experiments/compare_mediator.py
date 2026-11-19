@@ -4,7 +4,7 @@
 For one dataset, every family and every ``d`` given as ``family:d``: fit the SCM
 once, then on the same unit compile the outcome's trees both ways, build the
 index, check 400 queries of each against ``ScmOnlinePy``, and time the numba
-index of each against ``ScmNumba``.  Output: ``results/compare_mediator_<dataset>.csv``.
+index of each against it.  Output: ``results/compare_mediator_<dataset>.csv``.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from common import per_call_seconds, write_csv  # puts the package on sys.path
 import scm_grid
 from counterprovenance import ProvenanceIndex, accel
 from counterprovenance.scm import Infeasible, ancestors, bind_scm, fit_scm, parents_of
-from counterprovenance.scm_baselines import ScmNumba, ScmOnlinePy
+from counterprovenance.scm_baselines import ScmOnlinePy
 from scm_bench import choose_treatments, zoo
 
 
@@ -75,9 +75,7 @@ def main() -> None:
         Q = rng.uniform(df[T].quantile(0.01).to_numpy(), df[T].quantile(0.99).to_numpy(), size=(400, d))
         truth = np.array([py.query(t)[0] for t in Q])
         row = dict(dataset=args.dataset, family=fam, d=d, mediators=len(py.mechs) - 1)
-        onl = ScmNumba(scm, unit, T, outcome)
-        onl.query(Q[0])
-        row["online_nb_us"] = per_call_seconds(lambda: [onl.query(t) for t in Q], len(Q)) * 1e6
+        row["online_py_us"] = per_call_seconds(lambda: [py.query(t) for t in Q], len(Q)) * 1e6
         build(lambda: scm_grid.bind_scm(scm, unit, T, outcome), Q, truth, row, "grid")
         build(lambda: bind_scm(scm, unit, T, outcome), Q, truth, row, "dom")
         rows.append(row)

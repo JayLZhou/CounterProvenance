@@ -31,7 +31,7 @@ from common import per_call_seconds, write_csv
 from counterprovenance import ProvenanceIndex, accel
 from counterprovenance.ensemble import Slabs
 from counterprovenance.scm import ancestors, bind_scm, fit_scm, parents_of
-from counterprovenance.scm_baselines import ScmNumba
+from counterprovenance.scm_baselines import ScmOnlinePy
 from scm_bench import choose_treatments, zoo
 
 
@@ -164,7 +164,7 @@ def main() -> None:
         nb = accel.NumbaIndex(index)
         ref = np.array([nb.query(t) for t in Q])
         index_us = per_call_seconds(lambda: [nb.query(t) for t in Q], len(Q)) * 1e6
-        online = ScmNumba(scm, unit, T, outcome)
+        online = ScmOnlinePy(scm, unit, T, outcome)
         online.query(Q[0])
         online_us = per_call_seconds(lambda: [online.query(t) for t in Q], len(Q)) * 1e6
         for k in (int(v) for v in args.ks.split(",")):

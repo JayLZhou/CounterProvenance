@@ -1,7 +1,0 @@
-{'host': '3haoji-A100', 'python': '3.11.15', 'platform': 'Linux-5.15.0-91-generic-x86_64-with-glibc2.31', 'numpy': '2.4.6', 'scipy': '1.15.3', 'sklearn': '1.9.0', 'xgboost': '3.2.0', 'lightgbm': '4.7.0', 'dowhy': '0.14'}
-California housing: (20640, 8)
-XGBoost (1000 trees) fitted in 2.9s
-cal   XGBoost      d= 1 trees= 692/1000 groups=   2 bitmask=   0 rec=      7,214 build=   0.1s | py   2.04 vs loop   939.7 (461.6x) | nb  0.290 vs 129.32 (445.7x) | lib  749.4 vs nb-call  2.23 | slider  4.94 vs  714.9
-cal   XGBoost      d= 2 trees= 979/1000 groups=   2 bitmask=   0 rec=    568,962 build=  10.3s | py   2.48 vs loop  1064.2 (429.7x) | nb  0.149 vs 111.83 (749.1x) | lib  786.6 vs nb-call  0.89 | slider  1.66 vs  976.4
-cal   XGBoost      d= 4 trees= 993/1000 groups= 466 bitmask=   0 rec=  4,582,230 build=  13.2s | py  59.48 vs loop  1049.3 ( 17.6x) | nb  4.595 vs 112.75 ( 24.5x) | lib  867.4 vs nb-call  6.94 | slider 50.85 vs 1166.4
-cal   XGBoost      d= 8 trees=1000/1000 groups= 177 bitmask= 823 rec=942,608,852 build=1176.9s | py 142.79 vs loop   919.0 (  6.4x) | nb 25.426 vs  99.47 (  3.9x) | lib  712.8 vs nb-call 28.69 | slider 107.63 vs 1227.4

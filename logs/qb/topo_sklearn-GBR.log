@@ -1,8 +1,0 @@
-{'host': '3haoji-A100', 'python': '3.11.15', 'platform': 'Linux-5.15.0-91-generic-x86_64-with-glibc2.31', 'numpy': '2.4.6', 'scipy': '1.15.3', 'sklearn': '1.9.0', 'xgboost': '3.2.0', 'lightgbm': '4.7.0', 'dowhy': '0.14'}
-OpenML topo_2_1: (8885, 261)
-sklearn-GBR (1000 trees) fitted in 358.9s
-topo  sklearn-GBR  d= 1 trees=  61/1000 groups=   2 bitmask=   0 rec=      2,460 build=   0.0s | py   1.64 vs loop   281.0 (171.4x) | nb  0.055 vs  24.34 (443.9x) | lib  562.6 vs nb-call  0.67 | slider  1.28 vs   20.7
-topo  sklearn-GBR  d= 2 trees= 106/1000 groups=   2 bitmask=   0 rec=      7,884 build=   0.0s | py   8.42 vs loop   288.8 ( 34.3x) | nb  0.071 vs  24.25 (340.2x) | lib  561.0 vs nb-call  0.73 | slider  1.29 vs   21.5
-topo  sklearn-GBR  d= 4 trees= 175/1000 groups=   2 bitmask=   0 rec=  1,219,195 build=  20.9s | py   2.26 vs loop   312.1 (138.0x) | nb  0.133 vs  24.24 (182.5x) | lib  568.5 vs nb-call  0.75 | slider  1.26 vs   26.0
-topo  sklearn-GBR  d= 8 trees= 315/1000 groups=   5 bitmask=   0 rec=  1,261,284 build=  20.5s | py   3.51 vs loop   319.8 ( 91.2x) | nb  0.245 vs  24.35 ( 99.3x) | lib  563.9 vs nb-call  0.91 | slider  1.47 vs   35.9
-topo  sklearn-GBR  d=16 trees= 471/1000 groups=  13 bitmask=   0 rec=  5,557,296 build=  71.1s | py   5.96 vs loop   365.7 ( 61.4x) | nb  0.578 vs  24.47 ( 42.4x) | lib  563.0 vs nb-call  1.17 | slider  1.99 vs   50.7

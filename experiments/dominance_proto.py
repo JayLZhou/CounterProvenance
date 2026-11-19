@@ -11,7 +11,7 @@ Corners at the same point are merged.  Two dominance-sum queries are timed with
 numba: a scan over all corners, and a k-d tree whose nodes keep the bounding box
 and the weight sum of their corners (a node entirely dominated by ``t`` adds its
 sum, a node whose minimum corner ``t`` does not dominate is skipped).  Compared
-with the index (``NumbaIndex``) and propagation (``ScmNumba``) on the same
+with the index (``NumbaIndex``) and propagation (``ScmOnlinePy``) on the same
 10,000 queries.  Output: ``results/dominance_proto.csv``.
 """
 
@@ -30,7 +30,7 @@ from numba import njit
 from common import per_call_seconds, write_csv
 from counterprovenance import ProvenanceIndex, accel
 from counterprovenance.scm import ancestors, bind_scm, fit_scm, parents_of
-from counterprovenance.scm_baselines import ScmNumba
+from counterprovenance.scm_baselines import ScmOnlinePy
 from scm_bench import choose_treatments, zoo
 
 
@@ -207,7 +207,7 @@ def main() -> None:
         kd_out = [_kd_query(x, *kd[:7], kd[7], pts, w, stack) for x in X]
         kd_v = np.array([const + v for v, _ in kd_out])
         err = lambda v: float(np.max(np.abs(v - ref) / np.maximum(1.0, np.abs(ref))))
-        online = ScmNumba(scm, unit, T, outcome)
+        online = ScmOnlinePy(scm, unit, T, outcome)
         online.query(Q[0])
         row = dict(dataset=ds, family=fam, d=d, boxes=len(bound.boxes), corners=len(w),
                    corner_mb=(pts.nbytes + w.nbytes) / 1e6, kd_nodes=len(kd[2]),
