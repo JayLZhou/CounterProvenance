@@ -1,10 +1,10 @@
 #!/bin/bash
-# Queue of 2026-11-08 (3): Exp.4 TWIN with one group while grid <= min(5e7, 5e10 / trees), the real memory of the final index,
+# Queue of 2026-11-08 (3): Exp.4 CellForest with one group while grid <= min(5e7, 5e10 / trees), the real memory of the final index,
 # then memory without grouping.
 W=/mnt/data/yingli/counterprovenance; export TMPDIR=$W/tmp; LOG=$W/logs/queue4.txt
 say() { echo "$(date '+%F %T') $*" >> $LOG; }
 PY=$W/env/bin/python
-say "B. Exp.4 TWIN, one group while grid <= min(5e7, 5e10 / trees)"
+say "B. Exp.4 CellForest, one group while grid <= min(5e7, 5e10 / trees)"
 cd $W/repo_hybrid/experiments
 for n in 100 300 3000; do for f in GBR LGBM XGB HGB RF; do for ds in concrete light_tunnel ailerons pol elevators jdk postgres baf mslr census1990 susy methane higgs airline nyc_taxi; do
   [ -f $W/repo_dev2/results/trees/$n/cache/${ds}_$f.pkl ] || continue

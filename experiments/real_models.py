@@ -4,7 +4,7 @@
 R1  compiler exactness: normalised ensemble vs ``model.predict`` and the
     model's own leaf ids (including rows on split thresholds);
 R2  index size, pieces, latency and exactness for d = 1, 2, 3, 4, 6, 8
-    intervention axes: IIP, one MCPST over the whole overlay, the grouped
+    intervention axes: IIP, one CellTree over the whole overlay, the grouped
     index, the chain endpoint (tau = 0) and the autotuned index;
 R3  boundary statistics and the MST ablation on the d = 2 overlay of every model.
 """
@@ -109,7 +109,7 @@ def r2(name, model, ensemble, X, y, axes_order, dims, unit_row, rng, quick) -> l
         base = {"model": name, "d": d, "N_boxes": len(bound.boxes), "K_grid": k_grid, "replay_us": replay_us}
         configs = []
         if k_grid <= FULL_OVERLAY_LIMIT:
-            configs.append(("one MCPST (tau=inf, no groups)", dict(tau=math.inf, grouping="none")))
+            configs.append(("one CellTree (tau=inf, no groups)", dict(tau=math.inf, grouping="none")))
             configs.append(("grouped (tau=inf)", dict(tau=math.inf)))
         configs.append(("chain endpoint (tau=0)", dict(tau=0)))
         for label, kwargs in configs:
@@ -124,7 +124,7 @@ def r2(name, model, ensemble, X, y, axes_order, dims, unit_row, rng, quick) -> l
             row = {**base, "index": label, "records": st.records, "bytes": st.packed_bytes, "faces": st.faces,
                    "groups": st.groups, "leaves": st.leaves, "build_s": build}
             row.update(evaluate(index, bound, model, pts, 60))
-            if label.startswith("one MCPST"):
+            if label.startswith("one CellTree"):
                 row["iip_records"] = iip_records(st.faces, bound.tree_count) + st.locator_words + st.assignments
                 row["iip_bytes"] = iip_bytes(st.faces, bound.tree_count) + 4 * (st.locator_words + st.assignments)
             rows.append(row)

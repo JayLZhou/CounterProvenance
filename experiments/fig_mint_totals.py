@@ -41,6 +41,6 @@ o += [r"\end{axis}", r"\end{tikzpicture}",
       r"\label{fig:exp-app-mint}", r"\end{figure}"]
 open("exp_app_mint.tex", "w").write("\n".join(x for x in o if x) + "\n")
 pre = r"""\documentclass{article}\usepackage[margin=0.5cm,paperwidth=10cm,paperheight=6.2cm]{geometry}\usepackage{pgfplots}\usetikzlibrary{arrows.meta}\pgfplotsset{compat=1.16}
-\definecolor{cfthree}{HTML}{EE8B7C}\definecolor{cfdowhy}{HTML}{B5525E}\definecolor{cftwin}{HTML}{2A5795}\newcommand{\Method}{{\tt TWIN}}\columnwidth=8.4cm\pagestyle{empty}
+\definecolor{cfthree}{HTML}{EE8B7C}\definecolor{cfdowhy}{HTML}{B5525E}\definecolor{cftwin}{HTML}{2A5795}\newcommand{\Method}{{\tt CellForest}}\columnwidth=8.4cm\pagestyle{empty}
 \renewenvironment{figure}[1][]{}{}\renewcommand{\caption}[1]{}\begin{document}\noindent""" + open("exp_app_mint.tex").read() + r"\end{document}"
 open("prev1.tex", "w").write(pre)

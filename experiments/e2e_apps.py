@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""End-to-end applications that issue many counterfactual queries on one unit, with TWIN embedded or with DoWhy-GCM.
+"""End-to-end applications that issue many counterfactual queries on one unit, with CellForest embedded or with DoWhy-GCM.
 
 Every application only sees an oracle ``f(Q) -> values`` (one row per intervention), so that it is the same code on
 both backends, and both answer a batch at once, in one thread.  The reported time is that of the queries (``query_s``;
-``run_s`` adds the application's own work); the build of TWIN is recorded separately.  DoWhy-GCM gets its most favorable use: the noise is abducted once, and every
+``run_s`` adds the application's own work); the build of CellForest is recorded separately.  DoWhy-GCM gets its most favorable use: the noise is abducted once, and every
 call passes the whole batch of the application.
 Output: ``results/e2e_<dataset>_<family>_d<d>_u<unit>.csv``, one row per (application, backend)."""
 
@@ -78,7 +78,7 @@ class Oracle:
         return y
 
 
-class Twin:
+class CellForest:
     def __init__(self, scm, unit, T, y, budget, threads):
         t0 = time.perf_counter()
         self.index = ProvenanceIndex(bind_scm(scm, unit, T, y, threads=threads, native=True), grouping="tables",
@@ -94,8 +94,8 @@ class Twin:
         return self.index.query_batch(Q)
 
 
-class TwinMech:
-    """TWIN as in the paper: one index per tree ensemble on the path from the intervened variables to the outcome,
+class CellForestMech:
+    """CellForest as in the paper: one index per tree ensemble on the path from the intervened variables to the outcome,
     built once for the whole table; a unit only abducts its noise on these ensembles, and a call of many
     interventions replays the mediators and the outcome with one batch read per ensemble."""
 
@@ -117,14 +117,14 @@ class TwinMech:
                          groups=sum(v["groups"] for v in self.mech.info.values()))
 
     def unit(self, unit):
-        return TwinUnit(self, unit, self.mech.observed(unit, list(self.mech.indexes)))
+        return CellForestUnit(self, unit, self.mech.observed(unit, list(self.mech.indexes)))
 
     def subset(self, unit_backend, S):
         """The backend of a unit for an action on T[S] only."""
-        return TwinUnit(self, unit_backend.unit, unit_backend.observed, [self.T[i] for i in S], self.orders[S])
+        return CellForestUnit(self, unit_backend.unit, unit_backend.observed, [self.T[i] for i in S], self.orders[S])
 
 
-class TwinUnit:
+class CellForestUnit:
     """The backend of one unit: its noise is the factual value minus the index at its factual parents."""
 
     def __init__(self, tw, unit, observed, T=None, order=None):
@@ -196,7 +196,7 @@ class Online:
 class GeCo:
     """The classifier evaluation of GeCo (Schleich et al., PVLDB 2021) in Python: candidates are grouped by the variables
     they change, and for every such set the forest is partially evaluated once, so that the tests on the other variables
-    are folded away and only the changed variables are read.  Here the folded forest is walked level by level with NumPy, as the query of TWIN is read with NumPy.  Without mediators."""
+    are folded away and only the changed variables are read.  Here the folded forest is walked level by level with NumPy, as the query of CellForest is read with NumPy.  Without mediators."""
 
     def __init__(self, scm, unit, T, y, chunk=1024):
         t0 = time.perf_counter()
@@ -631,7 +631,7 @@ def geco_genetic(f, c, q=100, k=5, m_init=20, m_mut=5, max_generations=100):
 
 def geco_one_query(f, c):
     """The same request as ``geco_genetic`` in one query on the index: the optimal answer among the same values, against
-    the answer of the genetic search on the same target.  TWIN only."""
+    the answer of the genetic search on the same target.  CellForest only."""
     index = f.fn.index
     run = Oracle(f.fn)
     t0 = time.perf_counter()
@@ -816,7 +816,7 @@ def main() -> None:
     backends = {}
     if "twin" in args.backends:
         for b in args.budgets.split(","):
-            backends[f"twin_{b}"] = lambda b=b: Twin(scm, unit, T, y, float(b), args.build_threads)
+            backends[f"twin_{b}"] = lambda b=b: CellForest(scm, unit, T, y, float(b), args.build_threads)
     if "geco" in args.backends:
         backends["geco"] = lambda: GeCo(scm, unit, T, y)
     if "three_step" in args.backends:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Effect of the table budget on TWIN: groups, build time, memory, query latency.  One setting per process.
+"""Effect of the table budget on CellForest: groups, build time, memory, query latency.  One setting per process.
 Output: ``results/beta_probe_<tag>.csv``."""
 
 from __future__ import annotations

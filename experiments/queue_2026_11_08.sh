@@ -1,14 +1,14 @@
 #!/bin/bash
-# Queue of 2026-11-08: the final TWIN with one group up to 1e7 grid cells, then Exp.4 with the same index, then memory without grouping.
+# Queue of 2026-11-08: the final CellForest with one group up to 1e7 grid cells, then Exp.4 with the same index, then memory without grouping.
 W=/mnt/data/yingli/counterprovenance; export TMPDIR=$W/tmp; LOG=$W/logs/queue2.txt
 say() { echo "$(date '+%F %T') $*" >> $LOG; }
 running() { ps -u yingli -o args= | grep -v -E "^timeout|grep|bash -c" | grep -c -E "$1"; }
 wait_for() { while [ "$(running "$1")" -gt 0 ]; do sleep 120; done; }
 PY=$W/env/bin/python
 say "queue2 started"
-say "A. main TWIN, final index (one group up to 1e7), 8 at once"; cd $W; $PY run_compact.py 8 repo_hybrid final >> $W/logs/run_final.txt 2>&1
+say "A. main CellForest, final index (one group up to 1e7), 8 at once"; cd $W; $PY run_compact.py 8 repo_hybrid final >> $W/logs/run_final.txt 2>&1
 wait_for "mech_main.py.*--out final"; say "A. done"
-say "B. Exp.4 TWIN with the final index"
+say "B. Exp.4 CellForest with the final index"
 cd $W/repo_hybrid/experiments; mkdir -p $W/logs/trees_final
 for n in 100 300 3000; do mkdir -p $W/repo_hybrid/results/trees_final/$n; ln -sfn $W/repo_dev2/results/trees/$n/cache $W/repo_hybrid/results/trees_final/$n/cache; done
 for n in 100 300 3000; do for f in GBR LGBM XGB HGB RF; do for ds in concrete light_tunnel ailerons pol elevators jdk postgres baf mslr census1990 susy methane higgs airline nyc_taxi; do

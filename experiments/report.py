@@ -115,7 +115,7 @@ def main() -> None:
             key = (r["model"], r["d"])
             meta[key] = r
             label = str(r["index"])
-            kind = ("one" if label.startswith("one MCPST") else "grouped" if label.startswith("grouped")
+            kind = ("one" if label.startswith("one CellTree") else "grouped" if label.startswith("grouped")
                     else "chain" if label.startswith("chain") else "auto")
             by[key][kind] = r
         rows = []
@@ -141,7 +141,7 @@ def main() -> None:
             rows.append(row)
         out.append(markdown_table(rows, [
             ("model", "model"), ("d", "d"), ("N", "boxes N"), ("K_grid", "grid cells"),
-            ("iip", "IIP records"), ("one", "one MCPST records"), ("one_q", "one MCPST us"),
+            ("iip", "IIP records"), ("one", "one CellTree records"), ("one_q", "one CellTree us"),
             ("chain", "tau=0 records"), ("chain_p", "tau=0 pieces"),
             ("auto", "autotuned records"), ("auto_p", "autotuned pieces"), ("auto_q", "autotuned us"),
             ("auto_cfg", "chosen (tau, groups)"), ("replay_us", "model.predict us"),

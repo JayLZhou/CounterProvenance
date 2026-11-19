@@ -1,4 +1,4 @@
-"""Exact overlay, MCPST leaves, and the provenance index against brute force."""
+"""Exact overlay, CellTree leaves, and the provenance index against brute force."""
 
 from __future__ import annotations
 

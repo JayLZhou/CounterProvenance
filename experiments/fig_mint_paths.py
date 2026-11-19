@@ -35,7 +35,7 @@ o += [r"\end{groupplot}", r"\node[anchor=south] at ([yshift=6pt]$(group c1r1.nor
       r"\label{fig:exp-app-mint-paths}", r"\end{figure}"]
 open("exp_app_mint_paths.tex", "w").write("\n".join(o) + "\n")
 pre = r"""\documentclass{article}\usepackage[margin=0.5cm,paperwidth=9.5cm,paperheight=6.6cm]{geometry}\usepackage{pgfplots}\usepgfplotslibrary{groupplots}\usetikzlibrary{calc}\pgfplotsset{compat=1.16}
-\definecolor{cfthree}{HTML}{EE8B7C}\definecolor{cfdowhy}{HTML}{B5525E}\definecolor{cftwin}{HTML}{2A5795}\newcommand{\Method}{{\tt TWIN}}\columnwidth=8.4cm\pagestyle{empty}
+\definecolor{cfthree}{HTML}{EE8B7C}\definecolor{cfdowhy}{HTML}{B5525E}\definecolor{cftwin}{HTML}{2A5795}\newcommand{\Method}{{\tt CellForest}}\columnwidth=8.4cm\pagestyle{empty}
 \renewenvironment{figure}[1][]{}{}\renewcommand{\caption}[1]{}\begin{document}\noindent""" + open("exp_app_mint_paths.tex").read() + r"\end{document}"
 open("prev2.tex", "w").write(pre)
 print(us.unstack().round(2).to_string())

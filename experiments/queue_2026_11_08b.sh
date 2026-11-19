@@ -1,11 +1,11 @@
 #!/bin/bash
-# Queue of 2026-11-08 (2): Exp.4 TWIN with one group while grid x trees <= 5e10, then memory without grouping.
+# Queue of 2026-11-08 (2): Exp.4 CellForest with one group while grid x trees <= 5e10, then memory without grouping.
 W=/mnt/data/yingli/counterprovenance; export TMPDIR=$W/tmp; LOG=$W/logs/queue3.txt
 say() { echo "$(date '+%F %T') $*" >> $LOG; }
 running() { ps -u yingli -o args= | grep -v -E "^timeout|grep|bash -c" | grep -c -E "$1"; }
 wait_for() { while [ "$(running "$1")" -gt 0 ]; do sleep 120; done; }
 PY=$W/env/bin/python
-say "B. Exp.4 TWIN, one group while grid x trees <= 5e10"
+say "B. Exp.4 CellForest, one group while grid x trees <= 5e10"
 cd $W/repo_hybrid/experiments; mkdir -p $W/logs/trees_pairs
 for n in 100 300 3000; do mkdir -p $W/repo_hybrid/results/trees_pairs/$n; ln -sfn $W/repo_dev2/results/trees/$n/cache $W/repo_hybrid/results/trees_pairs/$n/cache; done
 for n in 100 300 3000; do for f in GBR LGBM XGB HGB RF; do for ds in concrete light_tunnel ailerons pol elevators jdk postgres baf mslr census1990 susy methane higgs airline nyc_taxi; do

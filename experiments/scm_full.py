@@ -6,7 +6,7 @@ gets a tree-ensemble mechanism (fitted once, multi-threaded, on at most
 ``--train-rows`` rows).  For every ``d`` and every unit (``--units`` random
 units), the treatments are ``d`` ancestors of the outcome (those the outcome's
 mechanism splits on most first), the index is built through the DAG, and each
-query is answered by Tessera (``ProvenanceIndex.query``, pure Python with numpy), by the
+query is answered by CellForest (``ProvenanceIndex.query``, pure Python with numpy), by the
 textbook three-step counterfactual in pure Python that caches nothing (``ScmThreeStepPy``:
 abduction, action and prediction on every query), by ChiRho (``chirho_baseline.ScmChiRho``,
 when ``chirho`` is importable) and by DoWhy-GCM over the same DAG and the same fitted models,
@@ -96,7 +96,7 @@ def main() -> None:
     ap.add_argument("--unit-ids", default="", help="comma-separated unit indices to run (default: all)")
     ap.add_argument("--grouping", default="tables")
     ap.add_argument("--budget", type=float, default=2e7, help="table cells of the greedy cell graphs")
-    ap.add_argument("--ours-only", action="store_true", help="time only Tessera (exactness is still checked)")
+    ap.add_argument("--ours-only", action="store_true", help="time only CellForest (exactness is still checked)")
     ap.add_argument("--baselines-only", action="store_true",
                     help="time only the baselines: the leaf boxes are compiled (they place the boundary queries), "
                          "the index is not built")

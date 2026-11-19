@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Quick look: Tessera vs three-step online (no caching), ChiRho and DoWhy-GCM, pure Python.
+"""Quick look: CellForest vs three-step online (no caching), ChiRho and DoWhy-GCM, pure Python.
 
 For each ``dataset:family:d``: fit, bind, index; time ``--queries`` queries for
-Tessera and the three-step online, ``--lib-queries`` for ChiRho and DoWhy-GCM; check
+CellForest and the three-step online, ``--lib-queries`` for ChiRho and DoWhy-GCM; check
 every answer against the exact pure-Python propagation.  Output:
 ``results/quick_baselines.csv``.
 """

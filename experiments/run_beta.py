@@ -1,4 +1,4 @@
-"""TWIN with larger grouping budgets on every (table, family), smallest first, at most LIMIT at once; a model that ended without all its results (e.g. stopped by the memory guard) runs again."""
+"""CellForest with larger grouping budgets on every (table, family), smallest first, at most LIMIT at once; a model that ended without all its results (e.g. stopped by the memory guard) runs again."""
 import json
 import os
 import subprocess

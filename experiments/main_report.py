@@ -2,7 +2,7 @@
 """Tables and figures of the main experiment (d = 1, 2, 4, 8).
 
 The baselines (three-step, ChiRho, DoWhy-GCM) come from ``--base`` (``results/scm_full_*.csv`` and
-``results/scm_lat/*.npz``), Tessera from ``--ours`` (an ``--ours-only`` run: ``results/scm_full_*.csv``
+``results/scm_lat/*.npz``), CellForest from ``--ours`` (an ``--ours-only`` run: ``results/scm_full_*.csv``
 and ``results/scm_lat_ours/*.npz``).  Rows are matched on (dataset, family, d, unit).
 Output in ``--out``:
   summary_by_d.csv, summary_by_dataset.csv, merged_rows.csv
@@ -27,7 +27,7 @@ import pandas as pd
 from matplotlib.colors import LinearSegmentedColormap, LogNorm
 from matplotlib.ticker import FixedLocator, NullFormatter
 
-METHODS = [("ours", "Tessera"), ("three_step", "Three-step"), ("chirho", "ChiRho"), ("dowhy", "DoWhy-GCM")]
+METHODS = [("ours", "CellForest"), ("three_step", "Three-step"), ("chirho", "ChiRho"), ("dowhy", "DoWhy-GCM")]
 COLORS = {"ours": "#2a78d6", "three_step": "#eb6834", "chirho": "#1baf7a", "dowhy": "#eda100"}
 INK, INK2, MUTED, GRID, SURFACE = "#0b0b0b", "#52514e", "#8a8984", "#e9e8e4", "#ffffff"
 BLUES = ["#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#256abf", "#184f95", "#0d366b"]
@@ -129,13 +129,13 @@ def latency_by_d(lat, dims, by_d, out):
         med = np.median(lat[(d, "ours")])
         ax.text(0, np.percentile(lat[(d, "ours")], 95) * 1.35, f"{med:.0f} µs" if med >= 10 else f"{med:.1f} µs",
                 ha="center", va="bottom", fontsize=7.5, color=COLORS["ours"], fontweight="bold")
-        ax.set_xticks(range(4), ["Tessera", "3-step", "ChiRho", "DoWhy"], rotation=0)
+        ax.set_xticks(range(4), ["CellForest", "3-step", "ChiRho", "DoWhy"], rotation=0)
         ax.tick_params(axis="x", length=0, pad=4)
         ax.set_xlim(-0.6, 3.6)
         ax.set_title(f"d = {d}", pad=6, fontweight="bold")
         if j == 0:
             ax.set_ylabel("latency per query")
-    fig.text(0.995, 0.01, "box: p25–p75, line: median, whiskers: p5–p95; labels: geometric-mean speedup of Tessera",
+    fig.text(0.995, 0.01, "box: p25–p75, line: median, whiskers: p5–p95; labels: geometric-mean speedup of CellForest",
              ha="right", va="bottom", fontsize=6.5, color=MUTED)
     fig.tight_layout(rect=(0, 0.04, 1, 1), w_pad=0.6)
     for ext in ("pdf", "png"):
@@ -166,7 +166,7 @@ def speedup_heatmap(by_ds, dims, sets, labels, out):
         for s in ax.spines.values():
             s.set_visible(False)
         ax.set_title(f"vs. {lab}", pad=6, fontweight="bold")
-    fig.text(0.995, 0.01, "geometric-mean speedup of Tessera over 5 model families × 3 units, 10,000 queries each",
+    fig.text(0.995, 0.01, "geometric-mean speedup of CellForest over 5 model families × 3 units, 10,000 queries each",
              ha="right", va="bottom", fontsize=6.5, color=MUTED)
     fig.tight_layout(rect=(0, 0.04, 1, 1), w_pad=0.8)
     for ext in ("pdf", "png"):
@@ -210,7 +210,7 @@ def main() -> None:
     o_all = load(ours, ok=False)
     bad = o_all[~o_all.status.eq("ok")]
     if len(bad):
-        print(f"TWIN over budget in {len(bad)} rows:")
+        print(f"CellForest over budget in {len(bad)} rows:")
         print(bad.groupby(["dataset", "family", "d"]).size().to_string())
     o = o_all[o_all.status.eq("ok")][KEY + ["ours_py_us", "choice"]].rename(columns={"ours_py_us": "ours_us"})
     m = b.merge(o, on=KEY)

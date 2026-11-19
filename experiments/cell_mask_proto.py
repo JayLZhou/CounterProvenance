@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Prototype: point location stored on the cells instead of the grid, at low d.
 
-For every group of the index (an MCPST over the group's cells), axis ``k`` of the
+For every group of the index (a CellTree over the group's cells), axis ``k`` of the
 group and local slab ``r``, a ``K``-bit mask marks the cells that meet slab ``r``
 (``K`` = number of cells of the group).  A query ANDs one mask per axis; the
-single bit left is the cell, whose value comes from the MCPST.  Compared with
+single bit left is the cell, whose value comes from the CellTree.  Compared with
 the grid lookup of the index (one table read per group).  Output:
 ``results/cell_mask_proto.csv``.
 """

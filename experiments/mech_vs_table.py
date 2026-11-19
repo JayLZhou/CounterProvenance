@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""The read of CellTable without groups against TWIN, on the outcome's ensemble, by the same code: CellTable is the index with one
-group over all inputs, TWIN the index with our groups.  The two answer the same points in alternation.
+"""The read of CellTable without groups against CellForest, on the outcome's ensemble, by the same code: CellTable is the index with one
+group over all inputs, CellForest the index with our groups.  The two answer the same points in alternation.
 Output: ``results/vs_table/<dataset>_<family>.csv``."""
 
 from __future__ import annotations

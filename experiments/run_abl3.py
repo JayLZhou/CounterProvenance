@@ -65,7 +65,7 @@ log_lines = (LOGS / "sched.txt").read_text().splitlines()
 started = {l.split()[3] for l in log_lines if len(l.split()) > 3 and l.split()[2] == "start"}
 ended = {l.split()[3] for l in log_lines if len(l.split()) > 3 and l.split()[2] == "end"}
 jobs = [j for j in jobs if not j[0].startswith("naive_")]
-# methane XGB without the MST was stopped at 1 TB by TWIN's own build peak (1.13 TB), not by the table of the variant: once more, with 1.3 TB
+# methane XGB without the MST was stopped at 1 TB by CellForest's own build peak (1.13 TB), not by the table of the variant: once more, with 1.3 TB
 started.discard("table_methane_XGB"); ended.discard("table_methane_XGB")
 jobs = [j[:3] + (1191.0,) + j[4:] if j[0] == "table_methane_XGB" else j for j in jobs]
 

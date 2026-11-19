@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """No grouping: one cell graph for the whole forest when it fits, else every tree on its own.
 
-``one``: all trees in a single cell graph (MCPST) when the slab grid of all axes has at most
+``one``: all trees in a single cell graph (CellTree) when the slab grid of all axes has at most
 ``--budget`` cells; ``trees``: every varying tree located by its own leaf masks; ``greedy``:
 the current greedy grouping.  Pure Python (numpy for the masks), compared with the three-step
 baseline.  Output: ``results/nogroup_proto.csv``.

@@ -1,4 +1,4 @@
-"""TWIN without grouping (one group, cell graph and MST) for every model, all mechanisms loaded at once: which models fit in 512 GB.
+"""CellForest without grouping (one group, cell graph and MST) for every model, all mechanisms loaded at once: which models fit in 512 GB.
 A run is stopped when its resident memory exceeds 512 GB.  Output: ``results/rss_none``, logs in ``logs/none``."""
 import json
 import os

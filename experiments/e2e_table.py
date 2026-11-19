@@ -2,7 +2,7 @@
 """An application over a whole table: every row is explained or gets its recourse.
 
 With all parents of the outcome intervened there is no mediator and g_u(t) = f_Y(t) + n_u: the units only differ by a
-constant, so that one index serves the whole table.  TWIN runs on all rows (up to ``--hours``); the online evaluation
+constant, so that one index serves the whole table.  CellForest runs on all rows (up to ``--hours``); the online evaluation
 and DoWhy-GCM run on a random sample of the same rows, and their time is projected to the table.
 Output: ``results/table_<dataset>_<family>_<app>.csv``, one row per backend."""
 
@@ -19,7 +19,7 @@ import pandas as pd
 
 from common import write_csv
 from counterprovenance.scm import ancestors, fit_scm, parents_of
-from e2e_apps import APPS, Ctx, DoWhy, Online, Oracle, Twin, model_factory
+from e2e_apps import APPS, Ctx, DoWhy, Online, Oracle, CellForest, model_factory
 from scm_full import dowhy_model
 
 
@@ -47,7 +47,7 @@ def main() -> None:
     ap.add_argument("--family", required=True)
     ap.add_argument("--app", required=True)
     ap.add_argument("--sample", type=int, default=100, help="rows of the online evaluation and of DoWhy-GCM")
-    ap.add_argument("--hours", type=float, default=6.0, help="limit of TWIN")
+    ap.add_argument("--hours", type=float, default=6.0, help="limit of CellForest")
     ap.add_argument("--build-threads", type=int, default=8)
     args = ap.parse_args()
     d0 = Path(args.data) / args.dataset
@@ -63,14 +63,14 @@ def main() -> None:
     first = df.iloc[[int(order[0])]]
     base = Ctx(df, T, first, y, 2028, meta.get("increase_only", ()), meta.get("mcce_immutable", ()))
     base.lo = np.minimum(base.lo, df[T].quantile(0.01).to_numpy())   # the box does not depend on the unit
-    twin = Twin(scm, first.iloc[0].to_dict(), T, y, 2e7, args.build_threads)
+    twin = CellForest(scm, first.iloc[0].to_dict(), T, y, 2e7, args.build_threads)
     f0 = float(twin(first[T].to_numpy(dtype=float))[0])
     common = dict(dataset=args.dataset, family=args.family, app=args.app, d=len(T), table_rows=len(df), mechanisms=len(scm.models))
     app = APPS[args.app]
     tag = f"table_{args.dataset}_{args.family}_{args.app}.csv"
     rows = [dict(common, backend="twin", build_s=twin.build_s, **twin.info)]
 
-    # the sample first, so that a limit on TWIN still leaves a comparison
+    # the sample first, so that a limit on CellForest still leaves a comparison
     sample = order[: args.sample]
     outs = {}
     gcm, cg = dowhy_model(scm, edges)

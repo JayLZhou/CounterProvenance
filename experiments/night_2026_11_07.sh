@@ -8,9 +8,9 @@ PY=$W/env/bin/python
 say "queue started"
 
 # 1. the runs of this morning
-say "1. waiting for the one-group runs and the Exp.4 TWIN runs"; wait_for "mech_main.py.*(one1e8|trees_hybrid)"; say "1. done"
+say "1. waiting for the one-group runs and the Exp.4 CellForest runs"; wait_for "mech_main.py.*(one1e8|trees_hybrid)"; say "1. done"
 
-# 2. Exp.4 TWIN (hybrid index): the models without all results, e.g. stopped by the memory guard
+# 2. Exp.4 CellForest (hybrid index): the models without all results, e.g. stopped by the memory guard
 say "2. Exp.4: runs that ended without results"
 cd $W/repo_hybrid/experiments
 for n in 100 300 3000; do for f in GBR LGBM XGB HGB RF; do for ds in concrete light_tunnel ailerons pol elevators jdk postgres baf mslr census1990 susy methane higgs airline nyc_taxi; do
@@ -21,16 +21,16 @@ say "2. $(wc -l < $W/night_trees_missing.txt) to run again"
 OMP_NUM_THREADS=1 CUDA_VISIBLE_DEVICES= PYTHONPATH=$W/repo_hybrid:$W/chirho_pkgs xargs -a $W/night_trees_missing.txt -P 4 -L 1 bash -c 'timeout 43200 '$PY' mech_main.py --data '$W'/data/causal --dataset $1 --family $2 --backend twin --trees $0 --out trees_hybrid/$0 >> '$W'/logs/trees_hybrid/$1_$2_$0.log 2>&1'
 say "2. done"
 
-# 3. applications: TWIN with the hybrid index on every table of the paper (no feature relevance on RF200)
-say "3. applications, TWIN with the hybrid index"
+# 3. applications: CellForest with the hybrid index on every table of the paper (no feature relevance on RF200)
+say "3. applications, CellForest with the hybrid index"
 mkdir -p $W/logs/shard_hybrid
 printf "%s\n" "german_full HGB100 dowhy_feature_relevance" "heloc HGB100 dowhy_feature_relevance" "adult HGB100 dowhy_feature_relevance" "give_credit HGB100 dowhy_feature_relevance" \
   "adult RF100 dowhy_feature_relevance" "adult RF200 mcce_1000" "adult RF200 mcce_10000" "adult RF500D10 geco_genetic" "give_credit RF100 dowhy_feature_relevance" | \
   OMP_NUM_THREADS=1 CUDA_VISIBLE_DEVICES= PYTHONPATH=$W/repo_hybrid:$W/shap_pkgs:$W/chirho_pkgs xargs -P 2 -L 1 bash -c 'cd '$W'/repo_hybrid/experiments && timeout 172800 '$PY' e2e_shard.py --data '$W'/data/causal --dataset $0 --family $1 --app $2 --backend twin >> '$W'/logs/shard_hybrid/$0_$1_$2.log 2>&1'
 say "3. done"
 
-# 4. the main experiment's TWIN again with the hybrid index, while the machine is quieter: clean query times
-say "4. main TWIN, clean times"; cd $W; $PY run_compact.py 8 repo_hybrid hybrid_clean >> $W/logs/run_hybrid_clean.txt 2>&1
+# 4. the main experiment's CellForest again with the hybrid index, while the machine is quieter: clean query times
+say "4. main CellForest, clean times"; cd $W; $PY run_compact.py 8 repo_hybrid hybrid_clean >> $W/logs/run_hybrid_clean.txt 2>&1
 wait_for "mech_main.py.*hybrid_clean"; say "4. done"
 
 # 5. memory without grouping (only the memory is reported; several threads): ailerons, then the six 64-bit ones

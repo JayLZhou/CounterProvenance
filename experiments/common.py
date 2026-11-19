@@ -84,7 +84,7 @@ def per_query_us(fn: Callable[[object], object], queries: Sequence) -> np.ndarra
 
 
 def full_cell_index(bound, **kwargs) -> tuple[CellIndex, Slabs]:
-    """One MCPST over the whole overlay (tree slots)."""
+    """One CellTree over the whole overlay (tree slots)."""
     slabs = Slabs(bound)
     items = list(range(len(bound.boxes)))
     cells = CellIndex(

@@ -1,4 +1,4 @@
-"""The index without the value table, with short cell numbers: TWIN on every (table, family), smallest first, on the cached models of the main experiment."""
+"""The index without the value table, with short cell numbers: CellForest on every (table, family), smallest first, on the cached models of the main experiment."""
 import json
 import os
 import subprocess

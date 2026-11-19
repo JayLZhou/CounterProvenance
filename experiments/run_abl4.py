@@ -65,7 +65,7 @@ log_lines = (LOGS / "sched.txt").read_text().splitlines()
 started = {l.split()[3] for l in log_lines if len(l.split()) > 3 and l.split()[2] == "start"}
 ended = {l.split()[3] for l in log_lines if len(l.split()) > 3 and l.split()[2] == "end"}
 jobs = [j for j in jobs if not j[0].startswith("naive_")]
-# methane XGB without the MST was stopped at 1 TB by TWIN's own build peak (1.13 TB), not by the table of the variant: once more, with 1.3 TB
+# methane XGB without the MST was stopped at 1 TB by CellForest's own build peak (1.13 TB), not by the table of the variant: once more, with 1.3 TB
 # the airline models without grouping: 64-bit node numbers in the persistent tree (repo_pft64), all five again
 PFT64 = W / "repo_pft64"
 for f in FAMS:

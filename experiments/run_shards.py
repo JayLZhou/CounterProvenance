@@ -18,24 +18,24 @@ PLAN = [("german_full", "HGB100", R, "dowhy", None), ("german_full", "HGB100", R
         ("adult", "RF200", M1, "three_step", None), ("adult", "RF500D10", G, "three_step", None),
         ("give_credit", "HGB100", R, "dowhy", None), ("adult", "RF100", R, "dowhy", None), ("adult", "RF200", R, "dowhy", None),
         ("adult", "RF200", M2, "three_step", 2000), ("adult", "HGB100", R, "three_step", 1000), ("adult", "RF200", R, "three_step", 200)]
-TWIN = [("german_full", "HGB100", R), ("adult", "RF200", M1), ("adult", "RF200", M2), ("adult", "RF500D10", G), ("heloc", "HGB100", R),
+OURS = [("german_full", "HGB100", R), ("adult", "RF200", M1), ("adult", "RF200", M2), ("adult", "RF500D10", G), ("heloc", "HGB100", R),
         ("adult", "HGB100", R), ("give_credit", "HGB100", R), ("adult", "RF100", R), ("adult", "RF200", R)]
 LIMIT = int(sys.argv[1]) if len(sys.argv) > 1 else 30
 if "norel200" in sys.argv:    # no feature relevance on the forest of 200 trees
     PLAN = [j for j in PLAN if not (j[1] == "RF200" and j[2] == R)]
-    TWIN = [j for j in TWIN if not (j[1] == "RF200" and j[2] == R)]
+    OURS = [j for j in OURS if not (j[1] == "RF200" and j[2] == R)]
 if "gc" in sys.argv:    # Give Me Credit with forests: one index of hundreds of GB
     PLAN = [("give_credit", "RF100", R, "dowhy", None), ("give_credit", "RF200", R, "dowhy", None)]
-    TWIN = [("give_credit", "RF100", R), ("give_credit", "RF200", R)]
+    OURS = [("give_credit", "RF100", R), ("give_credit", "RF200", R)]
 if "ts" in sys.argv:    # the interventional TreeSHAP of the shap library, against the same background
-    TWIN = []
+    OURS = []
     PLAN = [(d, f, R, "treeshap", None) for d, f in (("german_full", "HGB100"), ("heloc", "HGB100"), ("give_credit", "HGB100"),
                                                      ("adult", "HGB100"), ("adult", "RF100"), ("adult", "RF200"),
                                                      ("give_credit", "RF100"), ("give_credit", "RF200"))]
 if "notwin" in sys.argv:    # an index of this table is already being built or read
-    TWIN = []
+    OURS = []
 env = dict(os.environ, OMP_NUM_THREADS="1", CUDA_VISIBLE_DEVICES="", PYTHONPATH=f"{W / 'shap_pkgs'}:{W / 'chirho_pkgs'}")
-jobs = [(d, f, a, "twin", 0, -1) for d, f, a in TWIN]
+jobs = [(d, f, a, "twin", 0, -1) for d, f, a in OURS]
 for d, f, a, b, cap in PLAN:
     total = cap or ROWS[d]
     size = min(SIZE[d], max(1, math.ceil(total / 20)))

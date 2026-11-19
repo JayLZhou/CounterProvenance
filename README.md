@@ -126,13 +126,13 @@ Measured on 15 real tables (1,030 to 101 million rows) with five model families 
 ```bash
 python experiments/causal_datasets.py --out ../data/causal      # 📚 build the 15 tables and their DAGs
 python experiments/mech_main.py --data ../data/causal \
-       --dataset concrete --family GBR --backend twin           # ⚡ CellForest on one table and model
+       --dataset concrete --family GBR --backend cellforest     # ⚡ CellForest on one table and model
 python experiments/mech_main.py --data ../data/causal \
        --dataset concrete --family GBR --backend three_step     # 🐢 a competitor on the same queries
 python -m pytest tests                                          # ✅ exactness tests
 ```
 
-`--backend` is one of `twin` (CellForest), `three_step`, `chirho`, `dowhy`, `causalai`;
+`--backend` is one of `cellforest`, `three_step`, `chirho`, `dowhy`, `causalai`;
 `--family` is one of `GBR`, `HGB`, `XGB`, `LGBM`, `RF`.
 
 | Experiment | Scripts |
@@ -167,7 +167,6 @@ experiments/              🔬 one script per experiment (see the table above)
   causalai_baseline.py    the CausalAI competitor, made exact
   paperfigs/              the figures of the paper
 tests/                    ✅ exactness tests against brute force and the libraries' leaf APIs
-docs/                     📝 design notes
 ```
 
 ## 📚 Datasets

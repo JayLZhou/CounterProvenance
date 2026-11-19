@@ -25,44 +25,44 @@ Environment: host 3haoji-A100, python 3.11.15, numpy 2.4.6, scipy 1.15.3, sklear
 
 | workload | index | faces | records | bytes | IIP records | IIP / ours | pieces | build s |
 |---|---|---|---|---|---|---|---|---|
-| 2D M=64 | MCPST path (rho-MST) | 1,089 | 10,050 | 75,276 | 72,066 | 7.17 | - | 0.0331 |
-| 2D M=64 | MCPST node (Euler tour) | 1,089 | 6,650 | 56,516 | 72,066 | 10.8 | - | 0.023 |
-| 2D M=64 | MCPST node (best walk) | 1,089 | 5,126 | 40,232 | 72,066 | 14.1 | - | 0.021 |
-| 2D M=64 | MCPST node (snake, grid) | 1,089 | 5,126 | 40,232 | 72,066 | 14.1 | - | 0.0157 |
-| 2D M=64 | MCPST hybrid | 1,089 | 5,126 | 40,232 | 72,066 | 14.1 | - | 0.0344 |
+| 2D M=64 | CellTree path (rho-MST) | 1,089 | 10,050 | 75,276 | 72,066 | 7.17 | - | 0.0331 |
+| 2D M=64 | CellTree node (Euler tour) | 1,089 | 6,650 | 56,516 | 72,066 | 10.8 | - | 0.023 |
+| 2D M=64 | CellTree node (best walk) | 1,089 | 5,126 | 40,232 | 72,066 | 14.1 | - | 0.021 |
+| 2D M=64 | CellTree node (snake, grid) | 1,089 | 5,126 | 40,232 | 72,066 | 14.1 | - | 0.0157 |
+| 2D M=64 | CellTree hybrid | 1,089 | 5,126 | 40,232 | 72,066 | 14.1 | - | 0.0344 |
 | 2D M=64 | ProvenanceIndex (grouped) | 66 | 516 | 3,352 | - | - | 2 | 0.0044 |
-| 2D M=256 | MCPST path (rho-MST) | 16,641 | 184,066 | 1,402,892 | 4,294,146 | 23.3 | - | 0.831 |
-| 2D M=256 | MCPST node (Euler tour) | 16,641 | 100,368 | 865,388 | 4,294,146 | 42.8 | - | 0.499 |
-| 2D M=256 | MCPST node (best walk) | 16,641 | 75,812 | 603,412 | 4,294,146 | 56.6 | - | 0.568 |
-| 2D M=256 | MCPST node (snake, grid) | 16,641 | 75,812 | 603,412 | 4,294,146 | 56.6 | - | 0.331 |
-| 2D M=256 | MCPST hybrid | 16,641 | 75,812 | 603,412 | 4,294,146 | 56.6 | - | 1 |
+| 2D M=256 | CellTree path (rho-MST) | 16,641 | 184,066 | 1,402,892 | 4,294,146 | 23.3 | - | 0.831 |
+| 2D M=256 | CellTree node (Euler tour) | 16,641 | 100,368 | 865,388 | 4,294,146 | 42.8 | - | 0.499 |
+| 2D M=256 | CellTree node (best walk) | 16,641 | 75,812 | 603,412 | 4,294,146 | 56.6 | - | 0.568 |
+| 2D M=256 | CellTree node (snake, grid) | 16,641 | 75,812 | 603,412 | 4,294,146 | 56.6 | - | 0.331 |
+| 2D M=256 | CellTree hybrid | 16,641 | 75,812 | 603,412 | 4,294,146 | 56.6 | - | 1 |
 | 2D M=256 | ProvenanceIndex (grouped) | 258 | 2,052 | 13,336 | - | - | 2 | 0.0177 |
-| 2D M=1024 | MCPST path (rho-MST) | 263,169 | 3,425,282 | 26,337,292 | 270,014,466 | 78.8 | - | 12.8 |
-| 2D M=1024 | MCPST node (Euler tour) | 263,169 | 1,581,054 | 13,684,684 | 270,014,466 | 170.8 | - | 8.6 |
-| 2D M=1024 | MCPST node (best walk) | 263,169 | 1,188,056 | 9,492,140 | 270,014,466 | 227.3 | - | 10.7 |
-| 2D M=1024 | MCPST node (snake, grid) | 263,169 | 1,188,056 | 9,492,140 | 270,014,466 | 227.3 | - | 6.29 |
-| 2D M=1024 | MCPST hybrid | 263,169 | 1,188,056 | 9,492,140 | 270,014,466 | 227.3 | - | 16.9 |
+| 2D M=1024 | CellTree path (rho-MST) | 263,169 | 3,425,282 | 26,337,292 | 270,014,466 | 78.8 | - | 12.8 |
+| 2D M=1024 | CellTree node (Euler tour) | 263,169 | 1,581,054 | 13,684,684 | 270,014,466 | 170.8 | - | 8.6 |
+| 2D M=1024 | CellTree node (best walk) | 263,169 | 1,188,056 | 9,492,140 | 270,014,466 | 227.3 | - | 10.7 |
+| 2D M=1024 | CellTree node (snake, grid) | 263,169 | 1,188,056 | 9,492,140 | 270,014,466 | 227.3 | - | 6.29 |
+| 2D M=1024 | CellTree hybrid | 263,169 | 1,188,056 | 9,492,140 | 270,014,466 | 227.3 | - | 16.9 |
 | 2D M=1024 | ProvenanceIndex (grouped) | 1,026 | 8,196 | 53,272 | - | - | 2 | 0.124 |
 
 ## E3. Coincident thresholds (kappa trees change per boundary, M = 256)
 
 | kappa | index | faces | plan cost | PFT nodes | entries | records | IIP records |
 |---|---|---|---|---|---|---|---|
-| 1 | MCPST path (rho-MST) | 16,641 | 133,120 | 133,375 | 0 | 184,066 | 4,294,146 |
-| 1 | MCPST node (best walk) | 16,641 | 16,640 | 8,483 | 16,638 | 75,812 | 4,294,146 |
-| 1 | MCPST hybrid | 16,641 | 24,960 | 8,483 | 16,638 | 75,812 | 4,294,146 |
-| 2 | MCPST path (rho-MST) | 4,225 | 33,792 | 34,047 | 0 | 47,362 | 1,090,690 |
-| 2 | MCPST node (best walk) | 4,225 | 8,448 | 4,333 | 8,447 | 26,095 | 1,090,690 |
-| 2 | MCPST hybrid | 4,225 | 12,672 | 4,333 | 8,447 | 26,095 | 1,090,690 |
-| 4 | MCPST path (rho-MST) | 1,089 | 9,792 | 10,047 | 0 | 13,890 | 281,538 |
-| 4 | MCPST node (best walk) | 1,089 | 4,352 | 2,324 | 4,352 | 10,519 | 281,538 |
-| 4 | MCPST hybrid | 1,089 | 6,528 | 2,324 | 4,352 | 10,519 | 281,538 |
-| 8 | MCPST path (rho-MST) | 289 | 3,456 | 3,711 | 0 | 5,122 | 75,106 |
-| 8 | MCPST node (best walk) | 289 | 2,304 | 1,267 | 2,304 | 4,982 | 75,106 |
-| 8 | MCPST hybrid | 289 | 3,456 | 3,711 | 0 | 5,122 | 75,106 |
-| 16 | MCPST path (rho-MST) | 81 | 1,520 | 1,775 | 0 | 2,546 | 21,426 |
-| 16 | MCPST node (best walk) | 81 | 1,280 | 807 | 1,280 | 2,858 | 21,426 |
-| 16 | MCPST hybrid | 81 | 1,520 | 1,775 | 0 | 2,546 | 21,426 |
+| 1 | CellTree path (rho-MST) | 16,641 | 133,120 | 133,375 | 0 | 184,066 | 4,294,146 |
+| 1 | CellTree node (best walk) | 16,641 | 16,640 | 8,483 | 16,638 | 75,812 | 4,294,146 |
+| 1 | CellTree hybrid | 16,641 | 24,960 | 8,483 | 16,638 | 75,812 | 4,294,146 |
+| 2 | CellTree path (rho-MST) | 4,225 | 33,792 | 34,047 | 0 | 47,362 | 1,090,690 |
+| 2 | CellTree node (best walk) | 4,225 | 8,448 | 4,333 | 8,447 | 26,095 | 1,090,690 |
+| 2 | CellTree hybrid | 4,225 | 12,672 | 4,333 | 8,447 | 26,095 | 1,090,690 |
+| 4 | CellTree path (rho-MST) | 1,089 | 9,792 | 10,047 | 0 | 13,890 | 281,538 |
+| 4 | CellTree node (best walk) | 1,089 | 4,352 | 2,324 | 4,352 | 10,519 | 281,538 |
+| 4 | CellTree hybrid | 1,089 | 6,528 | 2,324 | 4,352 | 10,519 | 281,538 |
+| 8 | CellTree path (rho-MST) | 289 | 3,456 | 3,711 | 0 | 5,122 | 75,106 |
+| 8 | CellTree node (best walk) | 289 | 2,304 | 1,267 | 2,304 | 4,982 | 75,106 |
+| 8 | CellTree hybrid | 289 | 3,456 | 3,711 | 0 | 5,122 | 75,106 |
+| 16 | CellTree path (rho-MST) | 81 | 1,520 | 1,775 | 0 | 2,546 | 21,426 |
+| 16 | CellTree node (best walk) | 81 | 1,280 | 807 | 1,280 | 2,858 | 21,426 |
+| 16 | CellTree hybrid | 81 | 1,520 | 1,775 | 0 | 2,546 | 21,426 |
 
 ## E4. Heterogeneous edge costs: does the MST matter?
 
@@ -93,7 +93,7 @@ XGBoost accumulates leaf values in float32, hence its 1e-6 differences; every ot
 
 Every listed index was checked on random and threshold what-if points: values against `model.predict`, provenance against brute force and the model's own leaf ids.
 
-| model | d | boxes N | grid cells | IIP records | one MCPST records | one MCPST us | tau=0 records | tau=0 pieces | autotuned records | autotuned pieces | autotuned us | chosen (tau, groups) | model.predict us |
+| model | d | boxes N | grid cells | IIP records | one CellTree records | one CellTree us | tau=0 records | tau=0 pieces | autotuned records | autotuned pieces | autotuned us | chosen (tau, groups) | model.predict us |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | LightGBM | 1 | 568 | 93 | 48,462 | 1,776 | 4.28 | 1,798 | 2 | 1,776 | 1 | 4.24 | tau=0, g=1 | 437.5 |
 | LightGBM | 2 | 1,208 | 16,616 | 3,741,434 | 68,769 | 4.76 | 21,797 | 10.3 | 21,713 | 7.3 | 17.5 | tau=0, g=1 | 438.0 |

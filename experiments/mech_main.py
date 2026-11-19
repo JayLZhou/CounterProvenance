@@ -188,7 +188,8 @@ def main() -> None:
     ap.add_argument("--data", required=True)
     ap.add_argument("--dataset", required=True)
     ap.add_argument("--family", required=True)
-    ap.add_argument("--backend", required=True, choices=["twin", "three_step", "chirho", "dowhy", "causalai"])
+    ap.add_argument("--backend", required=True, choices=["cellforest", "twin", "three_step", "chirho", "dowhy", "causalai"],
+                    help="cellforest is our index; twin is its former name, which the result files keep")
     ap.add_argument("--d", type=int, default=0)
     ap.add_argument("--trees", type=int, default=1000)
     ap.add_argument("--out", default="", help="directory under results, for a rerun on the cached models")
@@ -199,6 +200,8 @@ def main() -> None:
     ap.add_argument("--one-max", type=float, default=5e7, help="... and whose grid is at most this (the hyperparameter study raises it)")
     ap.add_argument("--hours", type=float, default=24.0)
     args = ap.parse_args()
+    if args.backend == "cellforest":
+        args.backend = "twin"
     out = results_dir(args)
     out.mkdir(parents=True, exist_ok=True)
     state = prepare(args)

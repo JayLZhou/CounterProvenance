@@ -18,7 +18,7 @@ import pandas as pd
 
 from common import RESULTS
 from counterprovenance.scm import ancestors, fit_scm, parents_of
-from e2e_apps import APPS, SUBSET_APPS, CausalAI, Ctx, DoWhy, GeCo, Online, Oracle, SubsetOracle, ThreeStep, Twin, TwinMech, model_factory
+from e2e_apps import APPS, SUBSET_APPS, CausalAI, Ctx, DoWhy, GeCo, Online, Oracle, SubsetOracle, ThreeStep, CellForest, CellForestMech, model_factory
 from scm_full import dowhy_model
 
 
@@ -87,11 +87,11 @@ def main() -> None:
             return
     build_s = 0.0
     if args.backend == "twin" and (args.actionable or args.sensitive):
-        twinm = TwinMech(scm, first.iloc[0].to_dict(), T, y, 2e7, args.build_threads, max_size=3 if args.app in SUBSET_APPS else None)
+        twinm = CellForestMech(scm, first.iloc[0].to_dict(), T, y, 2e7, args.build_threads, max_size=3 if args.app in SUBSET_APPS else None)
         build_s = twinm.build_s
     elif args.backend == "twin":
         t0 = time.perf_counter()
-        twin = Twin(scm, first.iloc[0].to_dict(), T, y, 2e7, args.build_threads)
+        twin = CellForest(scm, first.iloc[0].to_dict(), T, y, 2e7, args.build_threads)
         build_s = time.perf_counter() - t0
         f0 = float(twin(first[T].to_numpy(dtype=float))[0])
     elif args.backend == "dowhy":

@@ -1,4 +1,4 @@
-"""MCPST leaf: exact overlay + MST construction plan + persistent materialisation.
+"""CellTree leaf: exact overlay + MST construction plan + persistent materialisation.
 
 Every face of the overlay gets one directly addressable provenance root (a
 version of a persistent factor tree) and a cached numeric value.  Three

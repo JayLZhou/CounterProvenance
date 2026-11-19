@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Effect of the depth: query time of TWIN and ThreeStep against the depth h of the trees, for the five families of the
+"""Effect of the depth: query time of CellForest and ThreeStep against the depth h of the trees, for the five families of the
 main experiment with their depth set to h, on one tree ensemble (the outcome of a node from its k parents).
 1,000 trees, up to 50,000 rows, 100 units with 10 queries each, all parents intervened, one thread.
 An ensemble with a tree over 1e9 blocks or 5e10 blocks in total is reported as infeasible without building."""

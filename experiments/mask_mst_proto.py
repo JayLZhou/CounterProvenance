@@ -7,7 +7,7 @@ global slab ``s``, row ``M_a[s]`` holds, per field, the boxes whose range on
 of every field.  Moving from slab ``s - 1`` to ``s`` crosses one cut, and only
 the fields of trees with a wall there change: the slabs of an axis form a path,
 the cell graph of that axis, whose MST is the path itself.  So the rows are
-stored as in MCPST: a full row every ``k`` slabs (checkpoint) and, for every
+stored as in CellTree: a full row every ``k`` slabs (checkpoint) and, for every
 other slab, only the fields that change.  ``k = 1`` is the plain bitmask.
 
 For each ``dataset:family:d`` and ``k``: bytes, time of one numba call per query,

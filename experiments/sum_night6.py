@@ -11,7 +11,7 @@ GB = 1e9
 
 
 def twin(dirs):
-    """TWIN rows of the given result folders, later folders overriding earlier ones per (dataset, family, d)."""
+    """CellForest rows of the given result folders, later folders overriding earlier ones per (dataset, family, d)."""
     got = {}
     for d in dirs:
         for f in glob.glob(str(d / "*_twin.csv")):
@@ -44,7 +44,7 @@ if len(r):
     a = r.dropna(subset=["pft"])
     if len(a):
         nomst = a.formula - 8 * a.pft + 4 * a.leaves
-        print(f"== ablation on {len(a)} models: TWIN {a.formula.sum() / GB:.1f} GB, without MST (all leaves per cell) {nomst.sum() / GB:.1f} GB, ratio {nomst.sum() / a.formula.sum():.1f}x;"
+        print(f"== ablation on {len(a)} models: CellForest {a.formula.sum() / GB:.1f} GB, without MST (all leaves per cell) {nomst.sum() / GB:.1f} GB, ratio {nomst.sum() / a.formula.sum():.1f}x;"
               f" per model median {(nomst / a.formula).median():.1f}x max {(nomst / a.formula).max():.1f}x")
     g = r.dropna(subset=["grid_all_max"])
     if len(g):

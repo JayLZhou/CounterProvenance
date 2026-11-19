@@ -7,15 +7,15 @@ counterfactual value and its exact semiring provenance.  It is built from:
    (their *axis support*), optionally merged down to ``group_budget`` groups;
    a group's state space is the overlay of its own trees only;
 2. **adaptive segment tree** - inside a group, if the overlay of the remaining
-   axes is small (``K_hat <= tau``) it is materialised as one MCPST leaf;
+   axes is small (``K_hat <= tau``) it is materialised as one CellTree leaf;
    otherwise a segment tree is built on the axis with the most boundaries and
    every node recurses on the remaining axes with the boxes assigned to it;
-3. **MCPST leaves** (:mod:`cellindex`) - exact overlay, MST construction plan,
+3. **CellTree leaves** (:mod:`cellindex`) - exact overlay, MST construction plan,
    persistent factor tree with one directly addressable root per face.
 
 A query returns one pre-materialised root ("piece") per visited leaf.  The two
 parameters move the index along the space / pieces trade-off: ``tau = inf``
-with one group is a single MCPST over the whole overlay (one piece, Theta(K)
+with one group is a single CellTree over the whole overlay (one piece, Theta(K)
 faces); ``tau = 0`` recurses to the last axis, whose leaves are 1D persistent
 chains (``O(N log^{d-1} N)`` space, ``O(log^{d-1} N)`` pieces per group).
 :func:`autotune` picks the parameters at build time from sample queries.
@@ -28,7 +28,7 @@ bitmasks for every tree ("masks"), whichever a per-query cost model
 word) says is cheaper, decided from the grouping before any table is built.
 
 Configuration ``grouping="greedy"``, ``tau=inf``: groups are merged
-greedily under a total table budget (:mod:`grouping`), every group is one MCPST
+greedily under a total table budget (:mod:`grouping`), every group is one CellTree
 leaf, and trees whose own table exceeds ``grid_cap``, or ``mask_ratio`` times
 their number of leaf boxes, are answered by leaf bitmasks.  When every group is a leaf the query is *compiled*:
 
@@ -40,7 +40,7 @@ their number of leaf boxes, are answered by leaf bitmasks.  When every group is 
   leaves whose box contains the slab (one 64-bit field per tree); the AND over
   the axes leaves exactly one bit per tree.
 
-Provenance is expanded on demand from the cell numbers (MCPST roots) and the
+Provenance is expanded on demand from the cell numbers (CellTree roots) and the
 bitmask leaves (atoms), see :class:`LazyAnswer`.
 """
 

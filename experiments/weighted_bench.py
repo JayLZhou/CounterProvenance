@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Queries with the trees' weights chosen at query time: the first N trees and arbitrary weights, TWIN against the
+"""Queries with the trees' weights chosen at query time: the first N trees and arbitrary weights, CellForest against the
 three steps, both in Python on the same queries, every answer compared.  Also the sizes: value tables, persistent
 trees, leaf masks, and the size of storing the leaves per cell independently.  Output: ``results/weighted_<tag>.csv``."""
 

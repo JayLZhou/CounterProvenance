@@ -1,6 +1,6 @@
 #!/bin/bash
 # MINT (causal recourse through minimal interventions) on whole tables: Adult and German (Karimi et al.), HGB100 and RF100,
-# with TWIN (one index per ensemble, mediators replayed), ThreeStep and DoWhy-GCM; Adult baselines in shards of 1,000 rows.
+# with CellForest (one index per ensemble, mediators replayed), ThreeStep and DoWhy-GCM; Adult baselines in shards of 1,000 rows.
 W=/mnt/data/yingli/counterprovenance; Q=$W/repo_lean; LG=$W/logs/mint; mkdir -p $LG
 rm -f $Q/results/shard/*recourse_minimal*
 J=$W/mint_jobs.txt; : > $J

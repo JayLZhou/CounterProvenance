@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""All figures of the experiments of the TWIN paper, in one style (figures/expstyle.tex of the paper), from the data in data/.
+"""All figures of the experiments of the CellForest paper, in one style (figures/expstyle.tex of the paper), from the data in data/.
 Usage: python gen_all.py <paper>/figures"""
 import json, math, os, sys
 
@@ -77,7 +77,7 @@ def superplot(groups, labels, width, height, sep=0.17, jit=0.018):
 G11 = [{k: [pm[k][f"{ds}|{f}"] for f in FAMS] for k, _, _ in M5} for ds, _ in ORDER]
 write("exp_overall", figure("figure*", superplot(G11, ABBR, r"\textwidth", "4.6cm"),
       r"Mean time per query on each table, over all $d$: a point is a model (GBR, HGB, LGBM, RF, XGB), a line the mean over the five. Bold: the speedup of \Method over {\tt ThreeStep} (ratio of the means).", "fig:exp-overall"),
-      "Exp.1, per model (data/per_model.json): results/final of repo_hybrid (TWIN), results/main (competitors), RF from repo_lrf, CausalAI from results/causalai.")
+      "Exp.1, per model (data/per_model.json): results/final of repo_hybrid (CellForest), results/main (competitors), RF from repo_lrf, CausalAI from results/causalai.")
 DS = [1, 2, 4, 8, 16]
 G12 = [{k: [r[k] for r in (next(x for x in main["d_line"]["ExpOneL" + ab] if int(x["d"]) == d) for ds, ab in ORDER
                                  if any(int(x["d"]) == d for x in main["d_line"]["ExpOneL" + ab]))] for k, _, _ in M5} for d in DS]
@@ -182,7 +182,7 @@ body = [r"\begin{groupplot}[nat, group style={group size=2 by 1, horizontal sep=
         r"\addlegendimage{only marks, mark=square*, mark size=2.2pt, mark options={mk=cown}}",
         r"\addlegendimage{only marks, mark=*, mark size=2.3pt, mark options={mkours}}",
         r"\legend{CellTable, CellForest}"]
-for i, (k, _) in enumerate(ORDER, 1):  # a dumbbell per table: what CellTable stores, down to what TWIN stores
+for i, (k, _) in enumerate(ORDER, 1):  # a dumbbell per table: what CellTable stores, down to what CellForest stores
     body.append(r"\draw[cstem, line width=1pt, line cap=round] (axis cs:%d,%.4g) -- (axis cs:%d,%.4g);" % (i, rc[k]["mst"], i, rc[k]["table"]))
     body.append(r"\addplot[only marks, forget plot, mark=square*, mark size=2.2pt, mark options={mk=cown}] coordinates {(%d,%.4g)};" % (i, rc[k]["table"]))
     body.append(r"\addplot[only marks, forget plot, mark=*, mark size=2.3pt, mark options={mkours}] coordinates {(%d,%.4g)};" % (i, rc[k]["mst"]))
@@ -197,7 +197,7 @@ body += [r"\end{groupplot}", r"\node[anchor=south west] at ([yshift=8pt]group c1
 write("exp_cellgraph", figure("figure*", body, r"Leaf records that \Method stores (the changes along the MST of the cell graph) against \CellTable (the leaves of every cell), on the same groups: (A) each table, summed over its five models; (B) against the number of trees per ensemble. A label is the ratio.", "fig:exp-cellgraph"),
       "Exp.6, results/structure and structure_trees/<M> of repo_lean and repo_lrf.")
 
-# ---------------------------------------------------------------- Exp.7: GeCo and MCCE, own evaluation against TWIN
+# ---------------------------------------------------------------- Exp.7: GeCo and MCCE, own evaluation against CellForest
 cf = J("cfe.json")
 def cv(ds, app, b):
     r = cf.get(f"{ds}|{app}|{b}"); return None if r is None else (r["query_s"] if r["full"] else r["projected_s"])
@@ -225,7 +225,7 @@ for y, (app, own, ds, _) in zip(YS, G):
     body.append(r"\node[vlab, text=ctwin, anchor=east, xshift=-3pt] at (axis cs:%.4g,%g) {%s};" % (t, y, human_s(t)))
 body.append(r"\end{axis}")
 write("exp_app_cfe", figure("figure", body, r"Counterfactual explanations: the time of the queries that explain every person, by the application's own evaluation (GeCo's partial evaluation; MCCE's batch {\tt predict}, $K=10^3$ unless noted), by the DoWhy library, and by \Method, all answering the same queries. An arrow goes from the application's own evaluation to \Method; its label is the speedup.", "fig:exp-app-cfe"),
-      "Exp.7, results/shard (repo_lean for TWIN and the native/GeCo backends on German and MCCE native; repo_dev2 for the rest).")
+      "Exp.7, results/shard (repo_lean for CellForest and the native/GeCo backends on German and MCCE native; repo_dev2 for the rest).")
 
 # ---------------------------------------------------------------- Exp.8: feature relevance
 REL = [("Adult\\\\HGB", 1259.5, 196341.4, 6.05 * 86400, False), ("Adult\\\\RF", 1505.7, 371691.7, 63.4 * 86400, False), ("German\\\\HGB", 1.5, 1242.5, 1932.0, True), ("Credit\\\\HGB", 1735.8, 263618.9, 6.0 * 86400, False)]
@@ -251,7 +251,7 @@ for i, r in enumerate(REL, 1):
     body.append(r"\node[vlab, text=ctwin, anchor=east, xshift=-3pt] at (axis cs:%d,%.4g) {%s};" % (i, r[1], human_s(r[1])))
 body.append(r"\end{axis}")
 write("exp_app_relevance", figure("figure", body, r"Feature relevance: the time of the queries that attribute the prediction of every row. An open mark with an arrow: more than the limit of 5 days. Bold: the speedup of \Method over DoWhy.", "fig:exp-app-relevance"),
-      "Exp.8, results/shard (TWIN: repo_lean; others: repo_dev2); ThreeStep projected from 100 to 1,000 rows.")
+      "Exp.8, results/shard (CellForest: repo_lean; others: repo_dev2); ThreeStep projected from 100 to 1,000 rows.")
 
 # ---------------------------------------------------------------- Exp.9 what-if (dot plot) and Exp.10 fairness (columns)
 wf = J("whatif_fairness.json")

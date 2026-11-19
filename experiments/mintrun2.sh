@@ -1,6 +1,6 @@
 #!/bin/bash
-# MINT with mediators (an action intervenes on its own variables only; the other actionable variables follow the SCM): Adult and German (Karimi et al.), HGB100 and RF100, TWIN, ThreeStep and DoWhy-GCM; Adult baselines in shards of 1,000 rows.
-# with TWIN (one index per ensemble, mediators replayed), ThreeStep and DoWhy-GCM; Adult baselines in shards of 1,000 rows.
+# MINT with mediators (an action intervenes on its own variables only; the other actionable variables follow the SCM): Adult and German (Karimi et al.), HGB100 and RF100, CellForest, ThreeStep and DoWhy-GCM; Adult baselines in shards of 1,000 rows.
+# with CellForest (one index per ensemble, mediators replayed), ThreeStep and DoWhy-GCM; Adult baselines in shards of 1,000 rows.
 W=/mnt/data/yingli/counterprovenance; Q=$W/repo_lean; LG=$W/logs/mint; mkdir -p $LG
 rm -f $Q/results/shard/*recourse_mint*
 J=$W/mint2_jobs.txt; : > $J

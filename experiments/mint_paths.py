@@ -16,7 +16,7 @@ import pandas as pd
 
 from common import RESULTS
 from counterprovenance.scm import ancestors, fit_scm, parents_of, relevant_nodes
-from e2e_apps import Ctx, DoWhy, ThreeStep, TwinMech, model_factory
+from e2e_apps import Ctx, DoWhy, ThreeStep, CellForestMech, model_factory
 from scm_full import dowhy_model
 
 
@@ -39,7 +39,7 @@ def main() -> None:
     T = [v for v in meta["actionable"] if v in anc]
     order = np.random.default_rng(2028).permutation(len(df))
     first = df.iloc[[int(order[0])]]
-    tw = TwinMech(scm, first.iloc[0].to_dict(), T, y, 2e7, 1, max_size=3)
+    tw = CellForestMech(scm, first.iloc[0].to_dict(), T, y, 2e7, 1, max_size=3)
     gcm, cg = dowhy_model(scm, edges)
     base = Ctx(df, T, first, y, 2028, meta.get("increase_only", ()), meta.get("mcce_immutable", ()))
     grids = [np.linspace(base.lo[a], base.hi[a], args.levels) for a in range(len(T))]

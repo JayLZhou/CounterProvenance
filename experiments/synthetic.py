@@ -2,7 +2,7 @@
 """Controlled experiments on synthetic stump ensembles.
 
 E1  1D sparse-change family (B = M = n, one tree changes per boundary).
-E2  2D general-position stump grids: one MCPST over the whole overlay under
+E2  2D general-position stump grids: one CellTree over the whole overlay under
     every layout, versus the axis-support grouping of the same index.
 E3  Coincident thresholds (kappa trees change per boundary).
 E4  Heterogeneous edge costs: MST versus an arbitrary spanning tree.
@@ -109,11 +109,11 @@ def e2(sizes, rng) -> list[dict]:
             bound,
             rng,
             [
-                ("MCPST path (rho-MST)", {"layout": "path"}),
-                ("MCPST node (Euler tour)", {"layout": "node", "walk": "euler"}),
-                ("MCPST node (best walk)", {"layout": "node"}),
-                ("MCPST node (snake, grid)", {"layout": "node", "exact": False, "walk": "snake"}),
-                ("MCPST hybrid", {"layout": "hybrid"}),
+                ("CellTree path (rho-MST)", {"layout": "path"}),
+                ("CellTree node (Euler tour)", {"layout": "node", "walk": "euler"}),
+                ("CellTree node (best walk)", {"layout": "node"}),
+                ("CellTree node (snake, grid)", {"layout": "node", "exact": False, "walk": "snake"}),
+                ("CellTree hybrid", {"layout": "hybrid"}),
             ],
             {"M": m},
         )
@@ -150,9 +150,9 @@ def e3(groups, rng, m=256) -> list[dict]:
             bound,
             rng,
             [
-                ("MCPST path (rho-MST)", {"layout": "path"}),
-                ("MCPST node (best walk)", {"layout": "node"}),
-                ("MCPST hybrid", {"layout": "hybrid"}),
+                ("CellTree path (rho-MST)", {"layout": "path"}),
+                ("CellTree node (best walk)", {"layout": "node"}),
+                ("CellTree hybrid", {"layout": "hybrid"}),
             ],
             {"kappa": g},
         )
