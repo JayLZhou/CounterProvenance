@@ -6,7 +6,7 @@ Per group: cells, trees, blocks; persistent-tree nodes and bytes (8 B per node +
 entries of its checkpoints, its bytes (with the version of every cell); the weight of the MST under the number of changes;
 the leaves of sampled cells compared between the two; the time to read the leaves of a cell from each (NumPy and numba),
 alternating in the same process.  Output: one JSON line per group in ``--out``/<model>.jsonl and a summary line."""
-import argparse, glob, json, os, pickle, sys, time
+import argparse, glob, json, os, pickle, re, sys, time
 import numpy as np
 from numba import njit
 from counterprovenance.native_cells import LogCellIndex, NativeCellIndex
@@ -60,7 +60,7 @@ def main():
     ap.add_argument("--sample", type=int, default=64)
     ap.add_argument("--max-blocks", type=float, default=float("inf"))
     args = ap.parse_args()
-    model = os.path.basename(args.dir.rstrip("/")).split("_t")[0]
+    model = re.sub(r"_t\d+_b.*$", "", os.path.basename(args.dir.rstrip("/")))
     os.makedirs(args.out, exist_ok=True)
     path = os.path.join(args.out, model + ".jsonl")
     out = open(path + ".tmp", "w")
