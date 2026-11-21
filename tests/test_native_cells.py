@@ -8,7 +8,7 @@ from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
 from counterprovenance import ProvenanceIndex, native_cells
 from counterprovenance.cellindex import CellIndex
 from counterprovenance.ensemble import Slabs, bind, from_model
-from counterprovenance.native_cells import LeanCellIndex, NativeCellIndex
+from counterprovenance.native_cells import LeanCellIndex, LogCellIndex, NativeCellIndex
 
 
 @unittest.skipUnless(native_cells.available(), "no C++ compiler")
@@ -41,6 +41,26 @@ class NativeCells(unittest.TestCase):
             for root in sorted(set(cc.face_version.tolist())):
                 if root >= 0:
                     self.assertAlmostEqual(sums[root], float(vals[cc.pft.items(root)].sum()), places=9)
+
+    def test_log_same_leaves(self):
+        # the log along the MST gives the leaves and the value of every cell of the persistent tree, for any spacing
+        for bound in self.binds():
+            sl = Slabs(bound)
+            d = bound.d
+            items = list(range(len(bound.boxes)))
+            kw = dict(items=items, ranges=[[sl.ranges[i][a] for a in range(d)] for i in items],
+                      slots=[bound.boxes[i].tree for i in items], slab_counts=[sl.counts[a] for a in range(d)],
+                      values=[bound.boxes[i].value for i in items])
+            old = NativeCellIndex(**kw)
+            for factor in (1.0, 0.25, 4.0, 1e9):
+                new = LogCellIndex(**kw, spacing_factor=factor)
+                self.assertEqual(new.stats.faces, old.stats.faces)
+                np.testing.assert_array_equal(new.overlay.face_of_cell, old.overlay.face_of_cell)
+                np.testing.assert_allclose(new.face_value, old.face_value, atol=1e-9)
+                self.assertLessEqual(new.log.changes, 2 * new.stats.tree_weight + new.stats.slots)
+                for f in range(old.stats.faces):
+                    self.assertEqual(sorted(old.pft.items(int(old.face_version[f])).tolist()),
+                                     sorted(new.log.items(int(new.face_version[f])).tolist()))
 
     def test_same_graph(self):
         for bound in self.binds():

@@ -42,6 +42,10 @@ def _load():
     lib.tw_cg_cuts.argtypes = [C.c_void_p, C.c_int, _I64]
     lib.tw_cg_take.argtypes = [C.c_void_p, _U32, _F64, _I32, _U8, _I32, _I32, _F64]
     lib.tw_cg_free.argtypes = [C.c_void_p]
+    lib.tw_cell_log.restype = C.c_void_p
+    lib.tw_cell_log.argtypes = [C.c_int, C.c_int64, _I64, _I64, _F64, _I64, C.c_double, C.c_int, C.c_int64, C.c_int64, _I64]
+    lib.tw_cl_info.argtypes = [C.c_void_p, _I64]
+    lib.tw_cl_take.argtypes = [C.c_void_p, _U32, _F64, _I64, _U8, _I32, _I32, _I32]
     lib.tw_lean_table.restype = C.c_void_p
     lib.tw_lean_table.argtypes = [C.c_int, C.c_int64, _I64, _I64, _F64, _I64, C.c_double, C.c_int, C.c_int64, _I64]
     lib.tw_lean_take.argtypes = [C.c_void_p, _F64]
@@ -232,6 +236,128 @@ class NativeCellIndex:
 
     def piece(self, slab: Sequence[int]) -> Piece:
         return Piece(self, self.face_of(slab))
+
+
+def _small(a: np.ndarray, hi: int, signed: bool = False) -> np.ndarray:
+    """``a`` in the smallest integer type that holds 0..hi (``signed``: -1..hi)."""
+    for dt in ((np.int8, np.int16, np.int32) if signed else (np.uint8, np.uint16, np.uint32)):
+        if hi <= np.iinfo(dt).max:
+            return a.astype(dt)
+    return a.astype(np.int64)
+
+
+class _Log:
+    """The leaves of every cell as a log: the cells follow a depth-first walk of the minimum spanning tree, the log holds
+    the changes (slot, item) from each cell to the next one, and a checkpoint holds all slots after every ``spacing``
+    changes.  A version is the length of the log at a cell: its leaves are the last checkpoint before it and the
+    changes in between, O(slots + spacing).  ``direct``: a small group keeps one row per cell instead (version = row).
+    Items are stored +1 (0: the slot has no item)."""
+
+    def __init__(self, slot: np.ndarray, item: np.ndarray, snap: np.ndarray, n_slots: int, spacing: int, direct: bool,
+                 n_items: int, values: np.ndarray) -> None:
+        self.n_slots, self.spacing, self.direct, self.values = int(n_slots), int(spacing), bool(direct), values
+        self.slot = _small(slot, max(0, n_slots - 1))
+        self.item = _small(item + 1, n_items)
+        self.snap = _small(snap + 1, n_items)
+        self.changes = len(self.slot)
+
+    @property
+    def nbytes(self) -> int:
+        return self.slot.nbytes + self.item.nbytes + self.snap.nbytes
+
+    @property
+    def records(self) -> int:
+        """Stored leaves: the changes of the log and the entries of its checkpoints (or rows)."""
+        return len(self.item) + len(self.snap)
+
+    def state(self, version: int) -> np.ndarray:
+        """The item of every slot (-1: none)."""
+        g = self.n_slots
+        if self.direct:
+            return self.snap[version * g:(version + 1) * g].astype(np.int64) - 1
+        k = version // self.spacing
+        st = self.snap[k * g:(k + 1) * g].astype(np.int64)
+        a = k * self.spacing
+        if version > a:
+            st[self.slot[a:version]] = self.item[a:version]   # in order: the last change of a slot stays
+        return st - 1
+
+    def items(self, version: int) -> np.ndarray:
+        st = self.state(version)
+        return st[st >= 0]
+
+    def active(self, version: int) -> list[int]:
+        return self.items(version).tolist()
+
+
+class LogCellIndex:
+    """The cell graph of ``NativeCellIndex`` with the leaves in a log along the minimum spanning tree (``_Log``) instead
+    of a persistent tree: the edges are weighted by their number of changes, and ``face_version`` is the version of a
+    cell in the log.  ``spacing_factor`` times the slots is the number of changes between two checkpoints."""
+
+    plan_kind = "tree"
+
+    def __init__(self, items: Sequence[int], ranges, slots: Sequence[int], slab_counts: Sequence[int], values,
+                 offset: float = 0.0, threads: int = 1, max_cells: int = 1 << 40, spacing_factor: float = 1.0) -> None:
+        t0 = time.perf_counter()
+        lib = _load()
+        self.items = list(items)
+        d = len(slab_counts)
+        n = len(self.items)
+        dense = {s: i for i, s in enumerate(sorted(set(slots)))}
+        slot_of = np.array([dense[s] for s in slots], dtype=np.int64)
+        rr = np.asarray(ranges, dtype=np.int64).reshape(n, d, 2)
+        vals = np.asarray(values, dtype=np.float64)
+        counts = np.asarray(slab_counts, dtype=np.int64)
+        self.values = vals
+        self.offset = float(offset)
+        status = C.c_int64(0)
+        spacing = max(1, int(round(spacing_factor * len(dense))))
+        h = lib.tw_cell_log(d, n, rr.ctypes.data_as(_I64), slot_of.ctypes.data_as(_I64), vals.ctypes.data_as(_F64),
+                            counts.ctypes.data_as(_I64), self.offset, threads, int(max_cells), spacing, C.byref(status))
+        try:
+            if status.value != 0:
+                raise MemoryError(f"cell graph: status {status.value}")
+            info = (C.c_int64 * 8)()
+            weight = C.c_double(0.0)
+            lib.tw_cg_info(h, info, C.byref(weight))
+            K, faces, n_edges, labels, labelled, roots, _, width = list(info)
+            li = (C.c_int64 * 5)()
+            lib.tw_cl_info(h, li)
+            changes, snap_len, n_slots, spacing, direct = list(li)
+            cuts = []
+            for k in range(d):
+                c = np.empty(lib.tw_cg_ncuts(h, k), dtype=np.int64)
+                lib.tw_cg_cuts(h, k, c.ctypes.data_as(_I64))
+                cuts.append(c.tolist())
+            face_of_cell = np.empty(K, dtype=np.uint32)
+            self.face_value = np.empty(faces, dtype=np.float64)
+            pos = np.empty(faces, dtype=np.int64)
+            self.face_empty = np.empty(faces, dtype=bool)
+            slot, item = np.empty(changes, dtype=np.int32), np.empty(changes, dtype=np.int32)
+            snap = np.empty(snap_len, dtype=np.int32)
+            lib.tw_cl_take(h, face_of_cell.ctypes.data_as(_U32), self.face_value.ctypes.data_as(_F64),
+                           pos.ctypes.data_as(_I64), self.face_empty.ctypes.data_as(_U8),
+                           slot.ctypes.data_as(_I32), item.ctypes.data_as(_I32), snap.ctypes.data_as(_I32))
+        finally:
+            lib.tw_cg_free(h)
+        self.overlay = _Overlay(cuts, slab_counts, face_of_cell, faces)
+        self.face_version = _small(pos, int(pos.max()) if faces else 0)
+        self.log = _Log(slot, item, snap, n_slots, spacing, bool(direct), n, vals)
+        self.slot_trees = sorted(dense)   # the tree of every slot, ascending
+        self.item_trees = np.asarray(slots, dtype=np.int64)
+        self.stats = CellStats(grid_cells=K, faces=faces, face_edges=n_edges, slots=len(dense),
+                               tree_weight=weight.value, walk_cost=float(changes), sources=roots, pft_nodes=0,
+                               pft_entries=self.log.records, node_copies=0, path_nodes=0,
+                               locator_words=self.overlay.locator_words, seconds={"native": time.perf_counter() - t0})
+
+    @property
+    def leaf_bytes(self) -> int:
+        """The log with its checkpoints and the version of every cell."""
+        return self.log.nbytes + self.face_version.nbytes
+
+    def face_of(self, slab: Sequence[int]) -> int:
+        return self.overlay.face_of(slab)
 
 
 class LeanCellIndex:

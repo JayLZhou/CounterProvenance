@@ -79,6 +79,11 @@ struct Graph {
     std::vector<uint8_t> face_empty;
     std::vector<int32_t> left, right;
     std::vector<double> node_sum;   // of the leaf values under a node of the persistent tree
+    // layout 1: the leaves as a log of changes along a depth-first walk of the minimum spanning tree
+    int64_t n_slots = 0, spacing = 0, direct = 0;
+    std::vector<int64_t> face_pos;            // the length of the log at a cell (direct: its row)
+    std::vector<int32_t> tape_slot, tape_item; // the changes: slot and its new item (-1: none)
+    std::vector<int32_t> snap;                // checkpoint k: all slots after k * spacing changes (direct: one row per cell)
 };
 
 // calls fn(flat cell) for the cells at coordinate `coord` on axis k inside the item's range on the other axes
@@ -221,8 +226,10 @@ std::vector<uint32_t> components(const Graph& g, Wall is_wall, std::vector<int64
 extern "C" {
 
 // status: 0 ok, 1 more than max_cells grid cells or more cells than fit in 32 bits, 2 more persistent nodes than fit in 32 bits
-void* tw_cell_graph(int d, int64_t n, const int64_t* ranges, const int64_t* slots, const double* values,
-                    const int64_t* slab_counts, double offset, int threads, int64_t max_cells, int64_t* status) {
+// layout 0: the persistent tree; layout 1: the log with a checkpoint every ``spacing`` changes
+static void* cell_graph_impl(int d, int64_t n, const int64_t* ranges, const int64_t* slots, const double* values,
+                             const int64_t* slab_counts, double offset, int threads, int64_t max_cells, int64_t* status,
+                             int layout, int64_t spacing) {
     auto* gp = new Graph();
     Graph& g = *gp;
     g.d = d;
@@ -424,7 +431,7 @@ void* tw_cell_graph(int d, int64_t n, const int64_t* ranges, const int64_t* slot
                 cur.erase(std::unique(cur.begin(), cur.end()), cur.end());
                 cost += static_cast<int>(cur.size());
             }
-            weight[e] = cost;
+            weight[e] = layout == 1 ? static_cast<int>(eptr[e + 1] - eptr[e]) : cost;   // the log stores the changes themselves
         }
     }
 
@@ -471,6 +478,115 @@ void* tw_cell_graph(int d, int64_t n, const int64_t* ranges, const int64_t* slot
     g.face_root.assign(g.n_faces, -1);
     g.face_empty.assign(g.n_faces, 0);
     std::vector<uint8_t> seen(g.n_faces, 0);
+    if (layout == 1) {
+        // the log: the changes from each cell to the next cell of a depth-first walk of the tree (at most twice the
+        // weight of the tree), and a checkpoint of all slots after every ``spacing`` changes
+        const int64_t S = std::max<int64_t>(1, spacing);
+        g.n_slots = n_slots;
+        g.spacing = S;
+        g.face_pos.assign(g.n_faces, 0);
+        std::vector<int32_t> state(n_slots, -1);   // after the last change of the log
+        std::vector<int32_t> cur(n_slots, -1);     // at the cell where the walk is
+        std::vector<int32_t> touched;
+        std::vector<uint32_t> disc;
+        std::vector<uint8_t> mark(n_slots, 0);
+        disc.reserve(g.n_faces);
+        g.snap.assign(state.begin(), state.end());   // checkpoint 0: no item
+        auto set_cur = [&](int32_t slot, int32_t item) {
+            cur[slot] = item;
+            if (!mark[slot]) { mark[slot] = 1; touched.push_back(slot); }
+        };
+        auto flush = [&]() {
+            std::sort(touched.begin(), touched.end());
+            for (int32_t s : touched) {
+                mark[s] = 0;
+                if (cur[s] == state[s]) continue;
+                state[s] = cur[s];
+                g.tape_slot.push_back(s);
+                g.tape_item.push_back(cur[s]);
+                if (static_cast<int64_t>(g.tape_slot.size()) % S == 0) g.snap.insert(g.snap.end(), state.begin(), state.end());
+            }
+            touched.clear();
+        };
+        struct LFrame { uint32_t face; int64_t next; int64_t parent_edge; bool forward; Neumaier acc; int64_t active; };
+        std::vector<LFrame> stack;
+        auto val = [&](int32_t item) { return item < 0 ? 0.0 : values[item]; };
+        std::vector<int64_t> at(d);
+        std::vector<int32_t> src(n_slots);
+        for (int64_t r = 0; r < g.n_faces; ++r) {
+            if (seen[r]) continue;
+            ++g.roots;
+            int64_t cell = representative[r];
+            for (int k = 0; k < d; ++k) at[k] = (cell / g.strides[k]) % g.shape[k];
+            std::fill(src.begin(), src.end(), -1);
+            Neumaier acc;
+            acc.add(offset);
+            int64_t active = 0;
+            for (int64_t i = 0; i < n; ++i) {
+                const int64_t* loc = &local[i * d * 2];
+                bool in = true;
+                for (int k = 0; k < d && in; ++k) in = loc[2 * k] <= at[k] && at[k] < loc[2 * k + 1];
+                if (in) { src[slots[i]] = static_cast<int32_t>(i); acc.add(values[i]); ++active; }
+            }
+            for (int64_t s = 0; s < n_slots; ++s)
+                if (cur[s] != src[s]) set_cur(static_cast<int32_t>(s), src[s]);
+            flush();
+            seen[r] = 1;
+            g.face_pos[r] = static_cast<int64_t>(g.tape_slot.size());
+            disc.push_back(static_cast<uint32_t>(r));
+            g.face_value[r] = acc.value();
+            g.face_empty[r] = active == 0;
+            stack.push_back(LFrame{static_cast<uint32_t>(r), aptr[r], -1, false, acc, active});
+            while (!stack.empty()) {
+                LFrame& top = stack.back();
+                if (top.next >= aptr[top.face + 1]) {
+                    if (top.parent_edge >= 0)   // the walk returns to the parent: its leaves again
+                        for (int64_t c = eptr[top.parent_edge]; c < eptr[top.parent_edge + 1]; ++c)
+                            set_cur(changes[c].slot, top.forward ? changes[c].in_a : changes[c].in_b);
+                    stack.pop_back();
+                    continue;
+                }
+                int64_t e = adj[top.next++];
+                uint32_t a = static_cast<uint32_t>(edges[e].first >> 32), b2 = static_cast<uint32_t>(edges[e].first & 0xFFFFFFFFull);
+                uint32_t v = top.face, w = v == a ? b2 : a;
+                if (seen[w]) continue;
+                seen[w] = 1;
+                const bool forward = v == a;
+                Neumaier cacc = top.acc;
+                int64_t cact = top.active;
+                for (int64_t c = eptr[e]; c < eptr[e + 1]; ++c) {
+                    int32_t oldv = forward ? changes[c].in_a : changes[c].in_b;
+                    int32_t newv = forward ? changes[c].in_b : changes[c].in_a;
+                    cacc.add(val(newv) - val(oldv));
+                    cact += (newv >= 0) - (oldv >= 0);
+                    set_cur(changes[c].slot, newv);
+                }
+                flush();
+                g.face_pos[w] = static_cast<int64_t>(g.tape_slot.size());
+                disc.push_back(w);
+                g.face_value[w] = cacc.value();
+                g.face_empty[w] = cact == 0;
+                stack.push_back(LFrame{w, aptr[w], e, forward, cacc, cact});
+            }
+        }
+        // a small group: one row per cell is not larger than the log with its checkpoints
+        const int64_t T = static_cast<int64_t>(g.tape_slot.size());
+        if (g.n_faces * n_slots <= 2 * T + static_cast<int64_t>(g.snap.size()) + g.n_faces) {
+            std::vector<int32_t> rows(g.n_faces * n_slots);
+            std::fill(state.begin(), state.end(), -1);
+            int64_t p = 0;
+            for (uint32_t f : disc) {
+                for (; p < g.face_pos[f]; ++p) state[g.tape_slot[p]] = g.tape_item[p];
+                std::copy(state.begin(), state.end(), rows.begin() + static_cast<int64_t>(f) * n_slots);
+                g.face_pos[f] = f;
+            }
+            g.snap.swap(rows);
+            std::vector<int32_t>().swap(g.tape_slot);
+            std::vector<int32_t>().swap(g.tape_item);
+            g.direct = 1;
+        }
+        return gp;
+    }
     Pft pft(g, height, values);
     struct Frame { uint32_t face; int64_t next; int64_t parent_edge; Neumaier acc; int64_t active; };
     std::vector<Frame> stack;
@@ -526,6 +642,41 @@ void* tw_cell_graph(int d, int64_t n, const int64_t* ranges, const int64_t* slot
         }
     }
     return gp;
+}
+
+void* tw_cell_graph(int d, int64_t n, const int64_t* ranges, const int64_t* slots, const double* values,
+                    const int64_t* slab_counts, double offset, int threads, int64_t max_cells, int64_t* status) {
+    return cell_graph_impl(d, n, ranges, slots, values, slab_counts, offset, threads, max_cells, status, 0, 0);
+}
+
+// the same cell graph with the leaves as a log (see Graph); status as tw_cell_graph, never 2
+void* tw_cell_log(int d, int64_t n, const int64_t* ranges, const int64_t* slots, const double* values,
+                  const int64_t* slab_counts, double offset, int threads, int64_t max_cells, int64_t spacing,
+                  int64_t* status) {
+    return cell_graph_impl(d, n, ranges, slots, values, slab_counts, offset, threads, max_cells, status, 1, spacing);
+}
+
+// out: changes of the log, entries of the checkpoints (or rows), slots, spacing, direct
+void tw_cl_info(void* h, int64_t* out) {
+    auto* g = static_cast<Graph*>(h);
+    out[0] = static_cast<int64_t>(g->tape_slot.size()); out[1] = static_cast<int64_t>(g->snap.size());
+    out[2] = g->n_slots; out[3] = g->spacing; out[4] = g->direct;
+}
+void tw_cl_take(void* h, uint32_t* face_of_cell, double* face_value, int64_t* face_pos, uint8_t* face_empty,
+                int32_t* tape_slot, int32_t* tape_item, int32_t* snap) {
+    auto* g = static_cast<Graph*>(h);
+    std::memcpy(face_of_cell, g->face_of_cell.data(), g->face_of_cell.size() * sizeof(uint32_t));
+    std::vector<uint32_t>().swap(g->face_of_cell);
+    std::memcpy(face_value, g->face_value.data(), g->face_value.size() * sizeof(double));
+    std::memcpy(face_pos, g->face_pos.data(), g->face_pos.size() * sizeof(int64_t));
+    std::memcpy(face_empty, g->face_empty.data(), g->face_empty.size());
+    if (!g->tape_slot.empty()) {
+        std::memcpy(tape_slot, g->tape_slot.data(), g->tape_slot.size() * sizeof(int32_t));
+        std::memcpy(tape_item, g->tape_item.data(), g->tape_item.size() * sizeof(int32_t));
+    }
+    std::vector<int32_t>().swap(g->tape_slot);
+    std::vector<int32_t>().swap(g->tape_item);
+    if (!g->snap.empty()) std::memcpy(snap, g->snap.data(), g->snap.size() * sizeof(int32_t));
 }
 
 // A large cell graph with one value per grid cell and no persistent tree.  Every wall keeps only its weight (the
