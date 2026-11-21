@@ -26,14 +26,25 @@ def _cuts_in(lo, hi, L, U):
 
 
 def _top_split(lo, hi, L, U):
+    """A cut inside the region that no box straddles, i.e., a top split of the tree restricted to the region; the one with
+    the most even numbers of boxes on its two sides.  Per axis: a cut v is straddled by (boxes with lo < v) - (boxes with
+    hi <= v) boxes, counted in the sorted bounds."""
     best = None
-    for a, c in enumerate(_cuts_in(lo, hi, L, U)):
-        for v in c:
-            if not ((lo[:, a] < v) & (hi[:, a] > v)).any():
-                left = int((hi[:, a] <= v).sum())
-                bal = min(left, len(lo) - left)
-                if best is None or bal > best[0]:
-                    best = (bal, a, int(v))
+    n = len(lo)
+    for a in range(lo.shape[1]):
+        l, h = np.sort(lo[:, a]), np.sort(hi[:, a])
+        c = np.unique(np.concatenate((l, h)))
+        c = c[(c > L[a]) & (c < U[a])]
+        if not len(c):
+            continue
+        left = np.searchsorted(h, c, side="right")
+        free = np.searchsorted(l, c, side="left") == left
+        if not free.any():
+            continue
+        bal = np.where(free, np.minimum(left, n - left), -1)
+        i = int(np.argmax(bal))
+        if best is None or bal[i] > best[0]:
+            best = (int(bal[i]), a, int(c[i]))
     return best
 
 
