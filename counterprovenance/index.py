@@ -159,6 +159,8 @@ class LazyAnswer:
     @property
     def cells(self) -> list[int]:
         """Cell number of every group (the raw provenance handle)."""
+        if callable(self._cells):
+            self._cells = self._cells()
         return list(self._cells)
 
     @property
@@ -168,7 +170,7 @@ class LazyAnswer:
         for leaf in idx._const_leaves:
             if not leaf.cells.face_empty[0]:
                 out.append(Piece(leaf.cells, 0))
-        for leaf, cell in zip(idx._fast_leaves, self._cells):
+        for leaf, cell in zip(idx._fast_leaves, self.cells):
             cells = leaf.cells
             face = int(cells.overlay.face_of_cell[cell])
             if not cells.face_empty[face]:
@@ -265,6 +267,7 @@ class ProvenanceIndex:
     # pickle: the value tables of a few groups are memoryviews, saved as arrays and made again on loading
     def __getstate__(self):
         state = self.__dict__.copy()
+        state.pop("_two", None)          # the two-level tables are made again on first use
         if "_tables" in state:
             state["_tables"] = [("view", np.asarray(t)) if isinstance(t, memoryview) else ("obj", t) for t in state["_tables"]]
         return state
@@ -614,7 +617,30 @@ class ProvenanceIndex:
         f += faces.reshape((-1,) + (1,) * (c.ndim - 1))
         return self._nvalue.take(f)
 
+    def _two_level(self):
+        """The read through the two-level tables of the groups of one tree (twolevel.py), made on first use; False if the
+        index has no such group."""
+        two = getattr(self, "_two", None)
+        if two is None:
+            two = False
+            if self._fast and self._nbase is not None and __import__("os").environ.get("CF_TWO_LEVEL", "1") != "0":
+                from .twolevel import Hybrid, TwoLevel
+                tl = TwoLevel(self)
+                if tl.ok:
+                    two = Hybrid(self, tl, range(self.bound.d))
+            self._two = two
+        return two
+
+    def _cell_vector(self, x) -> np.ndarray:
+        c = np.zeros(len(self._nbase), dtype=np.int64)
+        for a, th, rows in self._nwide:
+            c += rows[bisect_left(th, x[a])]
+        return c
+
     def _query_vector(self, x) -> LazyAnswer:
+        two = self._two_level()
+        if two and not self._baxes:
+            return LazyAnswer(two.full_cast(x), self, lambda: self._cell_vector(x), ())
         c = self._nbase.copy()
         for a, th, rows in self._nwide:
             c += rows[bisect_left(th, x[a])]
@@ -627,6 +653,10 @@ class ProvenanceIndex:
 
     def partial(self, varying: Sequence[int]) -> "PartialRead":
         """A query that only reads the groups of the axes in ``varying``; see :class:`PartialRead`."""
+        two = self._two_level() if self._fast else False
+        if two and not self._baxes:
+            from .twolevel import Hybrid
+            return Hybrid(self, two.tl, varying)
         return PartialRead(self, varying)
 
     def _read_as_model(self, X: np.ndarray) -> np.ndarray:
@@ -720,7 +750,10 @@ class ProvenanceIndex:
         n_groups = len(self._fast_leaves)
         for lo in range(0, len(X), chunk):
             x = X[lo:lo + chunk]
-            if self._nbase is not None:
+            two = self._two_level() if self._nbase is not None else False
+            if two and not self._baxes:
+                out[lo:lo + chunk] = two.batch(x, th)
+            elif self._nbase is not None:
                 # one row per group: the reads stay inside one table at a time, which keeps them in the cache
                 c = np.repeat(self._nbase[:, None], len(x), axis=1)
                 for a, _, wide in self._nwide:

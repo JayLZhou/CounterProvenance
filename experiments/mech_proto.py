@@ -82,6 +82,7 @@ class MechanismIndex:
                     tmp.replace(tpath)
             self.tl[x] = tl
             self.fullread[x] = Hybrid(index, tl, range(len(scm.parents[x]))) if tl.ok else None
+            index._two = self.fullread[x] if tl.ok else False      # the reads of the index itself share these tables
             blocks = int(sum(l.cells.overlay.grid_cells for l in index._fast_leaves)) if getattr(index, "_fast_leaves", None) else 0
             extra = dict(single_groups=len(tl.single), single_blocks=tl.single_blocks, single_map_bytes=tl.single_map_bytes, two_entries=tl.entries,
                          two_bytes=sum(tl.bytes.values()), two_s=tl.seconds) if tl.ok else dict(single_groups=0, single_blocks=0, single_map_bytes=0, two_entries=0, two_bytes=0, two_s=tl.seconds)

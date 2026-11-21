@@ -166,7 +166,7 @@ class Hybrid:
         d = tl.d
         vary = sorted(set(varying))
         self.vary, self.fixed = vary, [a for a in range(d) if a not in vary]
-        touched = set(index.partial(varying).touched)
+        touched = {g for g, a, _ in index._contrib if a in set(vary)}
         self.touched = sorted(touched)
         mt = np.array([g for g in tl.multi if int(g) in touched], dtype=np.int64)
         mu = np.array([g for g in tl.multi if int(g) not in touched], dtype=np.int64)
@@ -197,7 +197,10 @@ class Hybrid:
 
     def full(self, x) -> float:
         """All groups; only valid when every axis varies."""
-        cast = self.cast(x); index, tl = self.index, self.tl
+        return self.full_cast(self.cast(x))
+
+    def full_cast(self, cast) -> float:
+        index, tl = self.index, self.tl
         v = index._const
         if len(self.mt):
             c = self.base_mt.copy()
@@ -206,6 +209,28 @@ class Hybrid:
             v += float(index._read_cells(c, self.f_mt, *self.w_mt).sum())
         if len(self.ts):
             v += self._two([tl.rowbase[a] + bisect_left(tl.th[a], cast[a]) for a in range(tl.d)], self.W1t, self.b1t, self.sft, self.lbt, tl.base2)
+        return v
+
+    def batch(self, x, th) -> np.ndarray:
+        """The values of many inputs (rows of ``x``, as the model reads them); only valid when every axis varies."""
+        index, tl = self.index, self.tl
+        n = len(x)
+        slab = [np.searchsorted(th[a], x[:, a], side="left") for a in range(tl.d)]
+        v = np.full(n, index._const, dtype=np.float64)
+        if len(self.mt):
+            c = np.repeat(self.base_mt[:, None], n, axis=1)
+            for a, _, rows in self.rows_vary:
+                c += rows[slab[a]].T
+            v += index._read_cells(c, self.f_mt, *self.w_mt).sum(axis=0)
+        if len(self.ts):
+            c1 = np.repeat(self.b1t[None, :], n, axis=0)
+            for a in range(tl.d):
+                c1 += self.W1t[tl.rowbase[a] + slab[a]]
+            sub = self.sft[None, :] + tl.E1.take(c1)
+            c2 = tl.base2.take(sub)
+            for a in range(tl.d):
+                c2 += tl.W2[(tl.rowbase[a] + slab[a])[:, None], sub]
+            v += tl.VAL.take(self.lbt[None, :] + tl.L2.take(c2)).sum(axis=1)
         return v
 
     def bind(self, x):
