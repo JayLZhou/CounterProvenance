@@ -115,6 +115,7 @@ def greedy_groups(
     cap: int,
     start_cap: int = 1 << 10,
     mask_ratio: float = float("inf"),
+    single_size: dict | None = None,
 ) -> tuple[list[Group], list[TreeProfile]]:
     """Return ``(groups, deep)``: table groups whose total size is at most
     ``budget`` (when the nested start fits), and the trees whose own table
@@ -124,7 +125,8 @@ def greedy_groups(
     shallow = [p for p, flag in zip(profiles, is_deep) if not flag]
     start = nested_groups(shallow, min(start_cap, cap))
     alive = dict(enumerate(start))
-    sizes = {k: g.cells for k, g in alive.items()}
+    # a group of one tree is stored in two levels (twolevel.py): its size is the entries of that table
+    sizes = {k: (single_size[g.trees[0]] if single_size is not None and len(g.trees) == 1 else g.cells) for k, g in alive.items()}
     total = sum(sizes.values())
     heap: list[tuple[int, int, int]] = []
     keys = list(alive)

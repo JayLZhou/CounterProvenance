@@ -37,6 +37,7 @@ class MechanismIndex:
 
     def __init__(self, scm, unit0, nodes, budget, threads, one_pairs=5e10, one_max=50_000_000, cache=None):
         self.scm, self.indexes, self.info = scm, {}, {}
+        self.tl, self.fullread = {}, {}
         cache = Path(cache) if cache else None
         if cache:
             cache.mkdir(parents=True, exist_ok=True)
@@ -62,6 +63,30 @@ class MechanismIndex:
                 with open(tmp, "wb") as f:
                     pickle.dump((index, self.info[x]), f, protocol=5)
                 tmp.replace(path)
+        # every read goes through the two-level tables of the groups of one tree (counterprovenance/twolevel.py)
+        from counterprovenance.twolevel import Hybrid, TwoLevel
+        for x in nodes:
+            index = self.indexes[x]
+            tpath = cache / (str(x).replace("/", "_").replace(" ", "_") + ".tl.pkl") if cache else None
+            if tpath is not None and tpath.exists():
+                with open(tpath, "rb") as f:
+                    tl = pickle.load(f)
+            else:
+                t0 = time.perf_counter()
+                tl = TwoLevel(index)
+                tl.seconds = time.perf_counter() - t0
+                if tpath is not None:
+                    tmp = tpath.with_suffix(".tmp")
+                    with open(tmp, "wb") as f:
+                        pickle.dump(tl, f, protocol=5)
+                    tmp.replace(tpath)
+            self.tl[x] = tl
+            self.fullread[x] = Hybrid(index, tl, range(len(scm.parents[x]))) if tl.ok else None
+            blocks = int(sum(l.cells.overlay.grid_cells for l in index._fast_leaves)) if getattr(index, "_fast_leaves", None) else 0
+            extra = dict(single_groups=len(tl.single), single_blocks=tl.single_blocks, single_map_bytes=tl.single_map_bytes, two_entries=tl.entries,
+                         two_bytes=sum(tl.bytes.values()), two_s=tl.seconds) if tl.ok else dict(single_groups=0, single_blocks=0, single_map_bytes=0, two_entries=0, two_bytes=0, two_s=tl.seconds)
+            self.info[x].update(extra, blocks=blocks, bytes_one_level=self.info[x]["bytes"])
+            self.info[x]["bytes"] = self.info[x]["bytes"] - extra["single_map_bytes"] + extra["two_bytes"]
 
     def query(self, unit, T, t, order, observed):
         """One query, as the per-unit index is measured: one read per mechanism on the path."""
@@ -69,15 +94,20 @@ class MechanismIndex:
         for name, v in zip(T, t):
             values[name] = float(v)
         for x in order:
-            y = self.indexes[x].query([values[p] for p in self.scm.parents[x]]).value
+            xv = [values[p] for p in self.scm.parents[x]]
+            y = self.fullread[x].full(xv) if self.fullread[x] is not None else self.indexes[x].query(xv).value
             values[x] = unit[x] + (y - observed[x])
         return values[order[-1]]
 
     def plan(self, T, order):
         """The partial reads of these intervened variables: a parent varies if it is intervened or a mediator."""
         vary = set(T) | set(order)
-        return [(x, list(self.scm.parents[x]), self.indexes[x].partial([i for i, p in enumerate(self.scm.parents[x]) if p in vary]))
-                for x in order]
+        from counterprovenance.twolevel import Hybrid
+        out = []
+        for x in order:
+            v = [i for i, p in enumerate(self.scm.parents[x]) if p in vary]
+            out.append((x, list(self.scm.parents[x]), Hybrid(self.indexes[x], self.tl[x], v) if self.tl[x].ok else self.indexes[x].partial(v)))
+        return out
 
     def bind(self, plan, unit, observed):
         """What stays the same for a unit: its noise, and the groups that no varying parent reaches."""
@@ -94,7 +124,8 @@ class MechanismIndex:
         return values[x]
 
     def observed(self, unit, order):
-        return {x: self.indexes[x].query([unit[p] for p in self.scm.parents[x]]).value for x in order}
+        return {x: (self.fullread[x].full([unit[p] for p in self.scm.parents[x]]) if self.fullread[x] is not None
+                    else self.indexes[x].query([unit[p] for p in self.scm.parents[x]]).value) for x in order}
 
 
 def main() -> None:

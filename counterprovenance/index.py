@@ -422,8 +422,12 @@ class ProvenanceIndex:
 
     def _greedy_groups(self) -> list[tuple[tuple[int, ...], list[int]]]:
         profiles = tree_profiles(self.bound, self.slabs)
+        single = None
+        if self.choice == "tables" and __import__("os").environ.get("CF_TWO_LEVEL", "1") != "0":
+            from .twolevel import single_sizes
+            single = single_sizes(self.slabs, profiles)
         table_groups, deep = greedy_groups(profiles, self.budget, self.grid_cap,
-                                             mask_ratio=self.mask_ratio)
+                                             mask_ratio=self.mask_ratio, single_size=single)
         # a cell graph must pay for its lookup: a group with fewer than min_group_trees trees costs
         # more to read than the leaf masks of its trees, so its trees use leaf masks instead
         by_tree = {p.tree: p for p in profiles}
