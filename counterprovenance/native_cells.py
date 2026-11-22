@@ -363,7 +363,7 @@ class LogCellIndex:
         self.item_trees = np.asarray(slots, dtype=np.int64)
         self.stats = CellStats(grid_cells=K, faces=faces, face_edges=n_edges, slots=len(dense),
                                tree_weight=weight.value, walk_cost=float(changes), sources=roots, pft_nodes=0,
-                               pft_entries=self.log.records, node_copies=0, path_nodes=0,
+                               pft_entries=0, node_copies=0, path_nodes=0,   # the log is counted in leaf_bytes (IndexStats)
                                locator_words=self.overlay.locator_words, seconds={"native": time.perf_counter() - t0})
 
     @property
