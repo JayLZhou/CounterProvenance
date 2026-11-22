@@ -44,6 +44,9 @@ def _load():
     lib.tw_cg_free.argtypes = [C.c_void_p]
     lib.tw_cell_log.restype = C.c_void_p
     lib.tw_cell_log.argtypes = [C.c_int, C.c_int64, _I64, _I64, _F64, _I64, C.c_double, C.c_int, C.c_int64, C.c_int64, _I64]
+    lib.tw_cell_log_seed.restype = C.c_void_p
+    lib.tw_cell_log_seed.argtypes = [C.c_int, C.c_int64, _I64, _I64, _F64, _I64, C.c_double, C.c_int, C.c_int64, C.c_int64,
+                                     C.c_uint64, _I64]
     lib.tw_cl_info.argtypes = [C.c_void_p, _I64]
     lib.tw_cl_take.argtypes = [C.c_void_p, _U32, _F64, _I64, _U8, _I32, _I32, _I32]
     lib.tw_lean_table.restype = C.c_void_p
@@ -306,7 +309,8 @@ class LogCellIndex:
     plan_kind = "tree"
 
     def __init__(self, items: Sequence[int], ranges, slots: Sequence[int], slab_counts: Sequence[int], values,
-                 offset: float = 0.0, threads: int = 1, max_cells: int = 1 << 40, spacing_factor: float = 1.0) -> None:
+                 offset: float = 0.0, threads: int = 1, max_cells: int = 1 << 40, spacing_factor: float = 1.0,
+                 seed: int = 0) -> None:
         t0 = time.perf_counter()
         lib = _load()
         self.items = list(items)
@@ -321,8 +325,10 @@ class LogCellIndex:
         self.offset = float(offset)
         status = C.c_int64(0)
         spacing = max(1, int(round(spacing_factor * len(dense))))
-        h = lib.tw_cell_log(d, n, rr.ctypes.data_as(_I64), slot_of.ctypes.data_as(_I64), vals.ctypes.data_as(_F64),
-                            counts.ctypes.data_as(_I64), self.offset, threads, int(max_cells), spacing, C.byref(status))
+        args = (d, n, rr.ctypes.data_as(_I64), slot_of.ctypes.data_as(_I64), vals.ctypes.data_as(_F64),
+                counts.ctypes.data_as(_I64), self.offset, threads, int(max_cells), spacing)
+        # seed > 0: along a random spanning tree instead of the minimum one (ablation)
+        h = lib.tw_cell_log_seed(*args, int(seed), C.byref(status)) if seed else lib.tw_cell_log(*args, C.byref(status))
         try:
             if status.value != 0:
                 raise MemoryError(f"cell graph: status {status.value}")
@@ -330,9 +336,9 @@ class LogCellIndex:
             weight = C.c_double(0.0)
             lib.tw_cg_info(h, info, C.byref(weight))
             K, faces, n_edges, labels, labelled, roots, _, width = list(info)
-            li = (C.c_int64 * 5)()
+            li = (C.c_int64 * 6)()
             lib.tw_cl_info(h, li)
-            changes, snap_len, n_slots, spacing, direct = list(li)
+            changes, snap_len, n_slots, spacing, direct, self.edge_changes = list(li)
             cuts = []
             for k in range(d):
                 c = np.empty(lib.tw_cg_ncuts(h, k), dtype=np.int64)

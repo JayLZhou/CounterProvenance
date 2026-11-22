@@ -46,9 +46,12 @@ def main() -> None:
         t0 = time.perf_counter()
         if args.grouping == "tables":
             index = ProvenanceIndex(bound, grouping="tables", budget=int(2e7), build_threads=args.threads)
+            two = index._two_level() if index.compiled else False   # the two-level grids of the groups of one tree: part of the build
         else:  # one group over all inputs: the index without grouping
             index = ProvenanceIndex(bound, grouping="none", native_cells=True, max_leaf_cells=10**15, build_threads=args.threads)
         build_s = time.perf_counter() - t0
+        if args.grouping != "tables":
+            two = False
         gc.collect()
         real = rss() - before
         # for the ablation: the cells, the leaves a table of all leaves per cell would store (each cell holds one leaf
@@ -60,7 +63,12 @@ def main() -> None:
         got.append(dict(dataset=args.dataset, family=args.family, node=node, groups=len(index.groups), grid=index.stats.grid_cells, formula=index.stats.packed_bytes, real=real, total=rss(),
                         peak=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024, build_s=build_s, threads=args.threads,
                         trees=len(bound.ensemble.trees), faces=faces, all_leaves=all_leaves, grid_all=grid_all,
-                        pft_nodes=index.stats.pft_nodes, map_bytes=index.stats.map_bytes, table_cells=index.stats.table_cells))
+                        pft_nodes=index.stats.pft_nodes, map_bytes=index.stats.map_bytes, table_cells=index.stats.table_cells,
+                        leaf_bytes=index.stats.leaf_bytes,
+                        # the final size: the tables of blocks of the groups of one tree are replaced by their two-level grids
+                        single_groups=len(two.tl.single) if two else 0, single_map_bytes=two.tl.single_map_bytes if two else 0,
+                        two_bytes=sum(two.tl.bytes.values()) if two else 0,
+                        final=index.stats.packed_bytes - (two.tl.single_map_bytes - sum(two.tl.bytes.values()) if two else 0)))
         kept.append(index)  # every index of the model stays loaded, as when the model serves queries
         pd.DataFrame(got).to_csv(out / f"{args.dataset}_{args.family}.csv", index=False)
     print("done", flush=True)

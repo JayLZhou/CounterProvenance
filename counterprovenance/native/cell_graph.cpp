@@ -80,7 +80,7 @@ struct Graph {
     std::vector<int32_t> left, right;
     std::vector<double> node_sum;   // of the leaf values under a node of the persistent tree
     // layout 1: the leaves as a log of changes along a depth-first walk of the minimum spanning tree
-    int64_t n_slots = 0, spacing = 0, direct = 0;
+    int64_t n_slots = 0, spacing = 0, direct = 0, edge_changes = 0;   // edge_changes: the changes of all edges of the cell graph
     std::vector<int64_t> face_pos;            // the length of the log at a cell (direct: its row)
     std::vector<int32_t> tape_slot, tape_item; // the changes: slot and its new item (-1: none)
     std::vector<int32_t> snap;                // checkpoint k: all slots after k * spacing changes (direct: one row per cell)
@@ -229,7 +229,7 @@ extern "C" {
 // layout 0: the persistent tree; layout 1: the log with a checkpoint every ``spacing`` changes
 static void* cell_graph_impl(int d, int64_t n, const int64_t* ranges, const int64_t* slots, const double* values,
                              const int64_t* slab_counts, double offset, int threads, int64_t max_cells, int64_t* status,
-                             int layout, int64_t spacing) {
+                             int layout, int64_t spacing, uint64_t seed = 0) {
     auto* gp = new Graph();
     Graph& g = *gp;
     g.d = d;
@@ -432,7 +432,13 @@ static void* cell_graph_impl(int d, int64_t n, const int64_t* ranges, const int6
                 cost += static_cast<int>(cur.size());
             }
             weight[e] = layout == 1 ? static_cast<int>(eptr[e + 1] - eptr[e]) : cost;   // the log stores the changes themselves
+            if (layout == 1 && seed) {   // a random spanning tree (ablation): a random weight per edge
+                uint64_t z = seed + 0x9E3779B97F4A7C15ull * static_cast<uint64_t>(e + 1);
+                z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ull; z = (z ^ (z >> 27)) * 0x94D049BB133111EBull; z ^= z >> 31;
+                weight[e] = static_cast<int>(z & 0x3FFFFFFF);
+            }
         }
+        g.edge_changes = static_cast<int64_t>(changes.size());
     }
 
     // 4. minimum spanning forest: Kruskal, by weight and then edge index
@@ -656,11 +662,18 @@ void* tw_cell_log(int d, int64_t n, const int64_t* ranges, const int64_t* slots,
     return cell_graph_impl(d, n, ranges, slots, values, slab_counts, offset, threads, max_cells, status, 1, spacing);
 }
 
+// the same along a random spanning tree (seed > 0), for the ablation
+void* tw_cell_log_seed(int d, int64_t n, const int64_t* ranges, const int64_t* slots, const double* values,
+                       const int64_t* slab_counts, double offset, int threads, int64_t max_cells, int64_t spacing,
+                       uint64_t seed, int64_t* status) {
+    return cell_graph_impl(d, n, ranges, slots, values, slab_counts, offset, threads, max_cells, status, 1, spacing, seed);
+}
+
 // out: changes of the log, entries of the checkpoints (or rows), slots, spacing, direct
 void tw_cl_info(void* h, int64_t* out) {
     auto* g = static_cast<Graph*>(h);
     out[0] = static_cast<int64_t>(g->tape_slot.size()); out[1] = static_cast<int64_t>(g->snap.size());
-    out[2] = g->n_slots; out[3] = g->spacing; out[4] = g->direct;
+    out[2] = g->n_slots; out[3] = g->spacing; out[4] = g->direct; out[5] = g->edge_changes;
 }
 void tw_cl_take(void* h, uint32_t* face_of_cell, double* face_value, int64_t* face_pos, uint8_t* face_empty,
                 int32_t* tape_slot, int32_t* tape_item, int32_t* snap) {
