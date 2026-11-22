@@ -176,7 +176,6 @@ class LogLeafReader:
         if self.tl is not None:   # the tree of every leaf of the two-level grids
             pos = {id(r): i for i, r in enumerate(index.roots) if r is not None}
             self.single_tree = np.array([boxes[index.groups[pos[id(index._fast_leaves[g])]][1][0]].tree for g in self.tl.single], dtype=np.int64)
-            self.view = self.tl.view(np.arange(len(self.tl.single)), range(self.tl.d))
         const = [i for leaf in index._const_leaves for i in leaf.cells.items]
         self.const_trees = np.array([boxes[i].tree for i in const], dtype=np.int64)
         self.const_values = np.array([boxes[i].value for i in const], dtype=np.float64)
@@ -192,13 +191,16 @@ class LogLeafReader:
             versions = np.array([self.ver[k][self.foc[k][c[k]]] for k in range(len(c))], dtype=np.int64)
             _replay(self.local, versions, self.SLOT, self.ITEM, self.SNAP, self.so, self.no, self.G, self.SP, self.D, self.TR, self.V, self.vo, out)
         if self.tl is not None:
-            tl, v = self.tl, self.view
+            tl = self.tl
             rows = [tl.rowbase[a] + bisect_left(tl.th[a], x[a]) for a in range(tl.d)]
-            t = v["TR"].take(rows, axis=0)
-            c1 = tl.base1 + tl.C1.take(v["c1off"] + t).sum(axis=0)
-            sub = v["subfirst"] + tl.E1.take(c1)
-            c2 = tl.base2.take(sub) + tl.R2.take(v["r2off"].take(sub, axis=1) + t).sum(axis=0)
-            out[self.single_tree] = tl.VAL.take(v["leafbase"] + tl.L2.take(c2))
+            c1 = tl.base1.copy()
+            for r in rows:
+                c1 += tl.W1[r]
+            sub = tl.subfirst + tl.E1.take(c1)
+            c2 = tl.base2.take(sub)
+            for r in rows:
+                c2 += tl.W2[r].take(sub)
+            out[self.single_tree] = tl.VAL.take(tl.leafbase + tl.L2.take(c2))
         return out
 
 
