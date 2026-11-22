@@ -124,7 +124,7 @@ class NativeCells(unittest.TestCase):
         # one group that does not fit (as a persistent tree over 2^31 nodes would) falls back to the greedy groups
         from counterprovenance import index as index_module
         rng = np.random.default_rng(5)
-        real = index_module.NativeCellIndex
+        real = index_module.LogCellIndex   # the default layout of the leaves
         n_trees = {}
 
         class Failing(real):
@@ -138,11 +138,11 @@ class NativeCells(unittest.TestCase):
             a = ProvenanceIndex(bound, grouping="none", max_leaf_cells=10**8)
             n_trees.clear()
             n_trees["all"] = len({box.tree for box in bound.boxes})
-            index_module.NativeCellIndex = Failing
+            index_module.LogCellIndex = Failing
             try:
                 b = ProvenanceIndex(bound, grouping="tables", budget=20000, one_cells=10**9)
             finally:
-                index_module.NativeCellIndex = real
+                index_module.LogCellIndex = real
             if n_trees["all"] > 1:
                 self.assertTrue(b.one_fallback)
                 self.assertEqual(b.choice, "tables")

@@ -289,6 +289,14 @@ class _Log:
     def active(self, version: int) -> list[int]:
         return self.items(version).tolist()
 
+    def to_arena(self, version: int, arena, atom_of: Callable[[int], Hashable]):
+        return arena.add_all([arena.atom(atom_of(int(i))) for i in self.items(version)])
+
+    def prefix(self, version: int, p: int) -> float:
+        """Sum of the leaf values of the slots below ``p``, O(slots + spacing)."""
+        st = self.state(version)[:max(0, p)]
+        return float(self.values[st[st >= 0]].sum())
+
 
 class LogCellIndex:
     """The cell graph of ``NativeCellIndex`` with the leaves in a log along the minimum spanning tree (``_Log``) instead
@@ -344,6 +352,7 @@ class LogCellIndex:
         self.overlay = _Overlay(cuts, slab_counts, face_of_cell, faces)
         self.face_version = _small(pos, int(pos.max()) if faces else 0)
         self.log = _Log(slot, item, snap, n_slots, spacing, bool(direct), n, vals)
+        self.pft = self.log      # the same reads as the persistent tree: active, items, to_arena
         self.slot_trees = sorted(dense)   # the tree of every slot, ascending
         self.item_trees = np.asarray(slots, dtype=np.int64)
         self.stats = CellStats(grid_cells=K, faces=faces, face_edges=n_edges, slots=len(dense),
@@ -358,6 +367,9 @@ class LogCellIndex:
 
     def face_of(self, slab: Sequence[int]) -> int:
         return self.overlay.face_of(slab)
+
+    def piece(self, slab: Sequence[int]) -> Piece:
+        return Piece(self, self.face_of(slab))
 
 
 class LeanCellIndex:

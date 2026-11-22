@@ -62,7 +62,7 @@ from .baselines import make_cast
 from .cellindex import CellIndex, Piece
 from .ensemble import BoundEnsemble, Slabs
 from .grouping import greedy_groups, tree_profiles
-from .native_cells import LeanCellIndex, NativeCellIndex
+from .native_cells import LeanCellIndex, LogCellIndex, NativeCellIndex
 from .semiring import CircuitArena, NodeId
 
 _FIELD = 0xFFFFFFFF
@@ -226,6 +226,7 @@ class IndexStats:
     table_cells: int = 0     # dense value tables of the compiled query
     map_bytes: int = 0       # the maps from grid cells to cells, with the shortest cell numbers
     pack_words: int = 0      # 32-bit fields of the per-slab packed contributions
+    leaf_bytes: int = 0      # the logs of the leaves with their checkpoints (LogCellIndex)
 
     @property
     def records(self) -> int:
@@ -260,6 +261,7 @@ class IndexStats:
             + self.map_bytes
             + 4 * self.pack_words
             + 8 * self.bitmask_words
+            + self.leaf_bytes
         )
 
 
@@ -844,7 +846,9 @@ class ProvenanceIndex:
     def _leaf(self, items, axes, depth):
         boxes = self.bound.boxes
         if (self.native_cells or self.lean_cells) and axes:
-            cls = LeanCellIndex if self.lean_cells else NativeCellIndex
+            # the leaves as a log along the MST (LogCellIndex) unless CF_LEAF_LOG=0 (the persistent tree)
+            log = __import__("os").environ.get("CF_LEAF_LOG", "1") != "0"
+            cls = LeanCellIndex if self.lean_cells else LogCellIndex if log else NativeCellIndex
             cells = cls(
                 items=items,
                 ranges=[[self.slabs.ranges[i][a] for a in axes] for i in items],
@@ -926,6 +930,7 @@ class ProvenanceIndex:
             table_cells=self._table_cells,
             map_bytes=self._map_bytes,
             pack_words=self._pack_words,
+            leaf_bytes=sum(c.log.nbytes for c in cells if isinstance(c, LogCellIndex)),
         )
 
     @property

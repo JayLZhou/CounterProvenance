@@ -20,7 +20,7 @@ from typing import Sequence
 import numpy as np
 
 from .index import ProvenanceIndex
-from .native_cells import NativeCellIndex
+from .native_cells import LogCellIndex, NativeCellIndex
 
 
 class WeightedIndex:
@@ -34,7 +34,7 @@ class WeightedIndex:
         self.groups = []
         for leaf in index._fast_leaves:
             cells = leaf.cells
-            if not isinstance(cells, NativeCellIndex):
+            if not isinstance(cells, (NativeCellIndex, LogCellIndex)):
                 raise ValueError("build the index with native_cells=True")
             self.groups.append((cells, cells.overlay.face_of_cell, cells.face_version.tolist(), cells.slot_trees,
                                 cells.item_trees, cells.values))

@@ -57,16 +57,18 @@ def _boxes(slabs, items):
 
 def plan(lo, hi, counts):
     """The top levels (0..MAX_TOP) with the fewest stored numbers: ``(entries, coarse cuts per axis, regions)``; a region is
-    ``(lo, hi, box numbers, L, U)``.  The numbers are the entries of the tables plus one per subtree and interval."""
-    d, S = lo.shape[1], int(sum(counts))
+    ``(lo, hi, box numbers, L, U)``.  The numbers are the entries of the grids plus one per interval of the tree for the
+    coarse grid and for each subtree."""
+    d = lo.shape[1]
     full_L, full_U = np.zeros(d, dtype=np.int64), np.array(counts, dtype=np.int64)
+    S = sum(len(c) + 1 for c in _cuts_in(lo, hi, full_L, full_U))   # the intervals of the tree
     regions = [(lo, hi, np.arange(len(lo)), full_L, full_U)]
     cuts = [set() for _ in range(d)]
     best = None
     for _ in range(MAX_TOP + 1):
         coarse = int(np.prod([len(c) + 1 for c in cuts]))
         sub = sum(int(np.prod([len(c) + 1 for c in _cuts_in(r[0], r[1], r[3], r[4])])) for r in regions)
-        cost = coarse + sub + 2 * S * len(regions)
+        cost = coarse + sub + S * (1 + len(regions))
         if best is None or cost < best[0]:
             best = (cost, coarse + sub, [sorted(c) for c in cuts], list(regions))
         nxt, grew = [], False
@@ -99,8 +101,13 @@ def single_sizes(slabs, profiles) -> dict:
 
 
 class TwoLevel:
-    """The two-level tables of all groups of one tree of a compiled index (``ok`` is False if it has none, or if the index
-    is not read by vectors)."""
+    """The two-level grids of all groups of one tree of a compiled index (``ok`` is False if it has none, or if the index
+    is not read by vectors).
+
+    Per tree ``j``: ``TR`` (one column of length S, the intervals of the ensemble) gives the interval of the tree on each
+    axis, as the rank rows of the other groups do; ``C1`` gives, per interval of the tree, its offset in the coarse grid;
+    and each subtree has its own row ``R2`` per interval of the tree with its offset in the grid of the subtree.  Hence a
+    tree stores one number per interval of the ensemble, and its grids one number per interval of the tree."""
 
     def __init__(self, index):
         self.ok = False
@@ -120,20 +127,34 @@ class TwoLevel:
         if not len(self.single):
             return
         slab_ids = [np.arange(c) for c in counts]
-        E_parts, L_parts, W1c, W2c, base1, base2, subfirst, leafbase, VAL = [], [], [], [], [], [], [], [], []
-        e_at = l_at = nsub = nleaf = 0
-        for g in self.single:
+        zero, full = np.zeros(d, dtype=np.int64), np.array(counts, dtype=np.int64)
+        E_parts, L_parts, C1_parts, R2_parts, TRc = [], [], [], [], []
+        base1, base2, subfirst, leafbase, VAL, c1off, r2off, sub_tree = [], [], [], [], [], [], [], []
+        e_at = l_at = c1_at = r2_at = nsub = nleaf = 0
+        max_t = 0
+        for j, g in enumerate(self.single):
             it = items[g]
             lo, hi = _boxes(slabs, it)
             val = np.array([bound.boxes[i].value for i in it], dtype=np.float64)
             _, ccuts, regions = plan(lo, hi, counts)
+            tcuts = _cuts_in(lo, hi, zero, full)                       # the thresholds of the tree, in slabs
+            rep_slab = [np.concatenate(([0], c)).astype(np.int64) for c in tcuts]   # the first slab of each interval
+            tr = np.zeros(S, dtype=np.int64)
+            for a in range(d):
+                tr[rowbase[a]:rowbase[a] + counts[a]] = np.searchsorted(tcuts[a], slab_ids[a], side="right")
+                max_t = max(max_t, len(tcuts[a]))
+            TRc.append(tr)
             dims1 = [len(c) + 1 for c in ccuts]
             E = np.zeros(dims1, dtype=np.int64)
-            col1 = np.zeros(S, dtype=np.int64)
-            stride = 1
+            stride, offs = 1, [0] * d
+            rows1 = [None] * d
             for a in reversed(range(d)):
-                col1[rowbase[a]:rowbase[a] + counts[a]] = np.searchsorted(np.asarray(ccuts[a], dtype=np.int64), slab_ids[a], side="right") * stride
+                rows1[a] = np.searchsorted(np.asarray(ccuts[a], dtype=np.int64), rep_slab[a], side="right") * stride
                 stride *= dims1[a]
+            for a in range(d):
+                offs[a] = c1_at
+                C1_parts.append(rows1[a]); c1_at += len(rows1[a])
+            c1off.append(offs)
             subfirst.append(nsub)
             for local, (rlo, rhi, ri, rL, rU) in enumerate(regions):
                 sl = tuple(slice(int(np.searchsorted(ccuts[a], rL[a], side="right")), int(np.searchsorted(ccuts[a], rU[a] - 1, side="right")) + 1) for a in range(d))
@@ -145,32 +166,61 @@ class TwoLevel:
                     bs = tuple(slice(int(np.searchsorted(rc[a], max(rlo[b, a], rL[a]), side="right")),
                                      int(np.searchsorted(rc[a], min(rhi[b, a], rU[a]) - 1, side="right")) + 1) for a in range(d))
                     G[bs] = ri[b]
-                col2 = np.zeros(S, dtype=np.int64)
-                stride = 1
+                stride, roffs = 1, [0] * d
+                rows2 = [None] * d
                 for a in reversed(range(d)):
-                    col2[rowbase[a]:rowbase[a] + counts[a]] = np.searchsorted(rc[a], slab_ids[a], side="right") * stride
+                    rows2[a] = np.searchsorted(rc[a], rep_slab[a], side="right") * stride
                     stride *= dims2[a]
-                W2c.append(col2); base2.append(l_at); L_parts.append(G.ravel()); l_at += G.size; nsub += 1
-            W1c.append(col1); base1.append(e_at); E_parts.append(E.ravel()); e_at += E.size
+                for a in range(d):
+                    roffs[a] = r2_at
+                    R2_parts.append(rows2[a]); r2_at += len(rows2[a])
+                r2off.append(roffs); sub_tree.append(j)
+                base2.append(l_at); L_parts.append(G.ravel()); l_at += G.size; nsub += 1
+            base1.append(e_at); E_parts.append(E.ravel()); e_at += E.size
             leafbase.append(nleaf); VAL.append(val); nleaf += len(it)
         self.d, self.S, self.rowbase, self.nsub = d, S, rowbase, nsub
         self.th = [list(map(float, t)) for t in slabs.thresholds]
         self.E1 = np.concatenate(E_parts); self.L2 = np.concatenate(L_parts); self.VAL = np.concatenate(VAL)
-        self.W1 = np.ascontiguousarray(np.stack(W1c, axis=1)); self.W2 = np.ascontiguousarray(np.stack(W2c, axis=1))
+        self.C1 = np.concatenate(C1_parts); self.R2 = np.concatenate(R2_parts)
+        self.TR = np.ascontiguousarray(np.stack(TRc, axis=1))           # S x trees
+        self.c1off = np.array(c1off, dtype=np.int64)                     # trees x d
+        self.r2off = np.array(r2off, dtype=np.int64)                     # subtrees x d
+        self.sub_tree = np.array(sub_tree, dtype=np.int64)
+        self.r2ax = [np.ascontiguousarray(self.r2off[:, a]) for a in range(d)]   # per axis, indexed by subtree
         self.base1, self.base2, self.subfirst, self.leafbase = (np.array(v, dtype=np.int64) for v in (base1, base2, subfirst, leafbase))
-        width = lambda a: 1 if int(a.max()) < 256 else 2 if int(a.max()) < 65536 else 4
-        # the bytes of a compact layout (1-byte subtree and leaf numbers where they fit); the arrays above use 8-byte numbers for numpy
-        self.bytes = dict(coarse=int(self.E1.size * width(self.E1)), leaf_numbers=int(self.L2.size * width(self.L2)), rank1=int(self.W1.size * width(self.W1)),
-                          rank2=int(self.W2.size * width(self.W2)), offsets=int(8 * (3 * len(self.single) + nsub)))
+        width = lambda a: 1 if int(a.max(initial=0)) < 256 else 2 if int(a.max(initial=0)) < 65536 else 4
+        # the bytes of a compact layout (the shortest numbers that fit); the arrays above use 8-byte numbers for numpy
+        self.bytes = dict(coarse=int(self.E1.size * width(self.E1)), leaf_numbers=int(self.L2.size * width(self.L2)),
+                          tree_intervals=int(self.TR.size * width(self.TR)), coarse_rows=int(self.C1.size * width(self.C1)),
+                          subtree_rows=int(self.R2.size * width(self.R2)), offsets=int(8 * (3 * len(self.single) + nsub)))
         self.entries = int(self.E1.size + self.L2.size)
         self.single_blocks = int(sum(fl[g].cells.overlay.grid_cells for g in self.single))
         self.single_map_bytes = int(sum(fl[g].cells.overlay.grid_cells * np.dtype(fl[g].cells.overlay.face_of_cell.dtype).itemsize for g in self.single))
         self.ok = True
 
+    def view(self, js, axes):
+        """The arrays of the trees ``js`` for a read of the axes ``axes`` (:meth:`locate`): every axis in one matrix, so that
+        a read takes the same number of array operations whatever the number of axes."""
+        axes = list(axes)
+        return dict(TR=np.ascontiguousarray(self.TR[:, js]), axes=axes,
+                    c1off=np.ascontiguousarray(self.c1off[js][:, axes].T),          # axes x trees
+                    r2off=np.ascontiguousarray(self.r2off[:, axes].T),               # axes x subtrees
+                    subfirst=np.ascontiguousarray(self.subfirst[js]), leafbase=np.ascontiguousarray(self.leafbase[js]))
+
+    def locate(self, rows, v, c1, F2):
+        """The sum of the leaves of the trees of the view ``v``, given the rows ``rows`` (in TR, one per axis of the view)
+        of the axes still to add, the coarse offsets ``c1`` of the axes already added, and ``F2`` per subtree (``base2``
+        plus the axes already added)."""
+        t = v["TR"].take(rows, axis=0)                                   # axes x trees: the interval of each tree
+        c1 = c1 + self.C1.take(v["c1off"] + t).sum(axis=0)
+        sub = v["subfirst"] + self.E1.take(c1)
+        c2 = F2.take(sub) + self.R2.take(v["r2off"].take(sub, axis=1) + t).sum(axis=0)
+        return float(self.VAL.take(v["leafbase"] + self.L2.take(c2)).sum())
+
 
 class Hybrid:
     """A read of an index in which only the axes in ``varying`` change between the queries of a unit (as ``PartialRead``):
-    groups of several trees by their tables of blocks, groups of one tree by their two-level tables."""
+    groups of several trees by their tables of blocks, groups of one tree by their two-level grids."""
 
     def __init__(self, index, tl: TwoLevel, varying):
         self.index, self.tl, self.cast = index, tl, index._cast
@@ -188,23 +238,15 @@ class Hybrid:
         self.base_mt = index._nbase[mt]
         self.rows_fixed = [(a, t, rows) for a, t, rows in index._nwide if a not in vary]
         self.rows_vary = [(a, t, np.ascontiguousarray(rows[:, mt])) for a, t, rows in index._nwide if a in vary]
-        ts = np.array([j for j in range(len(tl.single)) if int(tl.single[j]) in touched], dtype=np.int64)
-        us = np.array([j for j in range(len(tl.single)) if int(tl.single[j]) not in touched], dtype=np.int64)
-        self.ts, self.us = ts, us
-        self.W1t = np.ascontiguousarray(tl.W1[:, ts]); self.W1u = np.ascontiguousarray(tl.W1[:, us])
-        self.b1t, self.sft, self.lbt = tl.base1[ts], tl.subfirst[ts], tl.leafbase[ts]
-        self.b1u, self.sfu, self.lbu = tl.base1[us], tl.subfirst[us], tl.leafbase[us]
+        self.ts = np.array([j for j in range(len(tl.single)) if int(tl.single[j]) in touched], dtype=np.int64)
+        self.us = np.array([j for j in range(len(tl.single)) if int(tl.single[j]) not in touched], dtype=np.int64)
+        self.b1t, self.b1u = tl.base1[self.ts], tl.base1[self.us]
+        self.vt_all, self.vu_all = tl.view(self.ts, range(d)), tl.view(self.us, range(d))
+        self.vt = tl.view(self.ts, vary) if vary else None
 
-    def _two(self, rs, W1, b1, sf, lb, c2_base):
+    def _rows(self, cast, axes):
         tl = self.tl
-        c1 = b1.copy()
-        for r in rs:
-            c1 += W1[r]
-        sub = sf + tl.E1.take(c1)
-        c2 = c2_base.take(sub)
-        for r in rs:
-            c2 += tl.W2[r].take(sub)
-        return float(tl.VAL.take(lb + tl.L2.take(c2)).sum())
+        return [tl.rowbase[a] + bisect_left(tl.th[a], cast[a]) for a in axes]
 
     def full(self, x) -> float:
         """All groups; only valid when every axis varies."""
@@ -219,7 +261,7 @@ class Hybrid:
                 c += rows[bisect_left(t, cast[a])]
             v += float(index._read_cells(c, self.f_mt, *self.w_mt).sum())
         if len(self.ts):
-            v += self._two([tl.rowbase[a] + bisect_left(tl.th[a], cast[a]) for a in range(tl.d)], self.W1t, self.b1t, self.sft, self.lbt, tl.base2)
+            v += tl.locate(self._rows(cast, range(tl.d)), self.vt_all, self.b1t, tl.base2)
         return v
 
     def batch(self, x, th) -> np.ndarray:
@@ -234,14 +276,17 @@ class Hybrid:
                 c += rows[slab[a]].T
             v += index._read_cells(c, self.f_mt, *self.w_mt).sum(axis=0)
         if len(self.ts):
+            ts = self.ts
+            vt = self.vt_all
+            t = [vt["TR"][tl.rowbase[a] + slab[a]] for a in range(tl.d)]
             c1 = np.repeat(self.b1t[None, :], n, axis=0)
             for a in range(tl.d):
-                c1 += self.W1t[tl.rowbase[a] + slab[a]]
-            sub = self.sft[None, :] + tl.E1.take(c1)
+                c1 += tl.C1.take(vt["c1off"][a][None, :] + t[a])
+            sub = vt["subfirst"][None, :] + tl.E1.take(c1)
             c2 = tl.base2.take(sub)
             for a in range(tl.d):
-                c2 += tl.W2[(tl.rowbase[a] + slab[a])[:, None], sub]
-            v += tl.VAL.take(self.lbt[None, :] + tl.L2.take(c2)).sum(axis=1)
+                c2 += tl.R2.take(tl.r2ax[a].take(sub) + t[a])
+            v += tl.VAL.take(vt["leafbase"][None, :] + tl.L2.take(c2)).sum(axis=1)
         return v
 
     def bind(self, x):
@@ -254,12 +299,12 @@ class Hybrid:
         if len(self.mu):
             const += float(index._read_cells(c[self.mu], self.f_mu, *self.w_mu).sum())
         if len(self.us):
-            const += self._two([tl.rowbase[a] + bisect_left(tl.th[a], cast[a]) for a in range(tl.d)], self.W1u, self.b1u, self.sfu, self.lbu, tl.base2)
+            const += tl.locate(self._rows(cast, range(tl.d)), self.vu_all, self.b1u, tl.base2)
         c1f, F2 = self.b1t.copy(), tl.base2.copy()
-        for a in self.fixed:
-            r = tl.rowbase[a] + bisect_left(tl.th[a], cast[a])
-            c1f += self.W1t[r]
-            F2 += tl.W2[r]
+        TRt = self.vt_all["TR"]
+        for a, r in zip(self.fixed, self._rows(cast, self.fixed)):
+            c1f += tl.C1.take(self.vt_all["c1off"][a] + TRt[r])
+            F2 += tl.R2.take(tl.r2ax[a] + tl.TR[r].take(tl.sub_tree))
         return c[self.mt], const, c1f, F2
 
     def value(self, x, b) -> float:
@@ -271,5 +316,5 @@ class Hybrid:
                 c += rows[bisect_left(t, cast[a])]
             v = v + float(index._read_cells(c, self.f_mt, *self.w_mt).sum())
         if len(self.ts):
-            v = v + self._two([tl.rowbase[a] + bisect_left(tl.th[a], cast[a]) for a in self.vary], self.W1t, c1f, self.sft, self.lbt, F2)
+            v = v + tl.locate(self._rows(cast, self.vary), self.vt, c1f, F2)
         return v
