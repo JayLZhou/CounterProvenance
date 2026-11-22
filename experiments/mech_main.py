@@ -196,7 +196,7 @@ def main() -> None:
     ap.add_argument("--units", type=int, default=1000)
     ap.add_argument("--per-unit", type=int, default=10)
     ap.add_argument("--budget", type=float, default=2e7)
-    ap.add_argument("--one-pairs", type=float, default=5e10, help="an ensemble whose grid times its trees is at most this is one group")
+    ap.add_argument("--one-pairs", type=float, default=2e10, help="an ensemble whose grid times its trees is at most this is one group (about 30 bytes of build memory each)")
     ap.add_argument("--one-max", type=float, default=5e7, help="... and whose grid is at most this (the hyperparameter study raises it)")
     ap.add_argument("--hours", type=float, default=24.0)
     args = ap.parse_args()

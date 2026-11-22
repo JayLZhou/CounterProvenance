@@ -25,7 +25,7 @@ from counterprovenance.scm_baselines import ScmThreeStepPy
 from scm_bench import choose_treatments, zoo
 
 
-def index_dir(results, dataset, family, trees, budget, one_pairs=5e10, one_max=50_000_000):
+def index_dir(results, dataset, family, trees, budget, one_pairs=2e10, one_max=50_000_000):
     """Where the indexes of a table and a model are kept: one file per mechanism, for the build parameters."""
     return Path(results) / "indexes" / f"{dataset}_{family}_t{trees}_b{budget:g}_p{float(one_pairs):g}_m{int(one_max)}"
 
@@ -35,7 +35,7 @@ class MechanismIndex:
     ``<cache>/<node>.pkl`` when it is there, and otherwise built and written there, so that it is built once for all
     experiments (the index of a mechanism is over all its parents and depends on no unit)."""
 
-    def __init__(self, scm, unit0, nodes, budget, threads, one_pairs=5e10, one_max=50_000_000, cache=None):
+    def __init__(self, scm, unit0, nodes, budget, threads, one_pairs=2e10, one_max=50_000_000, cache=None):
         self.scm, self.indexes, self.info = scm, {}, {}
         self.tl, self.fullread = {}, {}
         cache = Path(cache) if cache else None

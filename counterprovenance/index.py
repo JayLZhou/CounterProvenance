@@ -295,7 +295,7 @@ class ProvenanceIndex:
         max_leaf_cells: int = 20_000_000,
         compile: bool = True,
         one_cells: int | None = None,
-        one_pairs: float = 5e10,
+        one_pairs: float = 2e10,
         one_max: int = 50_000_000,
         min_group_trees: int = 1,
         cost_lookup: float = 0.15,
