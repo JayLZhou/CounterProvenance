@@ -187,7 +187,8 @@ class LogLeafReader:
         out = np.empty(self.M)
         out[self.const_trees] = self.const_values
         if len(self.multi):
-            c = ix._cell_vector(x)[self.multi]
+            # the cell of every group: the rank rows of a vector index, otherwise the cells of the query
+            c = (ix._cell_vector(x) if ix._nbase is not None else np.asarray(ix.query(z).cells, dtype=np.int64))[self.multi]
             versions = np.array([self.ver[k][self.foc[k][c[k]]] for k in range(len(c))], dtype=np.int64)
             _replay(self.local, versions, self.SLOT, self.ITEM, self.SNAP, self.so, self.no, self.G, self.SP, self.D, self.TR, self.V, self.vo, out)
         if self.tl is not None:
