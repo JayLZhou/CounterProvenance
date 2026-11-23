@@ -113,7 +113,7 @@ def greedy_groups(
     profiles: list[TreeProfile],
     budget: int,
     cap: int,
-    start_cap: int = 1 << 10,
+    start_cap: int = int(__import__("os").environ.get("CF_START_CAP", 1 << 10)),   # the pre-merge study (appendix) sets it
     mask_ratio: float = float("inf"),
     single_size: dict | None = None,
 ) -> tuple[list[Group], list[TreeProfile]]:

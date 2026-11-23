@@ -13,6 +13,7 @@ import json
 import pickle
 import resource
 import time
+import os
 from pathlib import Path
 
 import numpy as np
@@ -27,7 +28,8 @@ from scm_bench import choose_treatments, zoo
 
 def index_dir(results, dataset, family, trees, budget, one_pairs=2e10, one_max=50_000_000):
     """Where the indexes of a table and a model are kept: one file per mechanism, for the build parameters."""
-    return Path(results) / "indexes" / f"{dataset}_{family}_t{trees}_b{budget:g}_p{float(one_pairs):g}_m{int(one_max)}"
+    cap = os.environ.get("CF_START_CAP")   # the pre-merge study: its own indexes
+    return Path(results) / "indexes" / (f"{dataset}_{family}_t{trees}_b{budget:g}_p{float(one_pairs):g}_m{int(one_max)}" + (f"_s{int(cap)}" if cap else ""))
 
 
 class MechanismIndex:
