@@ -13,5 +13,5 @@ with `memguard2.sh` as a second guard; paths refer to the experiment server.
 | `chain_final.sh`, `run_final2.sh`, `run_final3.sh` | Exp.6 (`final_structure.py`) and Exp.7; applications, one-thread build time and depth |
 | `beta2e8_run.sh`, `apps2_run.sh`, `paths_run.sh`, `nogroup_final.sh` | reruns: beta 2e8, the applications with mediators (`--sensitive` / `--actionable`), MINT mediators, indexes without grouping (Figure 19) |
 | `param_sched.py` | appendix: one-group limit and pre-merge cap |
-| `setup_final2.sh`, `depth_patch.py` | the depth experiment on the final index (from `depth_exp3`; ThreeStep times reused) |
-| `mk_paper_final.py`, `e4.py`, `e5.py`, `sum67.py`, `twin_json.py`, `size_final.py`, `parts_final2.py`, `cmp3.py`, `ab3.sh` | summaries: Exp.1-5 numbers, Exp.6/7, figure data, sizes (the log counted once: 12 bytes per record subtracted from runs before commit 4e48a75), size by part, comparisons with the earlier indexes |
+| `setup_final2.sh`, `depth_patch.py`, `depth_final.py`, `depth_driver.py` | the depth experiment on the final index (from `depth_exp3`; ThreeStep times reused) |
+| `paper_final.py` (made by `mk_paper_final.py`), `e4.py`, `e5.py`, `sum67.py`, `twin_json.py`, `size_final.py`, `parts_final2.py`, `cmp3.py`, `ab3.sh` | summaries: Exp.1-5 numbers, Exp.6/7, figure data, sizes (the log counted once: 12 bytes per record subtracted from runs before commit 4e48a75), size by part, comparisons with the earlier indexes |
