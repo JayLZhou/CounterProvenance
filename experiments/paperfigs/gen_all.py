@@ -148,7 +148,7 @@ body.append(r"\legend{" + ",".join(n for _, _, n in M4) + "}")
 for r in tr:
     body.append(r"\node[slab, anchor=south] at (axis cs:%g,%.4g) {%.0f$\times$};" % (r["m"], r["twin"] * 1.6, r["three_step"] / r["twin"]))
 body.append(r"\nextgroupplot[xmin=0.6, xmax=6.4, xtick={1,...,6}, xticklabels={" + ",".join(f"{h}\\\\[-1pt]{{\\scriptsize ({dp[h]['real']:.0f})}}" for h in H) +
-            r"}, xticklabel style={align=center}, xlabel={maximum depth $h$ (35 ensembles)}]")
+            r"}, xticklabel style={align=center}, xlabel={maximum depth $h$ (38 ensembles)}]")
 body.append(r"\addplot[color=cthree, mark=square*, mark options={mk=cthree}] coordinates {%s};" % coords(range(1, 7), [dp[h]["three"] for h in H]))
 body.append(r"\addplot[color=ctwin, mark=*, mark options={mk=ctwin}] coordinates {%s};" % coords(range(1, 7), [dp[h]["twin"] for h in H]))
 for i, h in enumerate(H, 1):
@@ -187,7 +187,7 @@ for i, (k, _) in enumerate(ORDER, 1):  # a dumbbell per table: what CellTable st
     body.append(r"\addplot[only marks, forget plot, mark=square*, mark size=2.2pt, mark options={mk=cown}] coordinates {(%d,%.4g)};" % (i, rc[k]["table"]))
     body.append(r"\addplot[only marks, forget plot, mark=*, mark size=2.3pt, mark options={mkours}] coordinates {(%d,%.4g)};" % (i, rc[k]["mst"]))
     body.append(r"\node[slab, anchor=south, yshift=2pt] at (axis cs:%d,%.4g) {%.0f$\times$};" % (i, rc[k]["table"], rc[k]["ratio"]))
-body.append(r"\nextgroupplot[natline, width=0.33\textwidth, xmode=log, xmin=70, xmax=4500, xtick={100,300,1000,3000}, xticklabels={100,300,{1,000},{3,000}}, ymin=1e7, ymax=1e11, ytick={1e7,1e9,1e11}, yticklabels={$10^7$,$10^9$,$10^{11}$}, xlabel={trees per ensemble $M$ (73 models)}]")
+body.append(r"\nextgroupplot[natline, width=0.33\textwidth, xmode=log, xmin=70, xmax=4500, xtick={100,300,1000,3000}, xticklabels={100,300,{1,000},{3,000}}, ymin=1e7, ymax=1e11, ytick={1e7,1e9,1e11}, yticklabels={$10^7$,$10^9$,$10^{11}$}, xlabel={trees per ensemble $M$ (75 models)}]")
 body.append(r"\addplot[color=cown, mark=square*, mark options={mk=cown}] coordinates {%s};" % coords([int(m) for m in MM], [rt[m]["table"] for m in MM]))
 body.append(r"\addplot[color=ctwin, mark=*, mark options={mk=ctwin}] coordinates {%s};" % coords([int(m) for m in MM], [rt[m]["mst"] for m in MM]))
 for m in MM:
@@ -228,7 +228,7 @@ write("exp_app_cfe", figure("figure", body, r"Counterfactual explanations: the t
       "Exp.7, results/shard (repo_lean for CellForest and the native/GeCo backends on German and MCCE native; repo_dev2 for the rest).")
 
 # ---------------------------------------------------------------- Exp.8: feature relevance
-REL = [("Adult\\\\HGB", 1259.5, 196341.4, 6.05 * 86400, False), ("Adult\\\\RF", 1505.7, 371691.7, 63.4 * 86400, False), ("German\\\\HGB", 1.5, 1242.5, 1932.0, True), ("Credit\\\\HGB", 1735.8, 263618.9, 6.0 * 86400, False)]
+REL = [("Adult\\\\HGB", 1277.8, 196341.4, 6.05 * 86400, False), ("Adult\\\\RF", 1581.3, 371691.7, 63.4 * 86400, False), ("German\\\\HGB", 1.5, 1242.5, 1932.0, True), ("Credit\\\\HGB", 1819.1, 263618.9, 6.0 * 86400, False)]
 LIM = 5 * 86400
 RM = [("three_step", 3, "cthree", "square*", "ThreeStep"), ("dowhy", 2, "cdowhy", "triangle*", "DoWhy"), ("twin", 1, "ctwin", "*", "CellForest")]
 body = [r"\begin{axis}[nat, width=\columnwidth, height=4.4cm, ymode=log, ymin=0.5, ymax=3e6, xmin=0.5, xmax=4.5,",
@@ -316,10 +316,10 @@ write("exp_app_mint", figure("figure", body, r"MINT on whole tables: the time of
 print("done")
 
 # ---------------------------------------------------------------- appendix: MINT, time per query against the ensembles replayed
-MP = {"HGB": {"adult": {"three_step": [(1, 56.108), (3, 138.174), (4, 205.566)], "dowhy": [(1, 519.565), (3, 552.398), (4, 561.927)], "twin": [(1, 6.796), (3, 11.012), (4, 14.138)]},
-              "german": {"three_step": [(2, 284.830), (3, 470.726)], "dowhy": [(2, 601.243), (3, 620.731)], "twin": [(2, 8.322), (3, 11.187)]}, "add": 2.4},
-      "RF": {"adult": {"three_step": [(1, 2629.073), (3, 5205.967), (4, 5114.092)], "dowhy": [(1, 6055.830), (3, 4965.631), (4, 6339.019)], "twin": [(1, 8.303), (3, 13.045), (4, 16.010)]},
-             "german": {"three_step": [(2, 1025.069), (3, 1378.997)], "dowhy": [(2, 2588.235), (3, 2609.057)], "twin": [(2, 30.765), (3, 33.084)]}, "add": 2.6}}
+MP = {"HGB": {"adult": {"three_step": [(1, 55.369), (3, 133.827), (4, 203.414)], "dowhy": [(1, 485.338), (3, 521.497), (4, 547.150)], "twin": [(1, 6.620), (3, 10.793), (4, 13.630)]},
+              "german": {"three_step": [(2, 263.057), (3, 443.802)], "dowhy": [(2, 560.787), (3, 580.495)], "twin": [(2, 8.204), (3, 11.083)]}, "add": 2.3},
+      "RF": {"adult": {"three_step": [(1, 2410.512), (3, 4553.580), (4, 4355.112)], "dowhy": [(1, 5524.464), (3, 4587.649), (4, 5854.231)], "twin": [(1, 7.217), (3, 11.985), (4, 14.773)]},
+              "german": {"three_step": [(2, 971.116), (3, 1287.281)], "dowhy": [(2, 2547.966), (3, 2577.119)], "twin": [(2, 30.443), (3, 32.270)]}, "add": 2.5}}
 MK = [("three_step", "cthree", "square*", "square", "ThreeStep"), ("dowhy", "cdowhy", "triangle*", "triangle", "DoWhy"), ("twin", "ctwin", "*", "o", "CellForest")]
 body = [r"\begin{groupplot}[natline, group style={group size=2 by 1, horizontal sep=10pt, yticklabels at=edge left}, width=0.5\columnwidth, height=3.8cm,",
         r"  xmin=0.6, xmax=4.4, xtick={1,2,3,4}, ymode=log, ymin=1, ymax=3e4, ytick={10,100,1000,10000}, yticklabels={10\,$\mu$s,100\,$\mu$s,1\,ms,10\,ms}]"]
@@ -337,7 +337,7 @@ body += [r"\end{groupplot}", r"\node[anchor=south west] at ([yshift=8pt]group c1
          r"\node[anchor=north, font=\figfont\footnotesize] at ([yshift=-14pt]$(group c1r1.south)!0.5!(group c2r1.south)$) {Tree ensembles replayed per query};",
          r"\node[plab, anchor=north west] at (group c1r1.outer north west) {A};", r"\node[plab, anchor=north west] at (group c2r1.outer north west) {B};"]
 write("exp_app_mint_paths", figure("figure", body, r"MINT: time per query of a one-variable action against the tree ensembles it replays, i.e., the outcome and its mediators, 30 persons per table: (A) HGB; (B) RF. Solid, filled: Adult; dashed, open: German. A label is the time that \Method adds per ensemble.", "fig:exp-app-mint-paths"),
-      "Appendix C, results/mint_paths of repo_lean.")
+      "Appendix C, results/mint_paths of repo_final (final index).")
 
 # ---------------------------------------------------------------- appendix: random forests with the defaults of scikit-learn (fully grown)
 rf = J("rf_full.json")
@@ -416,11 +416,13 @@ for i, (ds, ab) in enumerate(ORDER, 1):
     for t, f in enumerate(FAMS):
         r = ng[f"{ds}_{f}"]; jx = (t - 2) * 0.045
         body.append(r"\addplot[only marks, forget plot, mark=*, mark size=1.8pt, mark options={mkours}] coordinates {(%.3f,%.5g)};" % (i - 0.18 + jx, r["grouped_formula"]))
+        if r["status"] in ("skip", "pending"):   # not rebuilt (yet) with the final index: no point without grouping
+            continue
         if r["status"] == "built":
             body.append(r"\addplot[only marks, forget plot, mark=square*, mark size=1.6pt, mark options={mk=cown}] coordinates {(%.3f,%.5g)};" % (i + 0.18 + jx, r["none_formula"]))
         else:
             body.append(r"\addplot[only marks, forget plot, mark=triangle, mark size=2.2pt, mark options={draw=cdowhy, line width=0.6pt}] coordinates {(%.3f,%.5g)};" % (i + 0.18 + jx, 2e12))
-    nb = sum(ng[f"{ds}_{f}"]["status"] != "built" for f in FAMS)
+    nb = sum(ng[f"{ds}_{f}"]["status"] not in ("built", "skip", "pending") for f in FAMS)
     if nb:
         body.append(r"\node[vlab, text=cdowhy, anchor=south] at (axis cs:%.2f,2.6e12) {%d/5};" % (i + 0.18, nb))
 body.append(r"\end{axis}")
